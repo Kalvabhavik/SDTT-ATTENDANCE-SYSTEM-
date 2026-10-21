@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+*.db
+*.sqlite*
+
+# Local settings and secrets
+.env
+.env.*
+!.env.example
+
+# Node
+node_modules/
+dist/
+coverage/
+
+# Flutter / Dart
+.dart_tool/
+.packages
+.pub-cache/
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
