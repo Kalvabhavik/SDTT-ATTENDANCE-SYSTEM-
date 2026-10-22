@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-
 import 'screens/home_screen.dart';
 import 'screens/login_screen.dart';
 import 'state/app_state.dart';
@@ -7,12 +6,14 @@ import 'widgets/app_widgets.dart';
 
 class AttendanceApp extends StatefulWidget {
   const AttendanceApp({super.key});
+
   @override
   State<AttendanceApp> createState() => _AttendanceAppState();
 }
 
 class _AttendanceAppState extends State<AttendanceApp> {
   late final AppState state;
+
   @override
   void initState() {
     super.initState();
@@ -21,6 +22,7 @@ class _AttendanceAppState extends State<AttendanceApp> {
   }
 
   void _changed() => setState(() {});
+
   @override
   void dispose() {
     state.removeListener(_changed);
@@ -29,14 +31,35 @@ class _AttendanceAppState extends State<AttendanceApp> {
   }
 
   @override
-  Widget build(BuildContext context) => MaterialApp(
-        title: 'Classroom attendance',
-        debugShowCheckedModeBanner: false,
-        theme: buildTheme(),
-        home: AnimatedBuilder(
-            animation: state,
-            builder: (_, __) => state.user == null
-                ? LoginScreen(state: state)
-                : HomeScreen(state: state)),
-      );
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'Classroom Attendance',
+      debugShowCheckedModeBanner: false,
+      theme: buildTheme().copyWith(
+        pageTransitionsTheme: const PageTransitionsTheme(
+          builders: {
+            TargetPlatform.android: ZoomPageTransitionsBuilder(),
+            TargetPlatform.iOS: ZoomPageTransitionsBuilder(),
+            TargetPlatform.linux: ZoomPageTransitionsBuilder(),
+            TargetPlatform.macOS: ZoomPageTransitionsBuilder(),
+            TargetPlatform.windows: ZoomPageTransitionsBuilder(),
+          },
+        ),
+      ),
+      home: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 350),
+        switchInCurve: Curves.easeOutCubic,
+        switchOutCurve: Curves.easeInCubic,
+        transitionBuilder: (child, animation) {
+          return FadeTransition(
+            opacity: animation,
+            child: child,
+          );
+        },
+        child: state.user == null
+            ? LoginScreen(key: const ValueKey('login'), state: state)
+            : HomeScreen(key: const ValueKey('home'), state: state),
+      ),
+    );
+  }
 }

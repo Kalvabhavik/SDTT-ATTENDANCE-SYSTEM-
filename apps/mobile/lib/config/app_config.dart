@@ -1,12 +1,17 @@
 class AppConfig {
-  const AppConfig._();
+  AppConfig._();
 
-  static const String apiBaseUrl = String.fromEnvironment(
+  static String _apiBaseUrl = const String.fromEnvironment(
     'API_BASE_URL',
-    defaultValue: 'http://10.0.2.2:8000/api',
+    defaultValue: 'http://localhost:8000/api',
   );
 
-  static Uri get apiUri => Uri.parse(apiBaseUrl);
+  static String get apiBaseUrl => _apiBaseUrl;
+  static set apiBaseUrl(String url) {
+    _apiBaseUrl = url.trim();
+  }
+
+  static Uri get apiUri => Uri.parse(_apiBaseUrl);
 
   static Uri websocketUri(String ticket) {
     final uri = apiUri;
