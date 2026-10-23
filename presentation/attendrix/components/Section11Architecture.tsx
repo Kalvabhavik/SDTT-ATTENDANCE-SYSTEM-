@@ -39,8 +39,8 @@ export default function Section11Architecture() {
       layer: "Edge Client Tier",
       tech: "Flutter / Dart (Android & iOS)",
       icon: Smartphone,
-      color: "text-[#fbbf24]",
-      borderColor: "border-[#e59a3c]/30",
+      color: "text-amber-800",
+      borderColor: "border-amber-400",
       summary:
         "Authenticated mobile interface that captures the front camera selfie, performs local blur checking, retrieves the student's JWT token, and sends encrypted submissions to the backend.",
       security: "Hardware keystore token storage, camera integrity check, zero persistent local photo storage.",
@@ -51,8 +51,8 @@ export default function Section11Architecture() {
       layer: "Presentation Tier",
       tech: "Next.js / React 19 / TypeScript",
       icon: Monitor,
-      color: "text-sky-400",
-      borderColor: "border-sky-500/30",
+      color: "text-sky-800",
+      borderColor: "border-sky-400",
       summary:
         "Web application used by course professors to initialize attendance sessions, monitor live WebSocket submission feeds, broadcast the dynamic projector screen, and audit review cases.",
       security: "Role-Based Access Control (RBAC) enforcing 'teacher' claims via Supabase JWT.",
@@ -63,8 +63,8 @@ export default function Section11Architecture() {
       layer: "Identity Tier",
       tech: "Supabase Auth / PyJWT",
       icon: Lock,
-      color: "text-purple-400",
-      borderColor: "border-purple-500/30",
+      color: "text-purple-800",
+      borderColor: "border-purple-400",
       summary:
         "Issues cryptographically signed JSON Web Tokens (JWT) confirming student enrollment and faculty instructional authority.",
       security: "Asymmetric HS256/RS256 signature verification, strict expiration timestamps.",
@@ -75,8 +75,8 @@ export default function Section11Architecture() {
       layer: "Application Tier",
       tech: "FastAPI / Python 3.11 / WebSockets",
       icon: Server,
-      color: "text-emerald-400",
-      borderColor: "border-emerald-500/30",
+      color: "text-emerald-800",
+      borderColor: "border-emerald-400",
       summary:
         "High-concurrency async service handling concurrent student submission bursts (up to 240 students in 15 seconds), validating nonces, and orchestrating verification workers.",
       security: "CORS isolation, payload size quotas (10MB max), rate limiting per IP.",
@@ -87,8 +87,8 @@ export default function Section11Architecture() {
       layer: "Temporal Security Tier",
       tech: "In-Memory Ticket Store & Redis TTL",
       icon: Shield,
-      color: "text-amber-400",
-      borderColor: "border-amber-500/30",
+      color: "text-amber-800",
+      borderColor: "border-amber-400",
       summary:
         "Generates rotating 6-character classroom challenge tokens every 15 seconds. Validates that incoming submissions align with the projector display window.",
       security: "Server-side cryptographic token rotation, strict TTL grace window (15s + 5s).",
@@ -99,8 +99,8 @@ export default function Section11Architecture() {
       layer: "Inference Tier",
       tech: "YuNet (Detection) + ArcFace (512-D)",
       icon: Cpu,
-      color: "text-blue-400",
-      borderColor: "border-blue-500/30",
+      color: "text-blue-800",
+      borderColor: "border-blue-400",
       summary:
         "Executes YuNet landmark alignment on canonical 112×112 face crops, generates 512-dimensional normalized unit embeddings, and evaluates cosine similarity against registered reference.",
       security: "Zero biometric crop persistence; memory-only processing, no training on student probes.",
@@ -111,8 +111,8 @@ export default function Section11Architecture() {
       layer: "Persistence Tier",
       tech: "Supabase PostgreSQL",
       icon: Database,
-      color: "text-[#fbbf24]",
-      borderColor: "border-[#e59a3c]/30",
+      color: "text-amber-900",
+      borderColor: "border-amber-400",
       summary:
         "Stores courses, enrollment rosters, finalized attendance entries, and unique index constraints `(session_id, student_id)` preventing duplicate records.",
       security: "Row Level Security (RLS), parameterized queries, encrypted database at rest.",
@@ -123,8 +123,8 @@ export default function Section11Architecture() {
       layer: "Governance Tier",
       tech: "Immutable Audit Log Tables",
       icon: FileCheck,
-      color: "text-rose-400",
-      borderColor: "border-rose-500/30",
+      color: "text-rose-800",
+      borderColor: "border-rose-400",
       summary:
         "Maintains an auditable, append-only historical log of all instructor overrides, manual status changes, and reason notes with UTC timestamps.",
       security: "Append-only permissions, non-repudiation of instructor actions.",
@@ -164,14 +164,14 @@ export default function Section11Architecture() {
               </span>
               <h3 className="text-base font-bold text-slate-900">System Component Network</h3>
             </div>
-            <span className="text-xs font-mono text-slate-500">Click node to inspect</span>
+            <span className="text-xs font-mono text-slate-700 font-bold">Click node to inspect</span>
           </div>
 
           {/* 3 Tier Rows */}
           <div className="space-y-6">
             {/* Tier 1: Clients */}
             <div>
-              <span className="text-[10px] font-mono uppercase tracking-widest text-slate-500 mb-2 block font-semibold">
+              <span className="text-[10px] font-mono uppercase tracking-widest text-slate-700 mb-2 block font-bold">
                 1. Edge Client &amp; Presentation Tier
               </span>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -197,7 +197,7 @@ export default function Section11Architecture() {
                         </div>
                         <div>
                           <div className="text-xs font-bold text-slate-900">{node.name}</div>
-                          <div className="text-[10px] font-mono text-slate-500">{node.tech}</div>
+                          <div className="text-[10px] font-mono text-slate-700 font-semibold">{node.tech}</div>
                         </div>
                       </div>
                     </button>
@@ -208,7 +208,7 @@ export default function Section11Architecture() {
 
             {/* Tier 2: Ingestion, Auth & Session Services */}
             <div>
-              <span className="text-[10px] font-mono uppercase tracking-widest text-slate-500 mb-2 block font-semibold">
+              <span className="text-[10px] font-mono uppercase tracking-widest text-slate-700 mb-2 block font-bold">
                 2. Application, Identity &amp; Cryptographic Tier
               </span>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -234,7 +234,7 @@ export default function Section11Architecture() {
                         </div>
                         <div>
                           <div className="text-xs font-bold text-slate-900">{node.name}</div>
-                          <div className="text-[9px] font-mono text-slate-500">{node.layer}</div>
+                          <div className="text-[9px] font-mono text-slate-700 font-semibold">{node.layer}</div>
                         </div>
                       </div>
                     </button>
@@ -245,7 +245,7 @@ export default function Section11Architecture() {
 
             {/* Tier 3: Inference, Persistence & Audit */}
             <div>
-              <span className="text-[10px] font-mono uppercase tracking-widest text-slate-500 mb-2 block font-semibold">
+              <span className="text-[10px] font-mono uppercase tracking-widest text-slate-700 mb-2 block font-bold">
                 3. Inference &amp; Persistence Storage Tier
               </span>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -271,7 +271,7 @@ export default function Section11Architecture() {
                         </div>
                         <div>
                           <div className="text-xs font-bold text-slate-900">{node.name}</div>
-                          <div className="text-[9px] font-mono text-slate-500">{node.layer}</div>
+                          <div className="text-[9px] font-mono text-slate-700 font-semibold">{node.layer}</div>
                         </div>
                       </div>
                     </button>
@@ -299,16 +299,16 @@ export default function Section11Architecture() {
             </div>
             <div>
               <h4 className="text-lg font-bold text-slate-900">{selectedNode.name}</h4>
-              <span className="text-xs font-mono text-slate-500">{selectedNode.tech}</span>
+              <span className="text-xs font-mono text-slate-700 font-bold">{selectedNode.tech}</span>
             </div>
           </div>
 
           <div className="space-y-3 text-xs font-mono">
             <div className="bg-white/90 p-4 rounded-xl border border-slate-200 shadow-sm">
-              <span className="text-slate-500 uppercase text-[10px] block mb-1 font-bold">
+              <span className="text-slate-700 uppercase text-[10px] block mb-1 font-bold">
                 CORE RESPONSIBILITY:
               </span>
-              <p className="text-slate-700 font-sans leading-relaxed">{selectedNode.summary}</p>
+              <p className="text-slate-800 font-sans font-medium leading-relaxed">{selectedNode.summary}</p>
             </div>
 
             <div className="bg-emerald-50/70 p-4 rounded-xl border border-emerald-200 shadow-sm">

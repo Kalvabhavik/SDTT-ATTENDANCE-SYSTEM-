@@ -213,7 +213,7 @@ export default function Section04Workflow() {
             <span className={`text-xs font-mono px-3 py-1 rounded-full border ${currentStepData.bgBadge}`}>
               STAGE 0{currentStepData.step} / 07
             </span>
-            <span className="text-xs font-mono text-slate-500 font-semibold">FastAPI Pipeline</span>
+            <span className="text-xs font-mono text-slate-700 font-bold">FastAPI Pipeline</span>
           </div>
 
           <div className="flex items-center gap-4 py-2">
@@ -222,7 +222,7 @@ export default function Section04Workflow() {
             </div>
             <div>
               <h3 className="text-lg font-bold text-slate-900">{currentStepData.title}</h3>
-              <p className="text-xs text-slate-500 font-medium">Classroom Session Orchestration</p>
+              <p className="text-xs text-slate-700 font-semibold">Classroom Session Orchestration</p>
             </div>
           </div>
 
@@ -236,7 +236,7 @@ export default function Section04Workflow() {
               <div className="text-2xl font-black text-slate-900 tracking-widest text-center py-2 bg-amber-50/60 rounded border border-amber-200">
                 {currentToken}
               </div>
-              <div className="flex justify-between items-center text-[11px] text-slate-500 pt-1 font-semibold">
+              <div className="flex justify-between items-center text-[11px] text-slate-700 pt-1 font-bold">
                 <span>Next Token Rotation in:</span>
                 <span className="text-orange-700 font-bold">{tokenCountdown}s</span>
               </div>
@@ -309,12 +309,12 @@ export default function Section04Workflow() {
                 soundManager.playClick();
                 setActiveStep((prev) => Math.max(1, prev - 1));
               }}
-              className="px-4 py-2 rounded-xl text-xs font-mono text-slate-600 hover:text-slate-900 disabled:opacity-30 disabled:pointer-events-none cursor-pointer font-semibold"
+              className="px-4 py-2 rounded-xl text-xs font-mono text-slate-800 hover:text-slate-950 disabled:opacity-30 disabled:pointer-events-none cursor-pointer font-bold"
             >
               ← Previous Step
             </button>
 
-            <span className="text-xs font-mono text-slate-500 font-bold">
+            <span className="text-xs font-mono text-slate-700 font-bold">
               {activeStep} of {steps.length}
             </span>
 

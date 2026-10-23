@@ -66,7 +66,7 @@ export default function Section01Opening({
       className="relative min-h-[94vh] flex flex-col justify-between pt-28 pb-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto pointer-events-none"
     >
       {/* Top Banner / Hero Title Area */}
-      <div className="pt-8 sm:pt-16 max-w-3xl pointer-events-auto glass-panel p-8 sm:p-12 rounded-3xl border border-slate-200/90 shadow-xl bg-white/95 backdrop-blur-xl">
+      <div className="pt-4 sm:pt-10 max-w-2xl pointer-events-auto glass-panel p-6 sm:p-9 rounded-3xl border border-white/70 shadow-2xl bg-white/80 backdrop-blur-xl">
         <div
           ref={badgeRef}
           className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-amber-100 border border-amber-300 mb-6 text-xs font-mono font-bold text-amber-900 shadow-sm"
@@ -132,7 +132,7 @@ export default function Section01Opening({
               <span>COHORT SCALE</span>
             </div>
             <div className="text-xl font-bold text-slate-900">80 / 120 / 240</div>
-            <div className="text-[11px] text-slate-600 font-medium">Tested lecture hall tiers</div>
+            <div className="text-[11px] text-slate-700 font-semibold">Tested lecture hall tiers</div>
           </div>
 
           <div className="glass-panel p-4 rounded-xl border border-slate-300/90 bg-white/95 hover:border-amber-500 transition-all hover:scale-[1.02] shadow-md">
@@ -141,7 +141,7 @@ export default function Section01Opening({
               <span>SPEED TARGET</span>
             </div>
             <div className="text-xl font-bold text-slate-900">&lt; 15 Seconds</div>
-            <div className="text-[11px] text-slate-600 font-medium">Batch session capture</div>
+            <div className="text-[11px] text-slate-700 font-semibold">Batch session capture</div>
           </div>
 
           <div className="glass-panel p-4 rounded-xl border border-slate-300/90 bg-white/95 hover:border-amber-500 transition-all hover:scale-[1.02] shadow-md">
@@ -150,7 +150,7 @@ export default function Section01Opening({
               <span>VERIFICATION</span>
             </div>
             <div className="text-xl font-bold text-slate-900">Multi-Source</div>
-            <div className="text-[11px] text-slate-600 font-medium">Selfie + Dynamic Challenge</div>
+            <div className="text-[11px] text-slate-700 font-semibold">Selfie + Dynamic Challenge</div>
           </div>
 
           <div className="glass-panel p-4 rounded-xl border border-slate-300/90 bg-white/95 hover:border-amber-500 transition-all hover:scale-[1.02] shadow-md">
@@ -159,14 +159,14 @@ export default function Section01Opening({
               <span>INTEGRITY</span>
             </div>
             <div className="text-xl font-bold text-slate-900">Human-in-Loop</div>
-            <div className="text-[11px] text-slate-600 font-medium">Dispute audit logging</div>
+            <div className="text-[11px] text-slate-700 font-semibold">Dispute audit logging</div>
           </div>
         </div>
 
         {/* Scroll Indicator Cue */}
-        <div className="hidden md:flex items-center gap-2.5 text-xs font-mono text-slate-700 bg-white/90 px-3.5 py-1.5 rounded-full border border-slate-300 shadow-sm animate-bounce">
-          <ArrowDown className="w-4 h-4 text-amber-600" />
-          <span className="font-semibold">Scroll to explore physical lecture hall</span>
+        <div className="hidden md:flex items-center gap-2.5 text-xs font-mono text-slate-800 bg-white/95 px-3.5 py-1.5 rounded-full border border-slate-300 shadow-sm animate-bounce">
+          <ArrowDown className="w-4 h-4 text-amber-700" />
+          <span className="font-bold">Scroll to explore physical lecture hall</span>
         </div>
       </div>
     </section>

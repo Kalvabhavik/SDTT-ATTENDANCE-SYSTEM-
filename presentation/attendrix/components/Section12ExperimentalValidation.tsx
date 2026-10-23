@@ -121,14 +121,14 @@ export default function Section12ExperimentalValidation() {
             </span>
             <h3 className="text-base font-bold text-slate-900">Amphitheater Optical Test Bench</h3>
           </div>
-          <span className="text-xs font-mono text-slate-500">Phase 2 Academic Protocol</span>
+          <span className="text-xs font-mono text-slate-700 font-bold">Phase 2 Academic Protocol</span>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {/* Parameter 1: Distance */}
           <div className="space-y-2">
-            <span className="text-xs font-mono text-slate-600 flex items-center gap-2 font-medium">
-              <Ruler className="w-3.5 h-3.5 text-amber-600" />
+            <span className="text-xs font-mono text-slate-800 flex items-center gap-2 font-bold">
+              <Ruler className="w-3.5 h-3.5 text-amber-700" />
               <span>Camera-to-Subject Distance:</span>
             </span>
             <div className="grid grid-cols-5 gap-1.5 font-mono text-xs">
@@ -139,25 +139,25 @@ export default function Section12ExperimentalValidation() {
                     soundManager.playClick();
                     setSelectedDistance(d);
                   }}
-                  className={`py-2 rounded-xl border text-center transition-all ${
+                  className={`py-2 rounded-xl border text-center transition-all cursor-pointer ${
                     selectedDistance === d
-                      ? "bg-amber-500 text-white font-bold border-amber-600 shadow-sm"
-                      : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
+                      ? "bg-amber-600 text-white font-bold border-amber-600 shadow-sm"
+                      : "bg-white text-slate-800 font-semibold border-slate-300 hover:bg-slate-50"
                   }`}
                 >
                   {d}m
                 </button>
               ))}
             </div>
-            <span className="text-[10px] text-slate-500 font-mono block">
+            <span className="text-[10px] text-slate-700 font-mono font-bold block">
               Current Tier: {currentDist.row}
             </span>
           </div>
 
           {/* Parameter 2: Lighting Environment */}
           <div className="space-y-2">
-            <span className="text-xs font-mono text-slate-600 flex items-center gap-2 font-medium">
-              <Sun className="w-3.5 h-3.5 text-amber-600" />
+            <span className="text-xs font-mono text-slate-800 flex items-center gap-2 font-bold">
+              <Sun className="w-3.5 h-3.5 text-amber-700" />
               <span>Classroom Lighting Condition:</span>
             </span>
             <div className="grid grid-cols-3 gap-1.5 font-mono text-xs">
@@ -239,12 +239,12 @@ export default function Section12ExperimentalValidation() {
           <div className="bg-white/95 p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3 font-mono">
             <div className="flex justify-between items-end">
               <div>
-                <span className="text-[10px] text-slate-500 uppercase tracking-wider block font-semibold">
+                <span className="text-[10px] text-slate-700 uppercase tracking-wider block font-bold">
                   INTER-PUPILLARY DISTANCE (IPD)
                 </span>
                 <span className="text-3xl font-black text-slate-900">{activeIPD} Pixels</span>
               </div>
-              <span className="text-xs text-amber-700 font-bold">Required: ≥ 30 Pixels</span>
+              <span className="text-xs text-amber-900 font-bold">Required: ≥ 30 Pixels</span>
             </div>
 
             {/* Visual Bar with Threshold Marker */}
@@ -259,9 +259,9 @@ export default function Section12ExperimentalValidation() {
               <div className="absolute top-0 bottom-0 left-[25%] w-0.5 bg-amber-600 z-10" />
             </div>
 
-            <div className="flex justify-between text-[10px] text-slate-500 font-medium">
+            <div className="flex justify-between text-[10px] text-slate-700 font-bold">
               <span>0 px</span>
-              <span className="text-amber-700 font-bold">30 px (ArcFace Cutoff)</span>
+              <span className="text-amber-900 font-bold">30 px (ArcFace Cutoff)</span>
               <span>120+ px</span>
             </div>
           </div>
@@ -269,13 +269,13 @@ export default function Section12ExperimentalValidation() {
           {/* Comparative Model Assessment */}
           <div className="space-y-3 text-xs font-mono">
             <div className="bg-white/90 p-3.5 rounded-xl border border-slate-200 shadow-sm flex justify-between items-center">
-              <span className="text-slate-600">YuNet Head Detection:</span>
-              <span className="text-emerald-700 font-bold">{currentDist.yuNetDetection}</span>
+              <span className="text-slate-800 font-bold">YuNet Head Detection:</span>
+              <span className="text-emerald-800 font-bold">{currentDist.yuNetDetection}</span>
             </div>
 
             <div className="bg-white/90 p-3.5 rounded-xl border border-slate-200 shadow-sm flex justify-between items-center">
-              <span className="text-slate-600">ArcFace Recognition Feasibility:</span>
-              <span className={activeIPD >= 30 ? "text-emerald-700 font-bold" : "text-amber-700 font-bold"}>
+              <span className="text-slate-800 font-bold">ArcFace Recognition Feasibility:</span>
+              <span className={activeIPD >= 30 ? "text-emerald-800 font-bold" : "text-amber-900 font-bold"}>
                 {activeIPD >= 30 ? "FEASIBLE (High Texture)" : "FALLBACK TO STUDENT SELFIE"}
               </span>
             </div>

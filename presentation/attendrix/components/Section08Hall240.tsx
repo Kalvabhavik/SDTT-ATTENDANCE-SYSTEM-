@@ -102,46 +102,46 @@ export default function Section08Hall240() {
       {/* Active Beat Explanation Card */}
       <div className="glass-panel p-4 rounded-xl border border-slate-200 mb-8 flex items-center justify-between text-xs font-mono text-slate-700 shadow-sm">
         <div className="flex items-center gap-3">
-          <span className="px-2 py-0.5 rounded bg-amber-100 text-amber-900 border border-amber-300 font-bold">
+          <span className="px-2 py-0.5 rounded bg-amber-100 text-amber-950 border border-amber-300 font-bold">
             BEAT 0{activeBeat}
           </span>
-          <span className="font-medium text-slate-800">{beats[activeBeat - 1].desc}</span>
+          <span className="font-semibold text-slate-900">{beats[activeBeat - 1].desc}</span>
         </div>
-        <span className="text-slate-500 hidden sm:inline font-semibold">240-Seat Real Classroom Storyboard</span>
+        <span className="text-slate-700 hidden sm:inline font-bold">240-Seat Real Classroom Storyboard</span>
       </div>
 
       {/* 240-Seat Live Dashboard Telemetry Banner */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-12">
         <div className="glass-panel p-5 rounded-2xl border border-slate-200 shadow-sm">
-          <span className="text-[10px] font-mono text-amber-800 font-bold uppercase tracking-wider block mb-1">
+          <span className="text-[10px] font-mono text-amber-850 font-bold uppercase tracking-wider block mb-1">
             TOTAL ENROLLED
           </span>
           <div className="text-3xl font-extrabold text-slate-900 font-mono">{stats.enrolled}</div>
-          <div className="text-[11px] text-slate-500 mt-1">Full Amphitheater Roster</div>
+          <div className="text-[11px] text-slate-700 font-medium mt-1">Full Amphitheater Roster</div>
         </div>
 
         <div className="glass-panel p-5 rounded-2xl border border-slate-200 shadow-sm">
           <span className="text-[10px] font-mono text-emerald-800 font-bold uppercase tracking-wider block mb-1">
             VERIFIED PRESENT
           </span>
-          <div className="text-3xl font-extrabold text-emerald-700 font-mono">{stats.verified}</div>
-          <div className="text-[11px] text-emerald-700 font-semibold mt-1">{stats.rate} Sample Pass</div>
+          <div className="text-3xl font-extrabold text-emerald-800 font-mono">{stats.verified}</div>
+          <div className="text-[11px] text-emerald-800 font-bold mt-1">{stats.rate} Sample Pass</div>
         </div>
 
         <div className="glass-panel p-5 rounded-2xl border border-slate-200 shadow-sm">
-          <span className="text-[10px] font-mono text-orange-800 font-bold uppercase tracking-wider block mb-1">
+          <span className="text-[10px] font-mono text-orange-850 font-bold uppercase tracking-wider block mb-1">
             PENDING REVIEW
           </span>
-          <div className="text-3xl font-extrabold text-orange-700 font-mono">{stats.pending}</div>
-          <div className="text-[11px] text-orange-700 font-semibold mt-1">Marginal Cosine / Low Light</div>
+          <div className="text-3xl font-extrabold text-orange-800 font-mono">{stats.pending}</div>
+          <div className="text-[11px] text-orange-800 font-bold mt-1">Marginal Cosine / Low Light</div>
         </div>
 
         <div className="glass-panel p-5 rounded-2xl border border-slate-200 shadow-sm">
-          <span className="text-[10px] font-mono text-slate-500 font-bold uppercase tracking-wider block mb-1">
+          <span className="text-[10px] font-mono text-slate-700 font-bold uppercase tracking-wider block mb-1">
             NOT RECORDED
           </span>
-          <div className="text-3xl font-extrabold text-slate-600 font-mono">{stats.unrecorded}</div>
-          <div className="text-[11px] text-slate-500 mt-1">Unsubmitted / Absent</div>
+          <div className="text-3xl font-extrabold text-slate-800 font-mono">{stats.unrecorded}</div>
+          <div className="text-[11px] text-slate-700 font-medium mt-1">Unsubmitted / Absent</div>
         </div>
       </div>
 
@@ -162,7 +162,7 @@ export default function Section08Hall240() {
               <h3 className="text-base font-bold text-slate-900">
                 How does the system scale to 240 students without magical claims?
               </h3>
-              <p className="text-xs text-slate-500 font-mono">
+              <p className="text-xs text-slate-700 font-mono font-medium">
                 Optical analysis: Wide-angle panorama vs 1:1 student selfie crop
               </p>
             </div>
@@ -214,7 +214,7 @@ export default function Section08Hall240() {
                     <Scan className="w-4 h-4 text-amber-700" />
                     <span>Optical Resolution Comparison: Distance vs Proximity</span>
                   </h4>
-                  <p className="text-xs text-slate-500 font-mono">
+                  <p className="text-xs text-slate-700 font-mono font-medium">
                     Visual comparison of facial pixel density available for biometric feature extraction
                   </p>
                 </div>
@@ -225,7 +225,7 @@ export default function Section08Hall240() {
                     className={`px-3 py-1.5 rounded-lg text-xs font-mono cursor-pointer font-bold ${
                       comparisonMode === "side_by_side"
                         ? "bg-amber-600 text-white shadow-sm"
-                        : "text-slate-600 hover:text-slate-900 bg-white border border-slate-200"
+                        : "text-slate-800 hover:text-slate-950 bg-white border border-slate-300"
                     }`}
                   >
                     Side-by-Side
@@ -235,7 +235,7 @@ export default function Section08Hall240() {
                     className={`px-3 py-1.5 rounded-lg text-xs font-mono cursor-pointer font-bold ${
                       comparisonMode === "wide_crop"
                         ? "bg-amber-600 text-white shadow-sm"
-                        : "text-slate-600 hover:text-slate-900 bg-white border border-slate-200"
+                        : "text-slate-800 hover:text-slate-950 bg-white border border-slate-300"
                     }`}
                   >
                     Wide-Angle (20m)
@@ -245,7 +245,7 @@ export default function Section08Hall240() {
                     className={`px-3 py-1.5 rounded-lg text-xs font-mono cursor-pointer font-bold ${
                       comparisonMode === "selfie_crop"
                         ? "bg-amber-600 text-white shadow-sm"
-                        : "text-slate-600 hover:text-slate-900 bg-white border border-slate-200"
+                        : "text-slate-800 hover:text-slate-950 bg-white border border-slate-300"
                     }`}
                   >
                     Student Selfie (0.5m)
@@ -258,7 +258,7 @@ export default function Section08Hall240() {
                 {/* Crop A: Distant Wide Classroom Crop */}
                 {(comparisonMode === "side_by_side" || comparisonMode === "wide_crop") && (
                   <div className="bg-white p-4 rounded-xl border border-orange-300 flex flex-col items-center shadow-sm">
-                    <span className="text-[10px] font-mono text-orange-800 font-bold mb-2 uppercase tracking-wider">
+                    <span className="text-[10px] font-mono text-orange-850 font-bold mb-2 uppercase tracking-wider">
                       CROP A: Wide Camera Panorama (20m Distance, Row 12)
                     </span>
                     <div className="w-36 h-36 bg-slate-950 rounded-xl border-2 border-dashed border-orange-400 flex items-center justify-center relative overflow-hidden mb-3">
@@ -276,10 +276,10 @@ export default function Section08Hall240() {
                         14×14 px
                       </span>
                     </div>
-                    <div className="space-y-1 text-center font-mono text-[11px] text-slate-700">
-                      <div className="text-orange-700 font-bold">Inter-Pupillary Distance (IPD): ~6px</div>
-                      <div className="text-slate-600">YuNet Head Detection: PASS (Candidate Box)</div>
-                      <div className="text-orange-700 font-bold">ArcFace Biometric Vector: COLLAPSED (Interpolated Blur)</div>
+                    <div className="space-y-1 text-center font-mono text-[11px] text-slate-750">
+                      <div className="text-orange-850 font-bold">Inter-Pupillary Distance (IPD): ~6px</div>
+                      <div className="text-slate-800 font-semibold">YuNet Head Detection: PASS (Candidate Box)</div>
+                      <div className="text-orange-850 font-bold">ArcFace Biometric Vector: COLLAPSED (Interpolated Blur)</div>
                     </div>
                   </div>
                 )}
@@ -287,7 +287,7 @@ export default function Section08Hall240() {
                 {/* Crop B: Student Selfie Crop */}
                 {(comparisonMode === "side_by_side" || comparisonMode === "selfie_crop") && (
                   <div className="bg-white p-4 rounded-xl border border-amber-400 flex flex-col items-center shadow-sm">
-                    <span className="text-[10px] font-mono text-amber-800 font-bold mb-2 uppercase tracking-wider">
+                    <span className="text-[10px] font-mono text-amber-900 font-bold mb-2 uppercase tracking-wider">
                       CROP B: Student Authenticated Selfie (0.5m Distance)
                     </span>
                     <div className="w-36 h-36 bg-amber-50 rounded-xl border-2 border-amber-500 flex flex-col items-center justify-center relative shadow-sm mb-3">
@@ -303,17 +303,17 @@ export default function Section08Hall240() {
                         112×112 px
                       </span>
                     </div>
-                    <div className="space-y-1 text-center font-mono text-[11px] text-slate-700">
-                      <div className="text-amber-800 font-bold">Inter-Pupillary Distance (IPD): ~48px (&gt; 30px min)</div>
-                      <div className="text-slate-600">YuNet 5-Landmark Alignment: OPTIMAL</div>
-                      <div className="text-emerald-700 font-bold">ArcFace 512-D Embedding: HIGH CONFIDENCE (0.86)</div>
+                    <div className="space-y-1 text-center font-mono text-[11px] text-slate-750">
+                      <div className="text-amber-900 font-bold">Inter-Pupillary Distance (IPD): ~48px (&gt; 30px min)</div>
+                      <div className="text-slate-800 font-semibold">YuNet 5-Landmark Alignment: OPTIMAL</div>
+                      <div className="text-emerald-800 font-extrabold">ArcFace 512-D Embedding: HIGH CONFIDENCE (0.86)</div>
                     </div>
                   </div>
                 )}
               </div>
             </div>
 
-            <div className="text-xs text-slate-700 font-mono bg-slate-100 p-4 rounded-xl border border-slate-200">
+            <div className="text-xs text-slate-800 font-mono font-medium bg-slate-100 p-4 rounded-xl border border-slate-200">
               *Conclusion: True attendance verification at 240-seat scale is achieved by combining student client capture for high-resolution biometric grounding with server-side challenge and audit reconciliation.
             </div>
           </div>

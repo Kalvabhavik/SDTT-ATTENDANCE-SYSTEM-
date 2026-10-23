@@ -1,0 +1,11 @@
+image_id,relative_path,device_model,lens_type,focal_length_mm,distance_meters,lighting_condition,lux_level,expected_faces,notes
+IMG_001,data/raw/IMG_001.jpg,Pixel_7,normal,24.0,3.0,ambient_full,480,1,Row 1 center seat
+IMG_002,data/raw/IMG_002.jpg,Pixel_7,normal,24.0,6.0,ambient_full,460,1,Row 3 center seat
+IMG_003,data/raw/IMG_003.jpg,Pixel_7,normal,24.0,12.0,ambient_full,420,1,Row 6 center seat
+IMG_004,data/raw/IMG_004.jpg,Pixel_7,normal,24.0,18.0,ambient_full,390,1,Row 10 center seat
+IMG_005,data/raw/IMG_005.jpg,Pixel_7,normal,24.0,24.0,ambient_full,350,1,Row 14 back row
+IMG_006,data/raw/IMG_006.jpg,Pixel_7,ultrawide,13.0,12.0,ambient_full,420,1,Row 6 ultrawide lens test
+IMG_007,data/raw/IMG_007.jpg,Galaxy_S22,telephoto,70.0,24.0,ambient_full,350,1,Row 14 3x optical zoom test
+IMG_008,data/raw/IMG_008.jpg,iPhone_13,normal,26.0,12.0,dimmed_projection,85,1,Row 6 dimmed lecture lights
+IMG_009,data/raw/IMG_009.jpg,iPhone_13,normal,26.0,24.0,dimmed_projection,75,1,Row 14 dimmed lecture lights
+IMG_010,data/raw/IMG_010.jpg,Pixel_7,normal,24.0,12.0,backlit,150,1,Row 6 window backlighting

@@ -1,0 +1,9 @@
+# Never commit raw volunteer photographs or facial crops
+data/
+results/
+*.jpg
+*.jpeg
+*.png
+*.webp
+*.heic
+

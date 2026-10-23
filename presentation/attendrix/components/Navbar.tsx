@@ -125,14 +125,14 @@ export default function Navbar({ activeSection }: NavbarProps) {
                 className="w-full text-left px-3 py-2 rounded-lg text-sm font-medium text-slate-800 hover:text-amber-700 hover:bg-amber-50 transition-colors flex items-center justify-between"
               >
                 <span>{link.label}</span>
-                <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
+                <ChevronRight className="w-3.5 h-3.5 text-slate-600" />
               </button>
             ))}
-            <div className="pt-2 mt-2 border-t border-slate-200 flex justify-between items-center text-xs text-slate-500 font-mono">
+            <div className="pt-2 mt-2 border-t border-slate-200 flex justify-between items-center text-xs text-slate-700 font-mono font-semibold">
               <span>SDTT Academic Demonstration</span>
               <button
                 onClick={() => handleNavClick("#dashboard")}
-                className="text-amber-700 font-bold underline"
+                className="text-amber-800 font-bold underline"
               >
                 Open Dashboard →
               </button>

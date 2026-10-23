@@ -85,7 +85,7 @@ export default function Section03Concept() {
             <Sparkles className="w-4 h-4 text-amber-600" />
             <span>DUAL-STREAM EVIDENCE CONVERGENCE</span>
           </span>
-          <span className="text-slate-600 hidden sm:inline font-semibold">REAL CLASSROOM CORROBORATION</span>
+          <span className="text-slate-700 hidden sm:inline font-bold">REAL CLASSROOM CORROBORATION</span>
         </div>
 
         {/* Visual Dual Streams Flowing to Central Engine */}
@@ -104,19 +104,19 @@ export default function Section03Concept() {
 
             <div className="space-y-2 text-xs text-slate-800 font-mono bg-slate-50 p-3 rounded-xl border border-slate-200">
               <div className="flex justify-between">
-                <span className="text-slate-600 font-semibold">Session ID:</span>
+                <span className="text-slate-700 font-bold">Session ID:</span>
                 <span className="text-slate-900 font-bold">SES-8491 (CS-401)</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-600 font-semibold">Rotating Challenge:</span>
+                <span className="text-slate-700 font-bold">Rotating Challenge:</span>
                 <span className="text-amber-800 font-bold">9K4-PX2 (TTL: 14s)</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-600 font-semibold">Projection State:</span>
+                <span className="text-slate-700 font-bold">Projection State:</span>
                 <span className="text-emerald-800 font-bold">ACTIVE IN HALL A</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-600 font-semibold">Contextual Occupancy:</span>
+                <span className="text-slate-700 font-bold">Contextual Occupancy:</span>
                 <span className="text-slate-900 font-bold">220/240 Detected</span>
               </div>
             </div>
@@ -129,7 +129,7 @@ export default function Section03Concept() {
               <ArrowRight className="w-4 h-4 hidden lg:block text-amber-700 animate-pulse" />
             </div>
             <div className="w-full h-2 bg-gradient-to-r from-amber-500 via-amber-600 to-orange-600 rounded-full shadow-sm" />
-            <div className="text-[10px] text-slate-600 text-center font-mono font-bold">
+            <div className="text-[10px] text-slate-700 text-center font-mono font-bold">
               FastAPI Core • Mutual Validation
             </div>
           </div>
@@ -148,19 +148,19 @@ export default function Section03Concept() {
 
             <div className="space-y-2 text-xs text-slate-800 font-mono bg-slate-50 p-3 rounded-xl border border-slate-200">
               <div className="flex justify-between">
-                <span className="text-slate-600 font-semibold">Authenticated UID:</span>
+                <span className="text-slate-700 font-bold">Authenticated UID:</span>
                 <span className="text-slate-900 font-bold">STU-2024-0482</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-600 font-semibold">Challenge Input:</span>
+                <span className="text-slate-700 font-bold">Challenge Input:</span>
                 <span className="text-amber-800 font-bold">9K4-PX2 (Matched)</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-600 font-semibold">1:1 Biometric Crop:</span>
+                <span className="text-slate-700 font-bold">1:1 Biometric Crop:</span>
                 <span className="text-slate-900 font-bold">112x112 Canonical</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-600 font-semibold">Replay &amp; Freshness:</span>
+                <span className="text-slate-700 font-bold">Replay &amp; Freshness:</span>
                 <span className="text-emerald-800 font-bold">t+1.4s (Valid Nonce)</span>
               </div>
             </div>
@@ -174,17 +174,17 @@ export default function Section03Concept() {
               <ShieldCheck className="w-5 h-5" />
             </div>
             <div>
-              <div className="text-xs font-mono text-amber-800 font-bold">ATTENDANCE VERIFICATION OUTCOME</div>
+              <div className="text-xs font-mono text-amber-900 font-bold">ATTENDANCE VERIFICATION OUTCOME</div>
               <div className="text-sm font-bold text-slate-900">
                 Multi-Evidence Check: VERIFIED (or routed to Review Queue)
               </div>
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <span className="px-2.5 py-1 rounded text-xs font-mono bg-emerald-100 text-emerald-900 border border-emerald-300 font-bold">
+            <span className="px-2.5 py-1 rounded text-xs font-mono bg-emerald-100 text-emerald-950 border border-emerald-300 font-bold">
               Verified: 90.8%
             </span>
-            <span className="px-2.5 py-1 rounded text-xs font-mono bg-amber-100 text-amber-900 border border-amber-300 font-bold">
+            <span className="px-2.5 py-1 rounded text-xs font-mono bg-amber-100 text-amber-950 border border-amber-300 font-bold">
               Human Review: 5.0%
             </span>
           </div>
@@ -212,12 +212,12 @@ export default function Section03Concept() {
                 <div className={`w-10 h-10 rounded-xl bg-amber-50 border border-amber-200 flex items-center justify-center ${p.color}`}>
                   <Icon className="w-5 h-5" />
                 </div>
-                <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200">
+                <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-800 border border-slate-300">
                   {p.role}
                 </span>
               </div>
               <h3 className="text-base font-bold text-slate-900 mb-2">{p.title}</h3>
-              <p className="text-xs text-slate-600 leading-relaxed">{p.desc}</p>
+              <p className="text-xs text-slate-700 font-medium leading-relaxed">{p.desc}</p>
             </div>
           );
         })}

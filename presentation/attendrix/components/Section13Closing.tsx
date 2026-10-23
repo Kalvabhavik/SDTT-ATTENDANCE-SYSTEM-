@@ -82,20 +82,20 @@ export default function Section13Closing({
         {/* Back to Top */}
         <button
           onClick={scrollToTop}
-          className="inline-flex items-center gap-2 text-xs font-mono text-slate-500 hover:text-amber-700 transition-colors cursor-pointer"
+          className="inline-flex items-center gap-2 text-xs font-mono text-slate-800 hover:text-amber-800 transition-colors cursor-pointer font-bold"
         >
-          <ArrowUp className="w-3.5 h-3.5" />
+          <ArrowUp className="w-3.5 h-3.5 text-amber-700" />
           <span>Back to entrance of lecture hall</span>
         </button>
       </div>
 
       {/* Academic Attribution & Ethical Compliance Footer */}
-      <div className="pt-12 border-t border-slate-200 flex flex-col md:flex-row items-center justify-between gap-6 text-xs font-mono text-slate-500">
+      <div className="pt-12 border-t border-slate-200 flex flex-col md:flex-row items-center justify-between gap-6 text-xs font-mono text-slate-700 font-semibold">
         <div>
           <span className="text-slate-900 font-bold block mb-1">
             ATTENDRIX • SDTT Classroom Attendance System
           </span>
-          <p className="max-w-md text-slate-600 font-sans text-[11px] leading-relaxed">
+          <p className="max-w-md text-slate-800 font-sans text-xs font-medium leading-relaxed">
             Academic engineering prototype exploring multi-factor attendance verification across 80, 120, and 240-seat university lecture halls.
           </p>
         </div>

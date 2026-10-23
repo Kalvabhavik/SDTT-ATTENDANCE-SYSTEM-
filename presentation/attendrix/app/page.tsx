@@ -31,7 +31,7 @@ const LectureHallScene = dynamic(() => import("@/components/LectureHallScene"), 
 });
 
 function HomeContent() {
-  const { scrollTo } = useSmoothScroll();
+  const { lenis, scrollTo } = useSmoothScroll();
   const [scrollProgress, setScrollProgress] = useState<number>(0);
   const [activeSection, setActiveSection] = useState<string>("section-01");
   const [selectedCohort, setSelectedCohort] = useState<80 | 120 | 240>(240);
@@ -49,14 +49,17 @@ function HomeContent() {
     }
   }, []);
 
-  // Compute scroll progress and active section
+  // Compute scroll progress and active section with direct Lenis RAF integration
   useEffect(() => {
-    const handleScroll = () => {
-      const totalHeight = document.documentElement.scrollHeight - window.innerHeight;
-      if (totalHeight > 0) {
-        const progress = Math.min(1, Math.max(0, window.scrollY / totalHeight));
-        setScrollProgress(progress);
+    const handleScrollUpdate = (progressValue?: number) => {
+      let progress: number;
+      if (typeof progressValue === "number") {
+        progress = Math.min(1, Math.max(0, progressValue));
+      } else {
+        const totalHeight = document.documentElement.scrollHeight - window.innerHeight;
+        progress = totalHeight > 0 ? Math.min(1, Math.max(0, window.scrollY / totalHeight)) : 0;
       }
+      setScrollProgress(progress);
 
       // Map scroll positions to active sections
       const sections = [
@@ -84,10 +87,22 @@ function HomeContent() {
       }
     };
 
-    window.addEventListener("scroll", handleScroll, { passive: true });
-    handleScroll();
-    return () => window.removeEventListener("scroll", handleScroll);
-  }, []);
+    if (lenis) {
+      const onLenisScroll = (e: any) => {
+        handleScrollUpdate(e.progress);
+      };
+      lenis.on("scroll", onLenisScroll);
+      handleScrollUpdate();
+      return () => {
+        lenis.off("scroll", onLenisScroll);
+      };
+    } else {
+      const onWindowScroll = () => handleScrollUpdate();
+      window.addEventListener("scroll", onWindowScroll, { passive: true });
+      handleScrollUpdate();
+      return () => window.removeEventListener("scroll", onWindowScroll);
+    }
+  }, [lenis]);
 
   const scrollToAnchor = (anchor: string) => {
     scrollTo(`#${anchor}`, { offset: -70, duration: 1.4 });
@@ -105,7 +120,7 @@ function HomeContent() {
       <Navbar activeSection={activeSection} />
 
       {/* Persistent 3D Lecture Hall Canvas in Background */}
-      <div className="fixed inset-0 z-0 pointer-events-auto h-screen w-screen opacity-90">
+      <div className="fixed inset-0 z-0 pointer-events-auto h-screen w-screen opacity-100">
         <LectureHallScene
           scrollProgress={scrollProgress}
           activeSection={activeSection}
@@ -113,8 +128,8 @@ function HomeContent() {
           selectedCohort={selectedCohort}
           activeZone={activeZone}
         />
-        {/* Subtle Light Mode Vignette & Soft Daylight Fades */}
-        <div className="absolute inset-0 pointer-events-none bg-gradient-to-t from-slate-50/70 via-transparent to-slate-50/40" />
+        {/* Subtle Daylight Vignette */}
+        <div className="absolute inset-0 pointer-events-none bg-gradient-to-t from-slate-50/20 via-transparent to-slate-50/15" />
       </div>
 
       {/* Foreground Scroll-Driven Story Content */}

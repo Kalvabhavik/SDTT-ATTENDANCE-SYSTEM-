@@ -62,9 +62,9 @@ export default function Section02Problem() {
             </div>
             <button
               onClick={restartSimulation}
-              className="text-xs font-mono text-slate-500 hover:text-slate-900 flex items-center gap-1 font-semibold"
+              className="text-xs font-mono text-slate-700 hover:text-slate-950 flex items-center gap-1 font-bold cursor-pointer"
             >
-              <RefreshCw className="w-3 h-3" />
+              <RefreshCw className="w-3 h-3 text-amber-700" />
               <span>Replay</span>
             </button>
           </div>
@@ -72,48 +72,48 @@ export default function Section02Problem() {
           {/* Time & Count Meters */}
           <div className="grid grid-cols-2 gap-4 mb-6">
             <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
-              <div className="text-xs font-mono text-slate-500 mb-1 font-bold">INSTRUCTION TIME LOST</div>
+              <div className="text-xs font-mono text-slate-700 mb-1 font-bold">INSTRUCTION TIME LOST</div>
               <div className="text-3xl font-extrabold text-rose-700 font-mono">
                 {simulatedMinutes}m
               </div>
-              <div className="text-[11px] text-slate-600 mt-1">out of a 50m lecture (37%)</div>
+              <div className="text-[11px] text-slate-700 font-medium mt-1">out of a 50m lecture (37%)</div>
             </div>
 
             <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
-              <div className="text-xs font-mono text-slate-500 mb-1 font-bold">NAMES CALLED (240)</div>
-              <div className="text-3xl font-extrabold text-amber-700 font-mono">
+              <div className="text-xs font-mono text-slate-700 mb-1 font-bold">NAMES CALLED (240)</div>
+              <div className="text-3xl font-extrabold text-amber-800 font-mono">
                 {simulatedNamesCalled} / 240
               </div>
-              <div className="text-[11px] text-slate-600 mt-1">Average 4.6 sec per student</div>
+              <div className="text-[11px] text-slate-700 font-medium mt-1">Average 4.6 sec per student</div>
             </div>
           </div>
 
           {/* Simulated Sequential Roll-Call Log (High contrast dark terminal) */}
-          <div className="space-y-1.5 font-mono text-xs bg-slate-900 p-3.5 rounded-xl border border-slate-700 h-44 overflow-hidden relative shadow-inner">
-            <div className="text-slate-300 text-[10px] pb-1 uppercase tracking-wider font-bold border-b border-slate-800">
+          <div className="space-y-1.5 font-mono text-xs bg-slate-950 p-4 rounded-xl border border-slate-800 h-44 overflow-hidden relative shadow-inner">
+            <div className="text-amber-300 text-[10px] pb-1 uppercase tracking-wider font-bold border-b border-slate-800">
               Lecture Hall Audio Roll Call Sequence
             </div>
-            <div className="text-slate-200">
+            <div className="text-slate-100 font-medium">
               &gt; [00:15] &quot;Student 001 - Present?&quot; ... &quot;Yes sir.&quot;
             </div>
-            <div className="text-slate-200">
+            <div className="text-slate-100 font-medium">
               &gt; [00:21] &quot;Student 002 - Present?&quot; ... &quot;Here.&quot;
             </div>
-            <div className="text-rose-400 font-bold">
+            <div className="text-rose-300 font-bold">
               &gt; [04:12] &quot;Student 047?&quot; ... (Silence. Repeat name twice). Proxy answer overheard.
             </div>
-            <div className="text-slate-200">
+            <div className="text-slate-100 font-medium">
               &gt; [08:44] &quot;Student 108?&quot; ... &quot;Present.&quot;
             </div>
-            <div className="text-amber-400 font-bold">
+            <div className="text-amber-300 font-bold">
               &gt; [14:20] Paper sign-in clipboard passed to Row 8. 4 duplicate signatures flagged.
             </div>
-            <div className="text-rose-400 font-bold">
+            <div className="text-rose-300 font-bold">
               &gt; [{simulatedMinutes >= 18 ? "18:42" : "16:10"}] Class halted. Instructor manually auditing disputes.
             </div>
           </div>
 
-          <div className="mt-4 text-[10px] text-slate-700 font-mono bg-slate-100 p-2.5 rounded-lg border border-slate-300 font-medium">
+          <div className="mt-4 text-[10px] text-slate-900 font-mono bg-slate-100 p-2.5 rounded-lg border border-slate-300 font-semibold">
             *Demonstration illustrative timing — roll calls in 240-seat halls routinely consume 15–20 minutes of 50-minute lectures based on classroom observational studies.
           </div>
         </div>

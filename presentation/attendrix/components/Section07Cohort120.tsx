@@ -141,45 +141,45 @@ export default function Section07Cohort120({ onZoneChange }: Section07Cohort120P
       {/* Reconciled Telemetry Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
         <div className="glass-panel p-5 rounded-2xl border border-slate-200 shadow-sm">
-          <span className="text-[10px] font-mono text-amber-800 font-bold uppercase tracking-wider block mb-1">
+          <span className="text-[10px] font-mono text-amber-850 font-bold uppercase tracking-wider block mb-1">
             ENROLLED CAPACITY
           </span>
           <div className="text-3xl font-extrabold text-slate-900 font-mono">
             {currentZoneData.enrolled}
           </div>
-          <div className="text-[11px] text-slate-500 mt-1">Total assigned seats</div>
+          <div className="text-[11px] text-slate-700 font-medium mt-1">Total assigned seats</div>
         </div>
 
         <div className="glass-panel p-5 rounded-2xl border border-slate-200 shadow-sm">
           <span className="text-[10px] font-mono text-emerald-800 font-bold uppercase tracking-wider block mb-1">
             VERIFIED PRESENT
           </span>
-          <div className="text-3xl font-extrabold text-emerald-700 font-mono">
+          <div className="text-3xl font-extrabold text-emerald-800 font-mono">
             {currentZoneData.verified}
           </div>
-          <div className="text-[11px] text-emerald-700 font-semibold mt-1">
+          <div className="text-[11px] text-emerald-800 font-bold mt-1">
             {((currentZoneData.verified / currentZoneData.enrolled) * 100).toFixed(1)}% verified rate
           </div>
         </div>
 
         <div className="glass-panel p-5 rounded-2xl border border-slate-200 shadow-sm">
-          <span className="text-[10px] font-mono text-orange-800 font-bold uppercase tracking-wider block mb-1">
+          <span className="text-[10px] font-mono text-orange-850 font-bold uppercase tracking-wider block mb-1">
             PENDING REVIEW
           </span>
-          <div className="text-3xl font-extrabold text-orange-700 font-mono">
+          <div className="text-3xl font-extrabold text-orange-800 font-mono">
             {currentZoneData.pending}
           </div>
-          <div className="text-[11px] text-orange-700 font-semibold mt-1">Uncertain / blurry crops</div>
+          <div className="text-[11px] text-orange-800 font-bold mt-1">Uncertain / blurry crops</div>
         </div>
 
         <div className="glass-panel p-5 rounded-2xl border border-slate-200 shadow-sm">
-          <span className="text-[10px] font-mono text-slate-500 font-bold uppercase tracking-wider block mb-1">
+          <span className="text-[10px] font-mono text-slate-700 font-bold uppercase tracking-wider block mb-1">
             NOT YET RECORDED
           </span>
-          <div className="text-3xl font-extrabold text-slate-600 font-mono">
+          <div className="text-3xl font-extrabold text-slate-800 font-mono">
             {currentZoneData.unrecorded}
           </div>
-          <div className="text-[11px] text-slate-500 mt-1">Absent or unsubmitted</div>
+          <div className="text-[11px] text-slate-700 font-medium mt-1">Absent or unsubmitted</div>
         </div>
       </div>
 
@@ -188,11 +188,11 @@ export default function Section07Cohort120({ onZoneChange }: Section07Cohort120P
         <div className="flex items-center justify-between mb-6 pb-4 border-b border-slate-200">
           <div>
             <h3 className="text-base font-bold text-slate-900">{currentZoneData.name}</h3>
-            <p className="text-xs text-slate-600 font-mono">
+            <p className="text-xs text-slate-700 font-mono font-medium">
               Optical Condition: {currentZoneData.opticalCondition}
             </p>
           </div>
-          <div className="text-xs font-mono text-amber-800 font-bold">
+          <div className="text-xs font-mono text-amber-900 font-bold">
             Reconciliation: {currentZoneData.verified} + {currentZoneData.pending} + {currentZoneData.unrecorded} = {currentZoneData.enrolled} ✓
           </div>
         </div>
@@ -209,27 +209,27 @@ export default function Section07Cohort120({ onZoneChange }: Section07Cohort120P
             }`}
           >
             <div className="flex items-center justify-between mb-3">
-              <span className="text-xs font-bold text-amber-800 font-mono">ZONE A (FRONT)</span>
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-100 text-amber-900 border border-amber-300 font-bold">
+              <span className="text-xs font-bold text-amber-900 font-mono">ZONE A (FRONT)</span>
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-100 text-amber-950 border border-amber-300 font-bold">
                 Rows 1–4
               </span>
             </div>
-            <div className="space-y-1.5 text-xs font-mono text-slate-700">
+            <div className="space-y-1.5 text-xs font-mono text-slate-800">
               <div className="flex justify-between">
-                <span className="text-slate-500">Enrolled:</span>
-                <span className="text-slate-900 font-bold">40</span>
+                <span className="text-slate-700 font-bold">Enrolled:</span>
+                <span className="text-slate-900 font-extrabold">40</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-500">Verified:</span>
-                <span className="text-emerald-700 font-bold">38 (95.0%)</span>
+                <span className="text-slate-700 font-bold">Verified:</span>
+                <span className="text-emerald-800 font-bold">38 (95.0%)</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-500">Pending Review:</span>
-                <span className="text-orange-700 font-bold">1</span>
+                <span className="text-slate-700 font-bold">Pending Review:</span>
+                <span className="text-orange-800 font-bold">1</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-500">Not Recorded:</span>
-                <span className="text-slate-600 font-bold">1</span>
+                <span className="text-slate-700 font-bold">Not Recorded:</span>
+                <span className="text-slate-800 font-bold">1</span>
               </div>
             </div>
           </div>
@@ -244,27 +244,27 @@ export default function Section07Cohort120({ onZoneChange }: Section07Cohort120P
             }`}
           >
             <div className="flex items-center justify-between mb-3">
-              <span className="text-xs font-bold text-orange-800 font-mono">ZONE B (MID)</span>
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-orange-100 text-orange-900 border border-orange-300 font-bold">
+              <span className="text-xs font-bold text-orange-900 font-mono">ZONE B (MID)</span>
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-orange-100 text-orange-950 border border-orange-300 font-bold">
                 Rows 5–8
               </span>
             </div>
-            <div className="space-y-1.5 text-xs font-mono text-slate-700">
+            <div className="space-y-1.5 text-xs font-mono text-slate-800">
               <div className="flex justify-between">
-                <span className="text-slate-500">Enrolled:</span>
-                <span className="text-slate-900 font-bold">40</span>
+                <span className="text-slate-700 font-bold">Enrolled:</span>
+                <span className="text-slate-900 font-extrabold">40</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-500">Verified:</span>
-                <span className="text-amber-700 font-bold">36 (90.0%)</span>
+                <span className="text-slate-700 font-bold">Verified:</span>
+                <span className="text-amber-800 font-bold">36 (90.0%)</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-500">Pending Review:</span>
-                <span className="text-orange-700 font-bold">2</span>
+                <span className="text-slate-700 font-bold">Pending Review:</span>
+                <span className="text-orange-800 font-bold">2</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-500">Not Recorded:</span>
-                <span className="text-slate-600 font-bold">2</span>
+                <span className="text-slate-700 font-bold">Not Recorded:</span>
+                <span className="text-slate-800 font-bold">2</span>
               </div>
             </div>
           </div>
@@ -279,27 +279,27 @@ export default function Section07Cohort120({ onZoneChange }: Section07Cohort120P
             }`}
           >
             <div className="flex items-center justify-between mb-3">
-              <span className="text-xs font-bold text-amber-800 font-mono">ZONE C (REAR)</span>
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-100 text-amber-900 border border-amber-300 font-bold">
+              <span className="text-xs font-bold text-amber-900 font-mono">ZONE C (REAR)</span>
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-100 text-amber-950 border border-amber-300 font-bold">
                 Rows 9–12
               </span>
             </div>
-            <div className="space-y-1.5 text-xs font-mono text-slate-700">
+            <div className="space-y-1.5 text-xs font-mono text-slate-800">
               <div className="flex justify-between">
-                <span className="text-slate-500">Enrolled:</span>
-                <span className="text-slate-900 font-bold">40</span>
+                <span className="text-slate-700 font-bold">Enrolled:</span>
+                <span className="text-slate-900 font-extrabold">40</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-500">Verified:</span>
-                <span className="text-amber-700 font-bold">34 (85.0%)</span>
+                <span className="text-slate-700 font-bold">Verified:</span>
+                <span className="text-amber-800 font-bold">34 (85.0%)</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-500">Pending Review:</span>
-                <span className="text-orange-700 font-bold">3</span>
+                <span className="text-slate-700 font-bold">Pending Review:</span>
+                <span className="text-orange-800 font-bold">3</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-500">Not Recorded:</span>
-                <span className="text-slate-600 font-bold">3</span>
+                <span className="text-slate-700 font-bold">Not Recorded:</span>
+                <span className="text-slate-800 font-bold">3</span>
               </div>
             </div>
           </div>
@@ -314,24 +314,24 @@ export default function Section07Cohort120({ onZoneChange }: Section07Cohort120P
         </h4>
         <div className="grid grid-cols-1 md:grid-cols-5 gap-3 text-xs font-mono">
           <div className="bg-slate-50 p-3 rounded-lg border border-slate-200">
-            <span className="text-amber-800 font-bold block mb-1">1. Enrolled (120)</span>
-            <span className="text-slate-600">Registered students on the official course roster.</span>
+            <span className="text-amber-900 font-bold block mb-1">1. Enrolled (120)</span>
+            <span className="text-slate-700 font-medium">Registered students on the official course roster.</span>
           </div>
           <div className="bg-slate-50 p-3 rounded-lg border border-slate-200">
-            <span className="text-orange-800 font-bold block mb-1">2. Submissions (114)</span>
-            <span className="text-slate-600">Packets received by the FastAPI backend.</span>
+            <span className="text-orange-900 font-bold block mb-1">2. Submissions (114)</span>
+            <span className="text-slate-700 font-medium">Packets received by the FastAPI backend.</span>
           </div>
           <div className="bg-slate-50 p-3 rounded-lg border border-slate-200">
-            <span className="text-amber-800 font-bold block mb-1">3. Faces Detected (111)</span>
-            <span className="text-slate-600">YuNet candidate bounding boxes identified in room.</span>
+            <span className="text-amber-900 font-bold block mb-1">3. Faces Detected (111)</span>
+            <span className="text-slate-700 font-medium">YuNet candidate bounding boxes identified in room.</span>
           </div>
           <div className="bg-slate-50 p-3 rounded-lg border border-slate-200">
-            <span className="text-emerald-800 font-bold block mb-1">4. Identities Verified (108)</span>
-            <span className="text-slate-600">1:1 ArcFace matches passing similarity &gt; 0.72.</span>
+            <span className="text-emerald-900 font-bold block mb-1">4. Identities Verified (108)</span>
+            <span className="text-slate-700 font-medium">1:1 ArcFace matches passing similarity &gt; 0.72.</span>
           </div>
           <div className="bg-slate-50 p-3 rounded-lg border border-slate-200">
-            <span className="text-orange-800 font-bold block mb-1">5. Unresolved (6)</span>
-            <span className="text-slate-600">Cases preserved for authorized instructor audit.</span>
+            <span className="text-orange-900 font-bold block mb-1">5. Unresolved (6)</span>
+            <span className="text-slate-700 font-medium">Cases preserved for authorized instructor audit.</span>
           </div>
         </div>
       </div>

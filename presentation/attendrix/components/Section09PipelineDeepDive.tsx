@@ -46,7 +46,7 @@ export default function Section09PipelineDeepDive() {
       output: "Raw image buffer in memory, parsed metadata dict, validated student ID.",
       failureConditions: "Corrupt image format, payload size > 10MB, network transmission drop.",
       status: "Implemented in Prototype",
-      statusColor: "bg-emerald-500/20 text-emerald-300 border-emerald-500/30",
+      statusColor: "bg-emerald-100 text-emerald-950 border-emerald-300 font-bold",
       codeSnippet: `async def submit_attendance(
     session_id: str,
     challenge_token: str,
@@ -68,7 +68,7 @@ export default function Section09PipelineDeepDive() {
       failureConditions:
         "Laplacian variance < 100 (severe blur), luminance < 30 lux (extreme underexposure), extreme profile angle (>45°).",
       status: "Implemented in Prototype",
-      statusColor: "bg-emerald-500/20 text-emerald-300 border-emerald-500/30",
+      statusColor: "bg-emerald-100 text-emerald-950 border-emerald-300 font-bold",
       codeSnippet: `def check_image_quality(img_rgb):
     gray = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2GRAY)
     laplacian_var = cv2.Laplacian(gray, cv2.CV_64F).var()
@@ -88,7 +88,7 @@ export default function Section09PipelineDeepDive() {
       failureConditions:
         "No face detected (occlusion/off-camera), multiple faces in individual selfie frame.",
       status: "Implemented in Prototype",
-      statusColor: "bg-emerald-500/20 text-emerald-300 border-emerald-500/30",
+      statusColor: "bg-emerald-100 text-emerald-950 border-emerald-300 font-bold",
       codeSnippet: `# DETECTOR ONLY: Answers "Is a human face present here?"
 detector = cv2.FaceDetectorYN.create(
     model="yunet.onnx",
@@ -110,7 +110,7 @@ _, faces = detector.detect(img)`,
       failureConditions:
         "Cosine similarity below threshold (e.g., < 0.72), missing registered reference embedding.",
       status: "Implemented in Prototype",
-      statusColor: "bg-emerald-500/20 text-emerald-300 border-emerald-500/30",
+      statusColor: "bg-emerald-100 text-emerald-950 border-emerald-300 font-bold",
       codeSnippet: `# Extracts 512-D unit embedding vector
 emb_probe = arcface_model.forward(aligned_112x112)
 # Cosine similarity: cos(theta) = u . v
@@ -129,7 +129,7 @@ verified = (cosine_sim >= COSINE_THRESHOLD)`,
       failureConditions:
         "Token expired (>15s window + grace period), duplicate student ID already committed, session finalized.",
       status: "Implemented in Prototype",
-      statusColor: "bg-emerald-500/20 text-emerald-300 border-emerald-500/30",
+      statusColor: "bg-emerald-100 text-emerald-950 border-emerald-300 font-bold",
       codeSnippet: `def validate_session_constraints(session_id, student_id, token):
     if not is_token_in_active_window(session_id, token):
         raise HTTPException(400, "Challenge token expired")
@@ -147,7 +147,7 @@ verified = (cosine_sim >= COSINE_THRESHOLD)`,
       output: "AttendanceStatusEnum: {VERIFIED, UNCERTAIN, REJECTED, PENDING_REVIEW}.",
       failureConditions: "Policy configuration missing or ambiguous threshold boundaries.",
       status: "Implemented in Prototype",
-      statusColor: "bg-emerald-500/20 text-emerald-300 border-emerald-500/30",
+      statusColor: "bg-emerald-100 text-emerald-950 border-emerald-300 font-bold",
       codeSnippet: `if not challenge_valid or is_duplicate:
     return AttendanceStatus.REJECTED
 elif quality_ok and cosine_sim >= 0.72:
@@ -168,7 +168,7 @@ else:
       output: "Finalized attendance status and cryptographic audit log row.",
       failureConditions: "Unauthorized user attempting override without teacher role.",
       status: "Implemented in Prototype",
-      statusColor: "bg-emerald-500/20 text-emerald-300 border-emerald-500/30",
+      statusColor: "bg-emerald-100 text-emerald-950 border-emerald-300 font-bold",
       codeSnippet: `def record_teacher_override(session_id, student_id, decision, reason):
     db.audit_logs.insert({
         "session_id": session_id,
@@ -245,34 +245,34 @@ else:
           </div>
 
           <div className="space-y-4 text-xs font-mono">
-            <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
-              <span className="text-slate-500 block uppercase text-[10px] mb-1 font-bold">
+            <div className="bg-slate-50 p-4 rounded-xl border border-slate-300">
+              <span className="text-slate-700 block uppercase text-[10px] mb-1 font-bold">
                 ENGINEERING PURPOSE:
               </span>
-              <p className="text-slate-700 font-sans leading-relaxed">{currentStage.purpose}</p>
+              <p className="text-slate-900 font-sans font-medium leading-relaxed">{currentStage.purpose}</p>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200">
-                <span className="text-slate-500 block uppercase text-[10px] mb-1 font-bold">
+              <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-300">
+                <span className="text-slate-700 block uppercase text-[10px] mb-1 font-bold">
                   REQUIRED INPUT:
                 </span>
-                <span className="text-slate-800 font-semibold">{currentStage.input}</span>
+                <span className="text-slate-950 font-semibold">{currentStage.input}</span>
               </div>
 
               <div className="bg-emerald-50 p-3.5 rounded-xl border border-emerald-300">
-                <span className="text-emerald-800 block uppercase text-[10px] mb-1 font-bold">
+                <span className="text-emerald-900 block uppercase text-[10px] mb-1 font-bold">
                   PRODUCED OUTPUT:
                 </span>
-                <span className="text-emerald-900 font-semibold">{currentStage.output}</span>
+                <span className="text-emerald-950 font-bold">{currentStage.output}</span>
               </div>
             </div>
 
             <div className="bg-rose-50 border border-rose-300 p-3.5 rounded-xl">
-              <span className="text-rose-800 block uppercase text-[10px] mb-1 font-bold">
+              <span className="text-rose-900 block uppercase text-[10px] mb-1 font-bold">
                 FAILURE CONDITIONS &amp; MITIGATION:
               </span>
-              <span className="text-rose-900">{currentStage.failureConditions}</span>
+              <span className="text-rose-950 font-medium">{currentStage.failureConditions}</span>
             </div>
           </div>
         </div>
@@ -284,7 +284,7 @@ else:
               <FileCode className="w-4 h-4 text-amber-700" />
               <span>FastAPI Backend Implementation Reference</span>
             </div>
-            <span className="text-[10px] text-slate-500">Python 3.11 • OpenCV • PyTorch</span>
+            <span className="text-[10px] text-slate-700 font-bold">Python 3.11 • OpenCV • PyTorch</span>
           </div>
 
           <div className="bg-slate-950 rounded-2xl p-4 border border-slate-800 font-mono text-xs overflow-x-auto text-slate-300 leading-relaxed shadow-inner">
@@ -297,7 +297,7 @@ else:
               <Sparkles className="w-4 h-4 text-amber-700" />
               <span>ACADEMIC INTEGRITY NOTICE</span>
             </div>
-            <p className="text-[11px] text-slate-600 leading-relaxed font-sans">
+            <p className="text-[11px] text-slate-800 font-medium leading-relaxed font-sans">
               No fictional biometric confidence percentages or fabricated latency times are generated. The Attendrix pipeline isolates face candidate detection (YuNet) from feature vector comparison (ArcFace) to ensure scientific validity.
             </p>
           </div>

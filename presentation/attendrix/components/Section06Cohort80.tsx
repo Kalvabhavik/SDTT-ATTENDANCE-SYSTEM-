@@ -77,7 +77,7 @@ export default function Section06Cohort80({ onSelectCohort }: Section06Cohort80P
               </span>
               <h3 className="text-base font-bold text-slate-900">CS-101 Seminar Hall (80 Enrolled)</h3>
             </div>
-            <div className="text-xs font-mono text-slate-500 font-semibold">
+            <div className="text-xs font-mono text-slate-700 font-bold">
               Click seat to inspect
             </div>
           </div>
@@ -130,15 +130,15 @@ export default function Section06Cohort80({ onSelectCohort }: Section06Cohort80P
           <div className="mt-8 pt-4 border-t border-slate-200 flex flex-wrap items-center justify-center gap-6 text-xs font-mono">
             <div className="flex items-center gap-2">
               <span className="w-3 h-3 rounded bg-amber-500 shadow-sm" />
-              <span className="text-slate-700 font-medium">Verified ({cohortData.verified})</span>
+              <span className="text-slate-800 font-bold">Verified ({cohortData.verified})</span>
             </div>
             <div className="flex items-center gap-2">
               <span className="w-3 h-3 rounded bg-orange-500 shadow-sm" />
-              <span className="text-slate-700 font-medium">Pending Review ({cohortData.pending})</span>
+              <span className="text-slate-800 font-bold">Pending Review ({cohortData.pending})</span>
             </div>
             <div className="flex items-center gap-2">
               <span className="w-3 h-3 rounded bg-slate-300" />
-              <span className="text-slate-700 font-medium">Not Recorded ({cohortData.unrecorded})</span>
+              <span className="text-slate-800 font-bold">Not Recorded ({cohortData.unrecorded})</span>
             </div>
           </div>
         </div>
@@ -148,51 +148,51 @@ export default function Section06Cohort80({ onSelectCohort }: Section06Cohort80P
           {/* Reconciled Summary Card */}
           <div className="glass-panel p-6 rounded-2xl border border-slate-200 space-y-4 shadow-sm">
             <div className="flex items-center justify-between pb-3 border-b border-slate-200">
-              <span className="text-xs font-mono text-amber-800 font-bold uppercase tracking-wider">
+              <span className="text-xs font-mono text-amber-850 font-bold uppercase tracking-wider">
                 SESSION RECONCILIATION SUMMARY
               </span>
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-100 text-amber-900 border border-amber-300 font-bold">
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-100 text-amber-950 border border-amber-300 font-bold">
                 TOTAL: 80 / 80
               </span>
             </div>
 
             <div className="grid grid-cols-2 gap-3 text-xs font-mono">
               <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200">
-                <span className="text-slate-500 text-[10px] block font-semibold">TOTAL ENROLLED</span>
+                <span className="text-slate-700 text-[10px] block font-bold">TOTAL ENROLLED</span>
                 <span className="text-2xl font-bold text-slate-900 font-mono">
                   {cohortData.enrolled}
                 </span>
-                <span className="text-[10px] text-slate-500 block">Class Roster</span>
+                <span className="text-[10px] text-slate-700 font-medium block">Class Roster</span>
               </div>
 
               <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200">
-                <span className="text-amber-700 text-[10px] block font-semibold">VERIFIED PRESENT</span>
-                <span className="text-2xl font-bold text-amber-700 font-mono">
+                <span className="text-amber-800 text-[10px] block font-bold">VERIFIED PRESENT</span>
+                <span className="text-2xl font-bold text-amber-800 font-mono">
                   {cohortData.verified}
                 </span>
-                <span className="text-[10px] text-emerald-700 font-semibold block">90.0% sample pass</span>
+                <span className="text-[10px] text-emerald-800 font-bold block">90.0% sample pass</span>
               </div>
 
               <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200">
-                <span className="text-orange-700 text-[10px] block font-semibold">PENDING REVIEW</span>
-                <span className="text-2xl font-bold text-orange-700 font-mono">
+                <span className="text-orange-800 text-[10px] block font-bold">PENDING REVIEW</span>
+                <span className="text-2xl font-bold text-orange-800 font-mono">
                   {cohortData.pending}
                 </span>
-                <span className="text-[10px] text-orange-700 font-semibold block">Requires TA glance</span>
+                <span className="text-[10px] text-orange-800 font-bold block">Requires TA glance</span>
               </div>
 
               <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200">
-                <span className="text-slate-500 text-[10px] block font-semibold">NOT YET RECORDED</span>
-                <span className="text-2xl font-bold text-slate-600 font-mono">
+                <span className="text-slate-700 text-[10px] block font-bold">NOT YET RECORDED</span>
+                <span className="text-2xl font-bold text-slate-800 font-mono">
                   {cohortData.unrecorded}
                 </span>
-                <span className="text-[10px] text-slate-500 block">Absent / No submission</span>
+                <span className="text-[10px] text-slate-700 font-medium block">Absent / No submission</span>
               </div>
             </div>
 
-            <div className="text-[11px] font-mono text-slate-700 bg-amber-50 p-2.5 rounded-lg border border-amber-200 flex justify-between">
+            <div className="text-[11px] font-mono text-slate-800 bg-amber-50 p-2.5 rounded-lg border border-amber-200 flex justify-between font-medium">
               <span>Mathematical Check:</span>
-              <span className="text-amber-900 font-bold">72 + 5 + 3 = 80 Enrolled ✓</span>
+              <span className="text-amber-950 font-bold">72 + 5 + 3 = 80 Enrolled ✓</span>
             </div>
           </div>
 
@@ -200,16 +200,16 @@ export default function Section06Cohort80({ onSelectCohort }: Section06Cohort80P
           {activeSeatRecord && (
             <div className="glass-panel p-6 rounded-2xl border border-slate-200 relative shadow-md">
               <div className="flex items-center justify-between mb-4">
-                <div className="text-xs font-mono text-amber-800 font-bold">
+                <div className="text-xs font-mono text-amber-900 font-bold">
                   SELECTED SEAT #{activeSeatRecord.id} (ROW {activeSeatRecord.row})
                 </div>
                 <span
                   className={`text-[10px] font-mono px-2.5 py-0.5 rounded font-bold uppercase ${
                     activeSeatRecord.status === "verified"
-                      ? "bg-emerald-100 text-emerald-900 border border-emerald-300"
+                      ? "bg-emerald-100 text-emerald-950 border border-emerald-300"
                       : activeSeatRecord.status === "pending"
-                      ? "bg-amber-100 text-amber-900 border border-amber-300"
-                      : "bg-slate-200 text-slate-700 border border-slate-300"
+                      ? "bg-amber-100 text-amber-950 border border-amber-300"
+                      : "bg-slate-200 text-slate-800 border border-slate-300"
                   }`}
                 >
                   {activeSeatRecord.status}
@@ -218,27 +218,27 @@ export default function Section06Cohort80({ onSelectCohort }: Section06Cohort80P
 
               <div className="space-y-2 text-xs font-mono bg-slate-50 p-3.5 rounded-xl border border-slate-200">
                 <div className="flex justify-between">
-                  <span className="text-slate-500">Student Name:</span>
-                  <span className="text-slate-900 font-bold">{activeSeatRecord.name}</span>
+                  <span className="text-slate-700 font-bold">Student Name:</span>
+                  <span className="text-slate-900 font-extrabold">{activeSeatRecord.name}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-slate-500">Submission Time:</span>
-                  <span className="text-slate-700">{activeSeatRecord.timestamp}</span>
+                  <span className="text-slate-700 font-bold">Submission Time:</span>
+                  <span className="text-slate-900 font-semibold">{activeSeatRecord.timestamp}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-slate-500">Cosine Similarity:</span>
-                  <span className="text-amber-800 font-bold">{activeSeatRecord.confidence}</span>
+                  <span className="text-slate-700 font-bold">Cosine Similarity:</span>
+                  <span className="text-amber-900 font-extrabold">{activeSeatRecord.confidence}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-slate-500">Challenge Code:</span>
-                  <span className="text-emerald-700 font-bold">9K4-PX2 (Valid)</span>
+                  <span className="text-slate-700 font-bold">Challenge Code:</span>
+                  <span className="text-emerald-800 font-bold">9K4-PX2 (Valid)</span>
                 </div>
               </div>
             </div>
           )}
 
           {/* Technical Honesty Note */}
-          <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 text-[11px] text-slate-600 font-mono leading-relaxed">
+          <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 text-[11px] text-slate-700 font-mono font-medium leading-relaxed">
             *Notice on 80-student scale: Does not claim instantaneous verification. Real-world throughput depends on mobile network latency, client camera quality, and institutional facial matching thresholds.
           </div>
         </div>

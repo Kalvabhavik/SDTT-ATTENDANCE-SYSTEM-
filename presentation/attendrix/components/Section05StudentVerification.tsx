@@ -238,7 +238,7 @@ export default function Section05StudentVerification() {
 
             {/* Bottom Challenge Token Banner */}
             <div className="absolute bottom-3 inset-x-3 bg-slate-900/95 border border-slate-800 rounded-lg p-2 flex items-center justify-between text-xs font-mono">
-              <span className="text-slate-400">Classroom Code:</span>
+              <span className="text-slate-300 font-bold">Classroom Code:</span>
               <span
                 className={`font-bold ${
                   scenario.challengeMatch ? "text-amber-300" : "text-rose-400 line-through"
@@ -257,14 +257,14 @@ export default function Section05StudentVerification() {
               </div>
               <div>
                 <div className="text-xs font-bold text-slate-900">Aarav Sharma</div>
-                <div className="text-[11px] font-mono text-slate-500">ID: STU-2024-0482 • B.Tech CS</div>
+                <div className="text-[11px] font-mono text-slate-700 font-semibold">ID: STU-2024-0482 • B.Tech CS</div>
               </div>
             </div>
             <div className="text-right">
               <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-100 text-amber-900 border border-amber-300 block mb-0.5 font-bold">
                 512-D ARCFACE
               </span>
-              <span className="text-[10px] text-slate-500 font-mono">Registered Ref</span>
+              <span className="text-[10px] text-slate-700 font-mono font-semibold">Registered Ref</span>
             </div>
           </div>
         </div>
@@ -308,7 +308,7 @@ export default function Section05StudentVerification() {
                   ? scenario.challengeMatch
                     ? "bg-emerald-50 border-emerald-300 text-emerald-900"
                     : "bg-rose-50 border-rose-300 text-rose-900"
-                  : "bg-slate-50 border-slate-200 text-slate-400"
+                  : "bg-slate-100 border-slate-300 text-slate-700 font-semibold"
               }`}
             >
               <div className="flex items-center gap-2.5">
@@ -331,7 +331,7 @@ export default function Section05StudentVerification() {
                   ? scenario.qualityScore >= 70
                     ? "bg-emerald-50 border-emerald-300 text-emerald-900"
                     : "bg-amber-50 border-amber-300 text-amber-900"
-                  : "bg-slate-50 border-slate-200 text-slate-400"
+                  : "bg-slate-100 border-slate-300 text-slate-700 font-semibold"
               }`}
             >
               <div className="flex items-center gap-2.5">
@@ -356,7 +356,7 @@ export default function Section05StudentVerification() {
                     : scenario.cosineSimilarity >= 0.5
                     ? "bg-amber-50 border-amber-300 text-amber-900"
                     : "bg-rose-50 border-rose-300 text-rose-900"
-                  : "bg-slate-50 border-slate-200 text-slate-400"
+                  : "bg-slate-100 border-slate-300 text-slate-700 font-semibold"
               }`}
             >
               <div className="flex items-center gap-2.5">
@@ -377,7 +377,7 @@ export default function Section05StudentVerification() {
                   ? !scenario.isDuplicate
                     ? "bg-emerald-50 border-emerald-300 text-emerald-900"
                     : "bg-rose-50 border-rose-300 text-rose-900"
-                  : "bg-slate-50 border-slate-200 text-slate-400"
+                  : "bg-slate-100 border-slate-300 text-slate-700 font-semibold"
               }`}
             >
               <div className="flex items-center gap-2.5">
