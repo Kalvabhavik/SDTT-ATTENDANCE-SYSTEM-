@@ -18,6 +18,7 @@ import os
 import secrets
 import threading
 import time
+import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from html import escape
@@ -31,6 +32,7 @@ from fastapi import (
     Header,
     HTTPException,
     Query,
+    Request,
     UploadFile,
     WebSocket,
     WebSocketDisconnect,
@@ -41,17 +43,30 @@ from pydantic import BaseModel, Field
 from supabase import create_client, Client
 from dotenv import load_dotenv
 from pathlib import Path
+from PIL import Image, UnidentifiedImageError
 
 # ── Config ────────────────────────────────────────────────────────────────────
 ROOT = Path(__file__).resolve().parents[1]
 load_dotenv(ROOT / ".env")
 
-SUPABASE_URL: str = os.environ["SUPABASE_URL"]
-SUPABASE_SERVICE_ROLE_KEY: str = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
-SUPABASE_JWT_SECRET: str = os.environ["SUPABASE_JWT_SECRET"]
+APP_ENV = os.getenv("ATTENDANCE_ENV", "development").lower()
+SUPABASE_URL = os.getenv("SUPABASE_URL", "")
+SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+SUPABASE_JWT_SECRET = os.getenv("SUPABASE_JWT_SECRET", "")
+if APP_ENV in {"staging", "production"}:
+    missing = [name for name, value in {
+        "SUPABASE_URL": SUPABASE_URL,
+        "SUPABASE_SERVICE_ROLE_KEY": SUPABASE_SERVICE_ROLE_KEY,
+        "SUPABASE_JWT_SECRET": SUPABASE_JWT_SECRET,
+    }.items() if not value or value.startswith("your-")]
+    if missing:
+        raise RuntimeError(f"Missing required production configuration: {', '.join(missing)}")
 
 WS_TICKET_TTL_SECONDS = int(os.getenv("ATTENDANCE_WS_TICKET_TTL_SECONDS", "60"))
 MAX_CAPTURE_BYTES = int(os.getenv("ATTENDANCE_MAX_CAPTURE_BYTES", "10485760"))
+MAX_CAPTURE_PIXELS = int(os.getenv("ATTENDANCE_MAX_CAPTURE_PIXELS", "25000000"))
+RATE_LIMIT_WINDOW_SECONDS = int(os.getenv("ATTENDANCE_RATE_LIMIT_WINDOW_SECONDS", "60"))
+RATE_LIMIT_MAX_LOGIN_ATTEMPTS = int(os.getenv("ATTENDANCE_RATE_LIMIT_MAX_LOGIN_ATTEMPTS", "10"))
 CORS_ORIGINS = [
     v.strip()
     for v in os.getenv(
@@ -60,21 +75,18 @@ CORS_ORIGINS = [
     ).split(",")
     if v.strip()
 ]
+if APP_ENV in {"staging", "production"} and any(origin.startswith("http://") for origin in CORS_ORIGINS):
+    raise RuntimeError("Production CORS origins must use HTTPS")
 
 # ── Supabase clients ──────────────────────────────────────────────────────────
-_supabase: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
-_auth_client: Client = create_client(SUPABASE_URL, os.getenv("SUPABASE_ANON_KEY", SUPABASE_SERVICE_ROLE_KEY))
+_supabase: Optional[Client] = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY) if SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY else None
 
 
 def supa() -> Client:
     """Return the shared Supabase service-role client."""
-    _supabase.postgrest.auth(SUPABASE_SERVICE_ROLE_KEY)
+    if _supabase is None:
+        raise RuntimeError("Supabase is not configured")
     return _supabase
-
-
-def auth_client() -> Client:
-    """Return the client dedicated to user authentication."""
-    return _auth_client
 
 
 # ── WebSocket state ───────────────────────────────────────────────────────────
@@ -83,6 +95,8 @@ _ws_tickets: dict[str, tuple[str, float]] = {}
 _ws_clients: dict[str, set[WebSocket]] = {}
 _ws_client_loops: dict[WebSocket, asyncio.AbstractEventLoop] = {}
 _ws_client_queues: dict[WebSocket, asyncio.Queue[str]] = {}
+_login_attempts: dict[str, list[float]] = {}
+_login_lock = threading.Lock()
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -91,33 +105,62 @@ def utc_now() -> str:
 
 
 def _verify_supabase_jwt(token: str) -> dict[str, Any]:
-    """Decode and verify a Supabase-issued JWT."""
+    """Cryptographically verify a Supabase-issued JWT.
+
+    Never decode unverified claims: the subject and role must be trusted only
+    after signature and audience validation.
+    """
+    if not SUPABASE_JWT_SECRET:
+        raise HTTPException(status_code=503, detail="Authentication is not configured")
     try:
-        # Try decoding with unverified options or verify signature if secret matches
         payload = pyjwt.decode(
             token,
-            options={"verify_signature": False},
+            SUPABASE_JWT_SECRET,
+            algorithms=["HS256"],
+            audience="authenticated",
         )
         return payload
-    except Exception as exc:
-        raise HTTPException(status_code=401, detail=f"Invalid token: {exc}")
+    except pyjwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token has expired")
+    except pyjwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Invalid access token")
+
+
+def _check_login_rate_limit(request: Request, email: str) -> None:
+    now = time.time()
+    key = f"{request.client.host if request.client else 'unknown'}:{email}"
+    with _login_lock:
+        attempts = [stamp for stamp in _login_attempts.get(key, []) if stamp > now - RATE_LIMIT_WINDOW_SECONDS]
+        if len(attempts) >= RATE_LIMIT_MAX_LOGIN_ATTEMPTS:
+            raise HTTPException(status_code=429, detail="Too many login attempts; try again later")
+        attempts.append(now)
+        _login_attempts[key] = attempts
+
+
+def _validate_capture(data: bytes, content_type: Optional[str]) -> tuple[int, int]:
+    if content_type not in {"image/jpeg", "image/png", "image/webp"}:
+        raise HTTPException(status_code=415, detail="Capture must be a JPEG, PNG, or WebP image")
+    try:
+        with Image.open(io.BytesIO(data)) as image:
+            width, height = image.size
+            if width < 320 or height < 240:
+                raise HTTPException(status_code=422, detail="Capture dimensions are too small")
+            if width * height > MAX_CAPTURE_PIXELS:
+                raise HTTPException(status_code=413, detail="Capture dimensions are too large")
+            image.verify()
+            return width, height
+    except HTTPException:
+        raise
+    except (UnidentifiedImageError, OSError):
+        raise HTTPException(status_code=422, detail="Capture is not a valid image")
 
 
 def current_user(authorization: Optional[str] = Header(default=None)) -> dict[str, Any]:
     if not authorization or not authorization.lower().startswith("bearer "):
         raise HTTPException(status_code=401, detail="Bearer access token required")
     token = authorization.split(" ", 1)[1].strip()
-    uid: str = ""
-    try:
-        user_resp = supa().auth.get_user(token)
-        if user_resp and user_resp.user:
-            uid = user_resp.user.id
-    except Exception:
-        pass
-
-    if not uid:
-        payload = _verify_supabase_jwt(token)
-        uid = payload.get("sub", "")
+    payload = _verify_supabase_jwt(token)
+    uid = payload.get("sub", "")
 
     if not uid:
         raise HTTPException(status_code=401, detail="Invalid token: missing subject")
@@ -176,6 +219,20 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    request_id = request.headers.get("X-Request-ID") or uuid.uuid4().hex
+    response = await call_next(request)
+    response.headers["X-Request-ID"] = request_id
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "no-referrer"
+    response.headers["Permissions-Policy"] = "camera=(self), microphone=()"
+    if APP_ENV in {"staging", "production"}:
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    return response
 
 
 # ── Utility: session/class access guards ─────────────────────────────────────
@@ -345,12 +402,22 @@ def publish_event(loopless_event: dict[str, Any], user_ids: list[str]) -> None:
 
 @app.get("/api/health")
 def health() -> dict[str, str]:
-    return {"status": "ok", "service": "classroom-attendance-prototype"}
+    return {"status": "ok", "service": "classroom-attendance-api", "environment": APP_ENV}
+
+
+@app.get("/api/ready")
+def readiness() -> dict[str, str]:
+    try:
+        supa().table("profiles").select("id").limit(1).execute()
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="Database is unavailable") from exc
+    return {"status": "ready"}
 
 
 @app.post("/api/auth/login")
-def login(req: LoginRequest) -> dict[str, Any]:
+def login(req: LoginRequest, request: Request) -> dict[str, Any]:
     email = req.email.strip().lower()
+    _check_login_rate_limit(request, email)
     try:
         auth_resp = supa().auth.sign_in_with_password({
             "email": email,
@@ -536,6 +603,7 @@ async def capture(
             raise HTTPException(status_code=413, detail=f"Capture exceeds {MAX_CAPTURE_BYTES} bytes")
     if not data:
         raise HTTPException(status_code=400, detail="Capture photo is empty")
+    width, height = _validate_capture(data, photo.content_type)
 
     roster = (
         supa()
@@ -578,7 +646,7 @@ async def capture(
 
     _audit(session_id, user["id"], "capture.received",
            note="Capture processed for synthetic suggestions; not persisted by application.",
-           metadata={"bytes_read": len(data)})
+           metadata={"bytes_read": len(data), "width": width, "height": height, "content_type": photo.content_type})
     _audit(session_id, user["id"], "suggestion.generated",
            note="Synthetic suggestions; teacher review required.",
            metadata={"count": len(suggestions), "synthetic": True})
@@ -680,7 +748,17 @@ def finalize(
                note="Pending attendance marked absent at finalization.",
                metadata={"student_id": s["student_id"], "status": "absent", "finalization": True})
 
-    supa().table("sessions").update({"status": "finalized", "finalized_at": now}).eq("id", session_id).execute()
+    finalized_resp = (
+        supa()
+        .table("sessions")
+        .update({"status": "finalized", "finalized_at": now})
+        .eq("id", session_id)
+        .eq("status", "open")
+        .select("id")
+        .execute()
+    )
+    if not finalized_resp.data:
+        raise HTTPException(status_code=409, detail="Session was finalized concurrently")
     _audit(session_id, user["id"], "session.finalized",
            note="Session finalized; pending records marked absent.",
            metadata={"pending_marked_absent": len(pending)})

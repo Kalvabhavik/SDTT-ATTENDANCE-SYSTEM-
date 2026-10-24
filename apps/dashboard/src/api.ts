@@ -1,10 +1,11 @@
 import { demoClasses, demoNotifications, demoNotifications2, demoRoster, demoSessions, demoStudent, demoStudent2, demoStudentAttendance, demoStudentAttendance2, demoTeacher, type AttendanceEntry, type AuditItem, type ClassItem, type Notification, type Report, type ReportRow, type Role, type Session, type StudentAttendance, type Suggestion, type User } from './types'
 
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api').replace(/\/$/, '')
+const DEMO_MODE = import.meta.env.VITE_ENABLE_DEMO_MODE === 'true'
 const localModeKey = 'rollcall-local-mode'
 
 export const getApiBase = () => API_BASE
-export const isLocalMode = () => window.localStorage.getItem(localModeKey) === 'true'
+export const isLocalMode = () => DEMO_MODE && window.localStorage.getItem(localModeKey) === 'true'
 const setLocalMode = (value: boolean) => window.localStorage.setItem(localModeKey, String(value))
 
 function record(value: unknown): Record<string, unknown> { return value && typeof value === 'object' ? value as Record<string, unknown> : {} }
@@ -119,7 +120,7 @@ export async function login(email: string, password: string): Promise<{ user: Us
     const isTeacher = email === demoTeacher.email && password === 'teach123'
     const isStudent1 = email === demoStudent.email && password === 'student123'
     const isStudent2 = email === demoStudent2.email && password === 'student123'
-    if (!isTeacher && !isStudent1 && !isStudent2) throw error
+    if (!DEMO_MODE || (!isTeacher && !isStudent1 && !isStudent2)) throw error
     cachedUser = isTeacher ? demoTeacher : isStudent2 ? demoStudent2 : demoStudent
     token = `demo-${cachedUser.id}`; setLocalMode(true)
     window.localStorage.setItem('rollcall-token', token); window.localStorage.setItem('rollcall-user', JSON.stringify(cachedUser))
@@ -132,7 +133,7 @@ export async function getSessions(): Promise<Session[]> { if (isLocalMode()) ret
 export async function getRoster(sessionId: string): Promise<Session> { if (isLocalMode()) return { ...demoSessions[0], id: sessionId, status: 'open', started_at: new Date().toISOString(), created_at: new Date().toISOString(), attendance: demoRoster, suggestions: [] }; return normalizeSession(await request<unknown>(`/sessions/${encodeURIComponent(sessionId)}`)) }
 export async function startSession(classId: string): Promise<Session> {
   if (isLocalMode()) return { id: `local-${Date.now()}`, class_id: classId, class_name: demoClasses.find(c => c.id === classId)?.name, started_at: new Date().toISOString(), created_at: new Date().toISOString(), status: 'open', attendance: demoRoster.map(s => ({ ...s, status: 'pending', confidence: undefined })) }
-  return normalizeSession(await request<unknown>('/sessions', { method: 'POST', body: JSON.stringify({ class_id: number(classId) }) }))
+  return normalizeSession(await request<unknown>('/sessions', { method: 'POST', body: JSON.stringify({ class_id: classId }) }))
 }
 export async function capture(sessionId: string, file: File): Promise<Suggestion[]> {
   if (isLocalMode()) return [

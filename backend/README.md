@@ -1,6 +1,6 @@
 # Classroom Attendance Backend
 
-FastAPI + SQLite prototype for the shared Flutter/web classroom attendance service. This is a **synthetic, review-first demo**, not a biometric or production attendance system.
+FastAPI + Supabase Auth/PostgreSQL service for the shared Flutter/web classroom attendance application. This remains a **synthetic, review-first implementation**, not a biometric or compliance-certified attendance system.
 
 ## Run locally
 
@@ -21,7 +21,7 @@ The API is under `/api`; WebSocket tickets connect to `/api/ws?ticket=...` (and 
 - `student1@demo.edu` / `student123`
 - `student2@demo.edu` / `student123`
 
-A single seeded class (`CS-101`) and two synthetic enrolled students are created on a new database. Do not use these credentials or the SQLite database for real student data.
+A single seeded class (`CS-101`) and two synthetic enrolled students may be configured for development. Do not use demo credentials or synthetic data in a live institution.
 
 ## Key workflow
 
@@ -35,7 +35,7 @@ A single seeded class (`CS-101`) and two synthetic enrolled students are created
 
 ## Configuration
 
-See `.env.example`. Secrets are environment inputs; the fallback `ATTENDANCE_APP_SECRET` is conspicuously development-only. Configure a strong secret, a private SQLite path, CORS origins, and token limits outside local demos.
+See `.env.example`. Secrets are environment inputs. Production requires real Supabase credentials, a JWT secret, HTTPS-only CORS origins, and configured capture/rate limits. The service fails closed when required production configuration is missing.
 
 ## Prototype boundaries
 
@@ -47,4 +47,4 @@ No actual face recognition, biometric collection, embedding storage, email, SMS,
 pytest -q
 ```
 
-Tests use a temporary SQLite database and cover login/roles, teacher session flow, simulated capture privacy, finalization notifications, student isolation, audit entries, and one-time WebSocket ticket behavior.
+Tests cover JWT signature/audience validation, bounded image parsing, login throttling, fail-closed production configuration, and the optional optical-feasibility experiment fallback.

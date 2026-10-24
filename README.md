@@ -1,16 +1,16 @@
-# Classroom Attendance prototype
+# Attendrix classroom attendance
 
-A review-first classroom attendance prototype with a Flutter mobile client, responsive web dashboard, and one shared real-time API. Build order follows the request: mobile app, web dashboard, then live connection through a shared FastAPI service and WebSocket event stream.
+A review-first classroom attendance system with a Flutter mobile client, responsive web dashboard, and one shared real-time FastAPI API backed by Supabase Auth and PostgreSQL.
 
 ## Safety scope
 
-This is a demo using synthetic students and simulated recognition suggestions. It does **not** perform facial identity recognition. Capture bytes are processed for the request and not persisted in application storage; multipart parsing may use temporary spooling for large uploads. No biometric templates are generated or exposed. Teacher review is required before a record becomes present/absent. Manual roll call is available. Notifications appear in the app only; there is no email or SMS sender. Do not enter real student data or use this prototype in a live school setting.
+The current implementation uses synthetic, clearly labeled review suggestions. It does **not** perform facial identity recognition, generate biometric templates, retain classroom photos, or make accuracy or compliance claims. Teacher review is required before a record becomes present/absent. Do not enter real student data or use this prototype in a live school setting.
 
 ## Components
 
 - `apps/mobile/` — Flutter app for teacher/student use, with Android/iOS/Web scaffolding. Flutter 3.47.7 was installed at `/home/ubuntu/tools/flutter` in this sandbox with user approval; the Android SDK is not installed, so an Android APK/device-camera build was not verified.
 - `apps/dashboard/` — React/TypeScript responsive dashboard.
-- `backend/` — FastAPI REST + WebSocket service with SQLite demo persistence and role checks.
+- `backend/` — FastAPI REST + WebSocket service with Supabase Auth/PostgreSQL persistence and role checks.
 - `docs/API_CONTRACT.md` — shared endpoint and event details.
 - `plan.md`, `TODO.md` — agreed scope and implementation status.
 
@@ -25,7 +25,7 @@ Keep the backend, dashboard, and Flutter app pointed at the same API address to 
 
 ## Verification in this sandbox
 
-Flutter static analysis and widget smoke tests pass, and `flutter build web` succeeds. Backend tests pass (4 tests), including role/privacy and single-use realtime ticket behavior. The dashboard TypeScript/Vite production build succeeds. Flutter APK/device camera behavior is not verified because this sandbox has no Android SDK or attached mobile device; native iOS builds require macOS/Xcode.
+Backend security and experiment tests pass, and the dashboard TypeScript/Vite production build succeeds. Flutter APK/device camera behavior is not verified because this sandbox has no Android SDK or attached mobile device; native iOS builds require macOS/Xcode.
 
 ## Demo credentials
 
@@ -33,4 +33,4 @@ Teacher: `teacher@demo.edu` / `teach123`.
 
 Students: `student1@demo.edu` or `student2@demo.edu` / `student123`.
 
-These credentials, SQLite storage, local WebSocket tickets, and demo CORS configuration are development-only. Production requires real authentication, HTTPS/WSS, encrypted storage, proper retention and deletion, backup/monitoring, access control review, school-specific legal/privacy review, demographic fairness assessment, and a configured app-push provider if true push delivery is required. The requested accuracy/latency figures are evaluation goals, not performance claims.
+These credentials and demo CORS configuration are development-only. Production requires approved authentication/MFA, HTTPS/WSS, backups and restore drills, retention and deletion controls, monitoring, access-control review, school-specific legal/privacy review, demographic fairness assessment, and a separately evaluated recognition service if recognition is ever introduced. The requested accuracy/latency figures are evaluation goals, not performance claims. See `docs/DEPLOYMENT.md` and `docs/SECURITY.md`.
