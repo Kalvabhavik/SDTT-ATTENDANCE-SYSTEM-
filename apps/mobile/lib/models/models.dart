@@ -4,6 +4,7 @@ String _string(dynamic value, [String fallback = '']) =>
     value?.toString() ?? fallback;
 int _int(dynamic value) =>
     value is int ? value : int.tryParse(_string(value)) ?? 0;
+String _id(dynamic value) => _string(value);
 double _double(dynamic value) =>
     value is num ? value.toDouble() : double.tryParse(_string(value)) ?? 0;
 Map<String, dynamic> _map(dynamic value) =>
@@ -15,13 +16,13 @@ class User {
       required this.name,
       required this.email,
       required this.role});
-  final int id;
+  final String id;
   final String name;
   final String email;
   final String role;
   bool get isTeacher => role.toLowerCase() == 'teacher';
   factory User.fromJson(Map<String, dynamic> json) => User(
-        id: _int(json['id']),
+        id: _id(json['id']),
         name: _string(json['name'], 'User'),
         email: _string(json['email']),
         role: _string(json['role'], 'student'),
@@ -44,12 +45,12 @@ class Classroom {
       required this.name,
       this.code = '',
       this.teacherName = ''});
-  final int id;
+  final String id;
   final String name;
   final String code;
   final String teacherName;
   factory Classroom.fromJson(Map<String, dynamic> json) => Classroom(
-        id: _int(json['id'] ?? json['class_id']),
+        id: _id(json['id'] ?? json['class_id']),
         name:
             _string(json['name'] ?? json['title'], 'Class ${json['id'] ?? ''}'),
         code: _string(json['code']),
@@ -63,65 +64,40 @@ class AttendanceRecord {
       required this.studentName,
       required this.status,
       this.note = '',
-      this.confidence,
       this.sessionId,
       this.className,
       this.updatedAt});
-  final int studentId;
+  final String studentId;
   final String studentName;
   final String status;
   final String note;
-  final double? confidence;
-  final int? sessionId;
+  final String? sessionId;
   final String? className;
   final DateTime? updatedAt;
   bool get isPresent => status == 'present';
   bool get isAbsent => status == 'absent';
   bool get isPending => status == 'pending';
   AttendanceRecord copyWith(
-          {String? status, String? note, double? confidence}) =>
+          {String? status, String? note}) =>
       AttendanceRecord(
         studentId: studentId,
         studentName: studentName,
         status: status ?? this.status,
         note: note ?? this.note,
-        confidence: confidence ?? this.confidence,
         sessionId: sessionId,
         className: className,
         updatedAt: updatedAt,
       );
   factory AttendanceRecord.fromJson(Map<String, dynamic> json) =>
       AttendanceRecord(
-        studentId: _int(json['student_id'] ?? json['id']),
+        studentId: _id(json['student_id'] ?? json['id']),
         studentName: _string(json['student_name'] ?? json['name'], 'Student'),
         status: _string(json['status'], 'pending'),
         note: _string(json['note']),
-        confidence:
-            json['confidence'] == null ? null : _double(json['confidence']),
-        sessionId: json['session_id'] == null ? null : _int(json['session_id']),
+        sessionId: json['session_id'] == null ? null : _id(json['session_id']),
         className:
             json['class_name'] == null ? null : _string(json['class_name']),
         updatedAt: DateTime.tryParse(_string(json['updated_at'])),
-      );
-}
-
-class Suggestion {
-  const Suggestion(
-      {required this.studentId,
-      required this.studentName,
-      required this.confidence,
-      this.status = 'present'});
-  final int studentId;
-  final String studentName;
-  final double confidence;
-  final String status;
-  factory Suggestion.fromJson(Map<String, dynamic> json) => Suggestion(
-        studentId: _int(json['student_id'] ?? json['id']),
-        studentName: _string(json['student_name'] ?? json['name'], 'Student'),
-        confidence: _double(json['confidence']),
-        // The API's status is the label "suggestion", not an attendance status.
-        // Applying a teacher-reviewed suggestion is an explicit present action.
-        status: 'present',
       );
 }
 
@@ -133,28 +109,48 @@ class AttendanceSession {
       required this.status,
       required this.records,
       this.createdAt,
-      this.finalizedAt});
-  final int id;
-  final int classId;
+      this.finalizedAt,
+      this.startsAt,
+      this.endsAt,
+      this.serverTime,
+      this.serverOffset,
+      this.durationMinutes});
+  final String id;
+  final String classId;
   final String className;
   final String status;
   final List<AttendanceRecord> records;
   final DateTime? createdAt;
   final DateTime? finalizedAt;
+  final DateTime? startsAt;
+  final DateTime? endsAt;
+  final DateTime? serverTime;
+  final Duration? serverOffset;
+  final int? durationMinutes;
+  DateTime get serverNow => DateTime.now().toUtc().add(serverOffset ?? Duration.zero);
+  Duration? get timeRemaining => endsAt == null ? null : endsAt!.toUtc().difference(serverNow);
   bool get isOpen => status.toLowerCase() == 'open';
+  bool get isClosed => status.toLowerCase() == 'closed';
   factory AttendanceSession.fromJson(Map<String, dynamic> json) {
     final rawRecords =
         json['attendance'] ?? json['records'] ?? json['roster'] ?? <dynamic>[];
     final list = rawRecords is List ? rawRecords : <dynamic>[];
+    final serverTime = DateTime.tryParse(_string(json['server_time']))?.toUtc();
+    final receivedAt = DateTime.now().toUtc();
     return AttendanceSession(
-      id: _int(json['id'] ?? json['session_id']),
-      classId: _int(json['class_id'] ?? _map(json['class'])['id']),
+      id: _id(json['id'] ?? json['session_id']),
+      classId: _id(json['class_id'] ?? _map(json['class'])['id']),
       className: _string(json['class_name'] ?? _map(json['class'])['name'],
           'Attendance session'),
       status: _string(json['status'], 'open'),
       records: list.map((e) => AttendanceRecord.fromJson(_map(e))).toList(),
       createdAt: DateTime.tryParse(_string(json['created_at'])),
       finalizedAt: DateTime.tryParse(_string(json['finalized_at'])),
+      startsAt: DateTime.tryParse(_string(json['starts_at'])),
+      endsAt: DateTime.tryParse(_string(json['ends_at'])),
+      serverTime: serverTime,
+      serverOffset: serverTime?.difference(receivedAt),
+      durationMinutes: json['duration_minutes'] == null ? null : _int(json['duration_minutes']),
     );
   }
 }
@@ -209,14 +205,14 @@ class AppNotification {
       required this.message,
       required this.read,
       this.createdAt});
-  final int id;
+  final String id;
   final String title;
   final String message;
   final bool read;
   final DateTime? createdAt;
   factory AppNotification.fromJson(Map<String, dynamic> json) =>
       AppNotification(
-        id: _int(json['id']),
+        id: _id(json['id']),
         title: _string(json['title'], 'Attendance update'),
         message: _string(json['message'] ?? json['body']),
         read: json['read'] == true ||

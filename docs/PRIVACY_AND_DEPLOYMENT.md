@@ -1,13 +1,24 @@
-# Privacy and deployment notes
+# Privacy and deployment
 
-## Prototype limits
+## Biometric data lifecycle
 
-This codebase uses fictional roster entries and a deterministic/simulated review response. It does not identify people from faces. Uploaded images are used for the current request and are not persisted by the application; multipart parsing may spool large files to temporary storage during processing. The mobile client should remove its temporary camera file after upload. Avoid real student names, photos, biometrics, or attendance records in this demo.
+Enrollment requires explicit consent. YuNet detects faces; ArcFace ONNX embeddings are encrypted server-side with ATTENDANCE_TEMPLATE_ENCRYPTION_KEY and stored in face_templates. Enrollment API responses expose only a boolean, model version and consent timestamp. Service-role access is required for biometric records; RLS has no client-readable policy for templates/evidence. Do not place the service key, encryption key, model files, images, embeddings, credentials or tokens in client bundles, logs or source control.
 
-Attendance is provisional until the teacher explicitly accepts or corrects suggestions and finalizes the session. The audit log records who changed what and when. Students can view only their own attendance and in-app notifications. No email or SMS notification provider is included; app notification feed is the only channel in this prototype. Browser/native WebSocket events are update signals, not a substitute for re-fetching authoritative records.
+Sweep uploads are analyzed frame by frame. Verified and rejected attempts store metrics/reason codes, not raw image bytes. Flagged attempts retain selected key frames in the private Supabase Storage bucket for ATTENDANCE_FLAGGED_RETENTION_DAYS (default 7); a background retention worker deletes expired storage objects and evidence rows. Review links are signed and short-lived. Multipart upload spooling may use temporary storage during request processing; secure and clean server temporary storage as part of deployment operations.
 
-## Before any pilot or production use
+JWT identity is checked through Supabase Auth and profile role, and selected login role must match. Attendance decisions and time windows are backend-authoritative. Heading metadata is client-supplied and spoofable; it is supporting evidence, not proof of a physical sweep or liveness. No liveness detection is implemented or claimed. Lecturer review or manual roll-call override handles uncertain evidence.
 
-Determine applicable education, privacy, and biometric rules for the actual jurisdiction and age group; give notice and obtain appropriate consent; offer a reliable opt-out/manual attendance route; define deletion and retention periods; complete a threat model and access-control review; secure TLS/WSS, database encryption, backups, and secrets; replace demo credentials; and assess false accepts/rejects under actual classroom conditions and across demographics. Do not rely on literature benchmark scores as classroom accuracy guarantees. Obtain any required human, legal, security, and institutional approvals before real biometric use.
+## Model licensing and evidence
 
-If app push (rather than in-app notifications) is later required, configure Firebase Cloud Messaging with server-only credentials and user-approved device tokens. The request specified app-only delivery, so email/SMS integrations are intentionally absent.
+YuNet model files in OpenCV Zoo are marked MIT in the [official model README](https://github.com/opencv/opencv_zoo/blob/main/models/face_detection_yunet/README.md?plain=1). InsightFace source code is MIT, but its [official model README](https://github.com/deepinsight/insightface/blob/master/README.md?plain=1) states pretrained models are for non-commercial research purposes; obtain a separate commercial license before commercial deployment. Confirm the precise downloaded ONNX model provenance and terms. Model files are not included.
+
+There is no accuracy claim. The late-stage lecturer test is likely to be uncertain with small front-camera faces; the current detector has no independent person detector. Run experiments/panorama_verification/run_manifest.py only with a locally held, consented-volunteer manifest and real models. It reports rule outcomes per device and flagged lecturer checks; never commit photos or embeddings.
+
+## Deployment prerequisites
+
+- Apply SQL migrations using the approved Supabase migration process. Test RLS, service-role boundaries, storage bucket privacy and RPC atomicity in a dedicated project.
+- Configure HTTPS/WSS, Supabase keys, JWT secret, Fernet encryption key, private model files, CORS, upload limits, retention, monitoring and backups in secret management. .env is local only.
+- Verify rate limiting across multiple workers (current login limiting is in-process), request size limits at proxy and application layers, concurrent writes, lifecycle jobs, and retention deletion.
+- Establish notice, consent, age/jurisdiction review, accessible manual opt-out, deletion requests and incident response before real classroom use. No email/SMS provider is configured; notifications are in-app.
+
+Implementation source alone does not prove migration execution, storage privacy, model suitability, accuracy, fairness or real-device behavior.

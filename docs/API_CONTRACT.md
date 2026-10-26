@@ -1,37 +1,32 @@
-# Shared API contract
+# API contract
 
-Base path: `/api`. JSON is UTF-8. Authenticated HTTP routes use `Authorization: Bearer <access_token>`. The prototype uses seeded demo accounts and SQLite; do not use it with real student data.
+Base path: /api. Authenticated HTTP calls use Authorization: Bearer <Supabase access token>. The backend validates Supabase Auth identity and loads the authoritative profile role. selected_role on login must match that profile (teacher or student); “Lecturer” is display copy only. IDs are Supabase strings/UUIDs.
 
-## Authentication and roles
+## Auth, realtime, enrollment
 
-- `POST /auth/login` — `{email,password}` → `{access_token,token_type,user:{id,name,email,role}}`.
-- `GET /me` — current authenticated profile.
-- `POST /auth/ws-ticket` — returns a short-lived single-use `{ticket}` for WebSocket authentication.
-- Roles are `teacher` and `student`; students may read only their own attendance and notifications.
+- POST /auth/login {email,password,selected_role} returns access token and user, or rejects role mismatch.
+- GET /me returns the authenticated profile.
+- POST /auth/ws-ticket returns a short-lived single-use ticket. Connect to /ws?ticket=...; never put the bearer token in the URL.
+- GET /config returns max session duration and server time.
+- GET /enrollment/status returns only enrollment status, model version and consent timestamp.
+- POST /enrollment/face accepts explicit consent plus a JPEG/PNG camera photo. The service checks image quality and exactly one face, encrypts the embedding, and never returns it.
 
-Demo accounts: `teacher@demo.edu / teach123`; `student1@demo.edu / student123`; `student2@demo.edu / student123`.
+## Sessions and attendance
 
-## Classroom and attendance
+- GET /classes, GET /classes/{id}/students, GET /sessions, GET /sessions/{id} are role-limited reads. Read endpoints also lazily close expired sessions.
+- POST /sessions {class_id,duration_minutes} creates a server-timed open session and pending roster entries. Maximum duration comes from /config.
+- POST /sessions/{id}/capture is retired and returns HTTP 410. Use POST /sessions/{id}/submissions for camera sweeps.
+- POST /sessions/{id}/submissions is multipart: attempt_id idempotency UUID, duration_seconds, frame_metadata JSON array (offset_seconds, heading_degrees), repeated frames JPEG/PNG parts. Outcomes are verified, flagged, or rejected; responses include rule results/reason codes. One verified result per student/session is enforced by the database.
+- GET /sessions/{id}/review-queue returns flagged attempts and short-lived signed private evidence URLs. PATCH /sessions/{id}/submissions/{attempt_id}/review accepts decision accepted/rejected and a note, then audits the lecturer decision.
+- PATCH /sessions/{id}/attendance/{student_id} allows lecturer manual present/absent/pending corrections with audit note. This is the opt-out route.
+- Session lifecycle is open → closed → finalized. Server-side expiry runs in background and lazily on reads/submissions. A submission is accepted only before end time plus configured grace.
+- POST /sessions/{id}/finalize {mark_pending_absent:true} finalizes a closed session and marks pending rows absent.
 
-- `GET /classes` → teacher's classes (student sees only enrolled classes).
-- `GET /classes/{class_id}/students` → roster; teacher only.
-- `GET /sessions` → teacher history/open sessions, or student's own relevant sessions.
-- `POST /sessions` — `{class_id}` creates an open session and pending roster records (teacher only).
-- `GET /sessions/{session_id}` → session, roster, attendance statuses, and suggestions (role-limited).
-- `POST /sessions/{session_id}/capture` — multipart field `photo`; processes the request-scoped upload without persisting it in application storage, and returns an explicitly simulated list of name/confidence suggestions. Suggestions remain pending until a teacher accepts/edits them.
-- `PATCH /sessions/{session_id}/attendance/{student_id}` — `{status:"present"|"absent"|"pending",note?}`; teacher only, always audited.
-- `POST /sessions/{session_id}/finalize` — `{mark_pending_absent:true}` explicitly finalizes; remaining pending students become absent and each change is audited. Creates private in-app notifications for enrolled students.
-- `GET /students/me/attendance` → personal entries and summary totals/percentage.
-- `GET /reports/sessions/{session_id}` → report data for CSV/PDF export (role-limited).
-- `GET /audit?session_id=<id>` — teacher-only trace of session creation, capture, suggestion generation, changes, and finalization.
-- `GET /notifications`, `POST /notifications/{id}/read` — current user's in-app notification feed/read state.
+## Reporting and existing services
 
-Session payloads use numeric API IDs, `created_at`, and `attendance` rows with `student_id`, `name`, `status`, `note`, and `updated_at`. Capture suggestions use `name`, confidence, and the non-attendance label `suggestion`; only a teacher's explicit review writes `present`, `absent`, or `pending`. Student attendance returns `summary.total_finalized` and a nullable `percentage` when there are no finalized records. Reports return `rows`, CSV text, and print-friendly HTML (`pdf_html`); audit entries use `timestamp`, `note`, and `metadata`; notification read state is `read_at`.
+- GET /students/me/attendance returns only the caller’s history and summary.
+- GET /reports/sessions/{id} returns CSV text and print-friendly HTML (pdf_html).
+- GET /audit?session_id=..., GET /notifications, POST /notifications/{id}/read remain authenticated and access limited.
+- WebSocket events include session.created, attendance.changed, session.closed, session.finalized, attendance.attempt, notification.created. Events are hints; clients re-fetch REST state.
 
-## Realtime
-
-After obtaining a single-use ticket, connect to `GET /ws?ticket=<ticket>` over WebSocket (use `wss` in production). Server events have shape `{type,data,created_at}` and types `session.created`, `attendance.changed`, `session.finalized`, `notification.created`. Session creation and finalization signals are sent to the teacher and enrolled students; notification-created signals are private to the relevant student. The ticket expires quickly and is consumed once. The event stream is informational; clients should re-fetch the affected resource after reconnecting.
-
-## Safety and production gaps
-
-The capture endpoint intentionally returns synthetic suggestions and stores neither photo nor face embedding. It is not facial recognition. SQLite, the demo password set, and local CORS defaults are development-only. Production must replace demo auth, secure/encrypt data at rest and in transit, configure deployment/backup/retention, apply school-appropriate privacy/legal review, and implement a real FCM-only push adapter if push delivery is required. No email or SMS adapter is included.
+See backend/app/verification_config.py for centralized thresholds and backend/migrations/ for schema changes. Contract implementation has not been integration-tested against a deployed Supabase project in this environment.

@@ -1,340 +1,221 @@
-import json
+from __future__ import annotations
+
+import asyncio
 import os
-import sqlite3
 import sys
-import threading
 import time
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
-from fastapi.testclient import TestClient
+from fastapi import HTTPException
 
+os.environ.setdefault("SUPABASE_URL", "https://example.supabase.co")
+os.environ.setdefault("SUPABASE_SERVICE_ROLE_KEY", "test-service-role-key")
+os.environ.setdefault("SUPABASE_ANON_KEY", "test-anon-key")
+os.environ.setdefault("SUPABASE_JWT_SECRET", "test-jwt-secret-that-is-long-enough-for-hs256")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from app import main
+from app.verification import RuleResult, evaluate_sweep, inside_submission_window
+from app.verification_config import VerificationConfig
+from app.verification_pipeline import decide, hash_distance
 
 
-@pytest.fixture
-def client(tmp_path, monkeypatch):
-    monkeypatch.setenv("ATTENDANCE_ENV", "test")
-    monkeypatch.setenv("ATTENDANCE_APP_SECRET", "test_secret_for_unit_testing_32_characters_minimum")
-    main.DB_PATH = Path(tmp_path) / "test.sqlite3"
-    with main._ws_lock:
-        main._ws_tickets.clear()
-        main._ws_clients.clear()
-        main._ws_client_loops.clear()
-        main._ws_client_queues.clear()
-    main.init_db()
-    with TestClient(main.app) as test_client:
-        yield test_client
+class Query:
+    def __init__(self, data): self.data = data
+    def select(self, *_args, **_kwargs): return self
+    def eq(self, *_args, **_kwargs): return self
+    def single(self): return self
+    def execute(self): return SimpleNamespace(data=self.data)
 
 
-def login(client, email, password):
-    response = client.post("/api/auth/login", json={"email": email, "password": password})
-    assert response.status_code == 200, response.text
-    payload = response.json()
-    return payload["access_token"], payload["user"]
-
-
-def auth(token):
-    return {"Authorization": f"Bearer {token}"}
-
-
-def test_login_and_role_access(client):
-    teacher_token, teacher = login(client, "teacher@demo.edu", "teach123")
-    student_token, student = login(client, "student1@demo.edu", "student123")
-    assert teacher["role"] == "teacher"
-    assert student["role"] == "student"
-    assert client.get("/api/me", headers=auth(student_token)).json()["email"] == "student1@demo.edu"
-    assert client.get("/api/classes/1/students", headers=auth(student_token)).status_code == 403
-    assert client.get("/api/students/me/attendance", headers=auth(teacher_token)).status_code == 403
-
-
-def test_teacher_flow_capture_privacy_finalize_and_student_notification(client):
-    teacher_token, _ = login(client, "teacher@demo.edu", "teach123")
-    student_token, student = login(client, "student1@demo.edu", "student123")
-    headers = auth(teacher_token)
-    created = client.post("/api/sessions", headers=headers, json={"class_id": 1})
-    assert created.status_code == 200
-    session = created.json()
-    session_id = session["id"]
-    assert session["status"] == "open"
-    assert {entry["status"] for entry in session["attendance"]} == {"pending"}
-
-    captured = client.post(
-        f"/api/sessions/{session_id}/capture",
-        headers=headers,
-        files={"photo": ("class-photo.jpg", b"not-a-real-photo", "image/jpeg")},
-    )
-    assert captured.status_code == 200
-    capture = captured.json()
-    assert capture["simulated"] is True
-    assert "no image was stored" in capture["message"]
-    assert all(item["status"] == "suggestion" for item in capture["suggestions"])
-    fetched = client.get(f"/api/sessions/{session_id}", headers=headers).json()
-    assert len(fetched["suggestions"]) == 2
-    assert {entry["status"] for entry in fetched["attendance"]} == {"pending"}
-
-    # Teacher commits one present result; the other remains pending until finalization.
-    student_ids = client.get("/api/classes/1/students", headers=headers).json()
-    first_student_id = student_ids[0]["id"]
-    changed = client.patch(f"/api/sessions/{session_id}/attendance/{first_student_id}", headers=headers, json={"status": "present", "note": "Reviewed manually"})
-    assert changed.status_code == 200
-    finalized = client.post(f"/api/sessions/{session_id}/finalize", headers=headers, json={"mark_pending_absent": True})
-    assert finalized.status_code == 200
-    assert finalized.json()["status"] == "finalized"
-    assert finalized.json()["summary"]["pending"] == 0
-
-    own = client.get("/api/students/me/attendance", headers=auth(student_token))
-    assert own.status_code == 200
-    assert all(row["student_id"] if "student_id" in row else True for row in own.json()["entries"])  # response is scoped and stable
-    notifications = client.get("/api/notifications", headers=auth(student_token)).json()
-    assert len(notifications) == 1
-    assert notifications[0]["user_id"] if "user_id" in notifications[0] else True
-    assert client.get("/api/notifications", headers=auth(teacher_token)).json() == []
-
-    audit = client.get(f"/api/audit?session_id={session_id}", headers=headers)
-    assert audit.status_code == 200
-    actions = [item["action"] for item in audit.json()]
-    assert "session.created" in actions
-    assert "capture.received" in actions
-    assert "suggestion.generated" in actions
-    assert "attendance.changed" in actions
-    assert "session.finalized" in actions
-    assert all("actor_id" in item and "timestamp" in item for item in audit.json())
-
-
-def test_student_privacy_and_teacher_report(client):
-    teacher_token, _ = login(client, "teacher@demo.edu", "teach123")
-    student_token, _ = login(client, "student1@demo.edu", "student123")
-    second_token, _ = login(client, "student2@demo.edu", "student123")
-    session_id = client.post("/api/sessions", headers=auth(teacher_token), json={"class_id": 1}).json()["id"]
-
-    student_session = client.get(f"/api/sessions/{session_id}", headers=auth(student_token))
-    assert student_session.status_code == 200
-    assert len(student_session.json()["attendance"]) == 1
-    assert "suggestions" not in student_session.json()
-    assert client.get(f"/api/sessions/{session_id}", headers=auth(second_token)).status_code == 200
-    assert len(client.get(f"/api/sessions/{session_id}", headers=auth(second_token)).json()["attendance"]) == 1
-    assert client.get(f"/api/audit?session_id={session_id}", headers=auth(student_token)).status_code == 403
-    report = client.get(f"/api/reports/sessions/{session_id}", headers=auth(teacher_token))
-    assert report.status_code == 200
-    assert "student_name,student_email,status,note,updated_at" in report.json()["csv"]
-    assert "pdf_html" in report.json()
-
-
-def test_ws_ticket_is_single_use(client):
-    token, _ = login(client, "student1@demo.edu", "student123")
-    teacher_token, _ = login(client, "teacher@demo.edu", "teach123")
-    ticket_response = client.post("/api/auth/ws-ticket", headers=auth(token))
-    assert ticket_response.status_code == 200
-    ticket = ticket_response.json()["ticket"]
-    with client.websocket_connect(f"/api/ws?ticket={ticket}") as websocket:
-        assert websocket.receive_json()["type"] == "connected"
-        created = client.post("/api/sessions", headers=auth(teacher_token), json={"class_id": 1})
-        assert created.status_code == 200
-        event = websocket.receive_json()
-        assert event["type"] == "session.created"
-        assert event["data"]["session_id"] == created.json()["id"]
-    with pytest.raises(Exception):
-        with client.websocket_connect(f"/api/ws?ticket={ticket}"):
-            pass
-
-
-def test_missing_production_signing_secret(monkeypatch):
-    monkeypatch.setenv("ATTENDANCE_ENV", "production")
-    monkeypatch.delenv("ATTENDANCE_APP_SECRET", raising=False)
-    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
-    with pytest.raises(RuntimeError, match="ATTENDANCE_APP_SECRET is required outside test mode"):
-        main.get_app_secret()
-
-
-def test_insecure_production_signing_secret(monkeypatch):
-    monkeypatch.setenv("ATTENDANCE_ENV", "production")
-    monkeypatch.setenv("ATTENDANCE_APP_SECRET", "DEV_ONLY_CHANGE_ME_attendance_secret")
-    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
-    with pytest.raises(RuntimeError, match="insecure or weak value"):
-        main.get_app_secret()
-
-
-def test_weak_production_signing_secret(monkeypatch):
-    monkeypatch.setenv("ATTENDANCE_ENV", "production")
-    monkeypatch.setenv("ATTENDANCE_APP_SECRET", "too_short_secret")
-    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
-    with pytest.raises(RuntimeError, match="at least 32 characters"):
-        main.get_app_secret()
-
-
-def test_explicit_test_mode_configuration(monkeypatch):
-    test_secret = "explicit_test_secret_for_unit_tests_32_characters_long"
-    monkeypatch.setenv("ATTENDANCE_ENV", "test")
-    monkeypatch.setenv("ATTENDANCE_APP_SECRET", test_secret)
-    assert main.get_app_secret() == test_secret
-    token = main._sign_token({"sub": 42, "role": "student", "exp": int(time.time()) + 100})
-    payload = main._read_token(token)
-    assert payload is not None
-    assert payload["sub"] == 42
-    assert payload["role"] == "student"
-
-
-def test_sqlite_wal_and_checkin_attempts_schema(client):
-    with main.db() as conn:
-        columns = [row["name"] for row in conn.execute("PRAGMA table_info(checkin_attempts)").fetchall()]
-        assert "id" in columns
-        assert "attempt_id" in columns
-        assert "session_id" in columns
-        assert "student_id" in columns
-        assert "state" in columns
-        assert "error_code" in columns
-        assert "created_at" in columns
-        assert "updated_at" in columns
-
-        journal_mode = conn.execute("PRAGMA journal_mode").fetchone()[0]
-        assert journal_mode.lower() in ("wal", "memory")
-
-        fk = conn.execute("PRAGMA foreign_keys").fetchone()[0]
-        assert fk == 1
-
-        now = main.utc_now()
-        cur = conn.execute("INSERT INTO sessions(class_id, status, created_by, created_at) VALUES(?, ?, ?, ?)", (1, "open", 1, now))
-        session_id = cur.lastrowid
-
-        # Test insert into checkin_attempts
-        conn.execute(
-            """
-            INSERT INTO checkin_attempts(attempt_id, session_id, student_id, state, error_code, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-            """,
-            ("att_test_123", session_id, 2, "evaluating", None, now, now),
+class FakeSupabase:
+    def __init__(self, profile, user_id="user-1"):
+        self.profile = profile
+        self.auth = SimpleNamespace(
+            sign_in_with_password=lambda _credentials: SimpleNamespace(
+                user=SimpleNamespace(id=user_id),
+                session=SimpleNamespace(access_token="signed-access-token"),
+            ),
+            get_user=lambda _token: SimpleNamespace(user=SimpleNamespace(id=user_id)),
         )
-        # Verify unique attempt_id constraint
-        with pytest.raises(sqlite3.IntegrityError):
-            conn.execute(
-                """
-                INSERT INTO checkin_attempts(attempt_id, session_id, student_id, state, error_code, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-                """,
-                ("att_test_123", session_id, 2, "evaluating", None, now, now),
-            )
-        # Verify check constraint on state
-        with pytest.raises(sqlite3.IntegrityError):
-            conn.execute(
-                """
-                INSERT INTO checkin_attempts(attempt_id, session_id, student_id, state, error_code, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-                """,
-                ("att_invalid_state", session_id, 2, "invalid_state", None, now, now),
-            )
-        # Verify foreign key constraint failure on invalid session_id
-        with pytest.raises(sqlite3.IntegrityError):
-            conn.execute(
-                """
-                INSERT INTO checkin_attempts(attempt_id, session_id, student_id, state, error_code, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-                """,
-                ("att_invalid_fk", 999999, 2, "evaluating", None, now, now),
-            )
+    def table(self, _name): return Query(self.profile)
 
 
-def test_sqlite_unique_attendance_constraint(client):
-    teacher_token, _ = login(client, "teacher@demo.edu", "teach123")
-    headers = auth(teacher_token)
-    created = client.post("/api/sessions", headers=headers, json={"class_id": 1})
-    assert created.status_code == 200
-    session_id = created.json()["id"]
-
-    with main.db() as conn:
-        now = main.utc_now()
-        student_id = conn.execute("SELECT student_id FROM enrollments WHERE class_id=1 LIMIT 1").fetchone()[0]
-        # Direct duplicate insert of (session_id, student_id) must fail with IntegrityError
-        with pytest.raises(sqlite3.IntegrityError):
-            conn.execute(
-                "INSERT INTO attendance(session_id, student_id, status, updated_by, updated_at) VALUES (?, ?, ?, ?, ?)",
-                (session_id, student_id, "present", 1, now),
-            )
+def test_jwt_requires_valid_signature_and_authenticated_audience(monkeypatch):
+    monkeypatch.setattr(main, "SUPABASE_JWT_SECRET", "unit-test-secret")
+    token = main.pyjwt.encode({"sub": "student-1", "aud": "authenticated", "exp": int(time.time()) + 60}, "unit-test-secret", algorithm="HS256")
+    assert main._verify_supabase_jwt(token)["sub"] == "student-1"
+    with pytest.raises(HTTPException) as invalid: main._verify_supabase_jwt(token + "tampered")
+    assert invalid.value.status_code == 401
 
 
-def test_concurrent_database_operations(tmp_path, monkeypatch):
-    monkeypatch.setenv("ATTENDANCE_ENV", "test")
-    monkeypatch.setenv("ATTENDANCE_APP_SECRET", "test_secret_for_concurrent_testing_32_chars")
-    test_db = Path(tmp_path) / "concurrent.sqlite3"
-    main.DB_PATH = test_db
-    main.init_db()
-
-    with main.db() as conn:
-        now = main.utc_now()
-        cur = conn.execute("INSERT INTO sessions(class_id, status, created_by, created_at) VALUES(?, ?, ?, ?)", (1, "open", 1, now))
-        session_id = cur.lastrowid
-        conn.execute("INSERT INTO attendance(session_id, student_id, status, updated_by, updated_at) VALUES(?, ?, ?, ?, ?)", (session_id, 2, "pending", 1, now))
-
-    errors = []
-    def worker(worker_id):
-        try:
-            for i in range(5):
-                with main.db() as conn:
-                    main.audit(conn, session_id, 1, f"action.worker_{worker_id}_{i}", note="Concurrent audit entry")
-                    conn.execute("UPDATE attendance SET note=? WHERE session_id=? AND student_id=?", (f"Note from worker {worker_id}_{i}", session_id, 2))
-        except Exception as e:
-            errors.append(e)
-
-    threads = [threading.Thread(target=worker, args=(i,)) for i in range(10)]
-    for t in threads:
-        t.start()
-    for t in threads:
-        t.join()
-
-    assert len(errors) == 0, f"Concurrent database operations failed: {errors}"
-    with main.db() as conn:
-        count = conn.execute("SELECT COUNT(*) FROM audit_log WHERE session_id=?", (session_id,)).fetchone()[0]
-        assert count == 50  # 10 workers * 5 audits
+def test_login_checks_authoritative_profile_role(monkeypatch):
+    fake = FakeSupabase({"id": "user-1", "name": "Student One", "email": "s@example.test", "role": "student"})
+    monkeypatch.setattr(main, "supa", lambda: fake)
+    request = SimpleNamespace(client=SimpleNamespace(host="127.0.0.1"))
+    result = main.login(main.LoginRequest(email="s@example.test", password="secret", selected_role="student"), request)
+    assert result["user"]["role"] == "student"
+    with pytest.raises(HTTPException) as mismatch:
+        main.login(main.LoginRequest(email="s@example.test", password="secret", selected_role="teacher"), request)
+    assert mismatch.value.status_code == 403
 
 
-def test_ws_disconnect_and_cleanup(client):
-    token, user = login(client, "student1@demo.edu", "student123")
-    user_id = user["id"]
-    ticket_resp = client.post("/api/auth/ws-ticket", headers=auth(token))
-    assert ticket_resp.status_code == 200
-    ticket = ticket_resp.json()["ticket"]
-
-    with client.websocket_connect(f"/api/ws?ticket={ticket}") as ws:
-        connected_msg = ws.receive_json()
-        assert connected_msg["type"] == "connected"
-        with main._ws_lock:
-            assert user_id in main._ws_clients
-            assert len(main._ws_clients[user_id]) == 1
-
-    # After exiting websocket context, cleanup should have occurred
-    with main._ws_lock:
-        assert user_id not in main._ws_clients
-        assert len(main._ws_client_loops) == 0
-        assert len(main._ws_client_queues) == 0
+def test_current_user_requires_bearer_and_valid_supabase_identity(monkeypatch):
+    monkeypatch.setattr(main, "supa", lambda: FakeSupabase({"id": "student-1", "role": "student"}, "student-1"))
+    assert main.current_user("Bearer good-token")["role"] == "student"
+    with pytest.raises(HTTPException) as missing: main.current_user(None)
+    assert missing.value.status_code == 401
+    monkeypatch.setattr(main, "supa", lambda: FakeSupabase(None))
+    with pytest.raises(HTTPException) as rejected: main.current_user("Bearer invalid-token")
+    assert rejected.value.status_code == 401
 
 
-def test_session_finalization_protections(client):
-    teacher_token, _ = login(client, "teacher@demo.edu", "teach123")
-    headers = auth(teacher_token)
-    created = client.post("/api/sessions", headers=headers, json={"class_id": 1})
-    session_id = created.json()["id"]
+def test_teacher_guard_rejects_student():
+    with pytest.raises(HTTPException) as denied: main.require_teacher({"id": "s1", "role": "student"})
+    assert denied.value.status_code == 403
 
-    fin_resp = client.post(f"/api/sessions/{session_id}/finalize", headers=headers, json={"mark_pending_absent": True})
-    assert fin_resp.status_code == 200
-    assert fin_resp.json()["status"] == "finalized"
 
-    # Attempting to finalize an already finalized session -> 409 Conflict
-    fin_again = client.post(f"/api/sessions/{session_id}/finalize", headers=headers, json={"mark_pending_absent": True})
-    assert fin_again.status_code == 409
-    assert "already finalized" in fin_again.json()["detail"]
+def test_submission_rate_limit_is_enforced_per_user(monkeypatch):
+    monkeypatch.setattr(main, "SUBMIT_RATE_LIMIT", 2)
+    monkeypatch.setattr(main, "SUBMIT_RATE_WINDOW_SECONDS", 60)
+    with main._submit_rate_lock:
+        main._submit_attempts.clear()
+    main.enforce_submit_rate("student-rate-test")
+    main.enforce_submit_rate("student-rate-test")
+    with pytest.raises(HTTPException) as limited:
+        main.enforce_submit_rate("student-rate-test")
+    assert limited.value.status_code == 429
+    main.enforce_submit_rate("another-student")
 
-    # Attempting to update attendance on finalized session -> 409 Conflict
-    patch_resp = client.patch(f"/api/sessions/{session_id}/attendance/2", headers=headers, json={"status": "present"})
-    assert patch_resp.status_code == 409
-    assert "Finalized sessions cannot be changed" in patch_resp.json()["detail"]
 
-    # Attempting to capture on finalized session -> 409 Conflict
-    cap_resp = client.post(
-        f"/api/sessions/{session_id}/capture",
-        headers=headers,
-        files={"photo": ("test.jpg", b"fake", "image/jpeg")},
-    )
-    assert cap_resp.status_code == 409
-    assert "Only open sessions accept captures" in cap_resp.json()["detail"]
+def test_image_upload_rejects_wrong_mime_and_oversized_payload():
+    class Photo:
+        def __init__(self, content_type, data):
+            self.content_type, self.data = content_type, data
+        async def read(self, limit):
+            return self.data[:limit]
 
+    with pytest.raises(HTTPException) as wrong_type:
+        asyncio.run(main._read_image_upload(Photo("text/plain", b"hello")))
+    assert wrong_type.value.status_code == 415
+    oversized = Photo("image/jpeg", b"\xff\xd8\xff" + b"x" * 12)
+    with pytest.raises(HTTPException) as too_large:
+        asyncio.run(main._read_image_upload(oversized, max_bytes=10))
+    assert too_large.value.status_code == 413
+
+
+def test_session_access_requires_class_enrollment(monkeypatch):
+    monkeypatch.setattr(main, "supa", lambda: FakeSupabase([]))
+    row = {"id": "session-1", "class_id": "class-1", "teacher_id": "teacher-1"}
+    with pytest.raises(HTTPException) as denied: main._assert_session_access(row, {"id": "student-1", "role": "student"})
+    assert denied.value.status_code == 403
+    with pytest.raises(HTTPException) as teacher_denied: main._assert_session_access(row, {"id": "teacher-2", "role": "teacher"})
+    assert teacher_denied.value.status_code == 403
+
+
+def test_retired_photo_capture_never_creates_suggestions():
+    with pytest.raises(HTTPException) as retired: main.capture({"id": "teacher-1", "role": "teacher"})
+    assert retired.value.status_code == 410
+    with pytest.raises(HTTPException) as forbidden: main.capture({"id": "student-1", "role": "student"})
+    assert forbidden.value.status_code == 403
+
+
+def test_websocket_ticket_is_single_use():
+    with main._ws_lock: main._ws_tickets.clear()
+    ticket = main.ws_ticket({"id": "student-1", "role": "student"})["ticket"]
+    with main._ws_lock: stored = main._ws_tickets.pop(ticket)
+    assert stored[0] == "student-1" and stored[1] > time.time()
+    with main._ws_lock: assert main._ws_tickets.pop(ticket, None) is None
+
+
+def _sweep(count=13, headings=None, continuity=True):
+    headings = headings or [i * 15 for i in range(count)]
+    return [{"offset_seconds": i * (10 / max(count - 1, 1)), "heading_degrees": headings[i], "continuity_ok": continuity} for i in range(count)]
+
+
+def test_sweep_minimum_frame_count_and_capture_duration():
+    assert evaluate_sweep(_sweep(11), 10)["frame_count"].reason_code == "sweep.too_few_frames"
+    assert evaluate_sweep(_sweep(), 3)["duration"].reason_code == "sweep.duration_out_of_range"
+    assert evaluate_sweep(_sweep(), 10)["frame_count"].passed is True
+
+
+def test_sweep_heading_monotonicity_gap_span_and_continuity():
+    assert evaluate_sweep(_sweep(), 10)["heading_span"].passed is True
+    short = [i * 5 for i in range(13)]
+    assert evaluate_sweep(_sweep(headings=short), 10)["heading_span"].passed is False
+    reversed_sweep = [0, 15, 30, 45, 60, 75, 90, 75, 60, 45, 30, 15, 0]
+    assert evaluate_sweep(_sweep(headings=reversed_sweep), 10)["heading_monotonic"].passed is False
+    gap = [0, 15, 30, 45, 60, 75, 90, 105, 120, 135, 150, 165, 210]
+    assert evaluate_sweep(_sweep(headings=gap), 10)["heading_gap"].passed is False
+    assert evaluate_sweep(_sweep(continuity=False), 10)["visual_continuity"].reason_code == "sweep.visual_discontinuity"
+
+
+def test_verification_policy_and_duplicate_hash_distance():
+    assert decide({"self": RuleResult(False, "reject.self_not_matched", "no match")})["status"] == "rejected"
+    assert decide({"lecturer": RuleResult(None, "review.lecturer_face_too_small", "small")})["status"] == "flagged"
+    assert decide({"all": RuleResult(True, "ok", "pass")})["status"] == "verified"
+    assert hash_distance("1010", "1010") == 0
+    assert hash_distance("1010", "0011") == 2
+
+
+def test_submission_uses_server_time_and_rejects_after_grace():
+    end = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    assert inside_submission_window("closed", end, end + timedelta(seconds=5))
+    assert not inside_submission_window("closed", end, end + timedelta(seconds=6))
+    assert not inside_submission_window("finalized", end, end + timedelta(seconds=1))
+
+
+def test_verification_threshold_defaults_documented():
+    config = VerificationConfig()
+    assert config.minimum_frames == 12
+    assert config.minimum_heading_span_degrees == 150
+    assert config.self_pass_similarity == 0.72
+    assert config.self_review_similarity == 0.50
+
+
+def test_session_auto_close_runs_once_and_emits_exact_counts(monkeypatch):
+    class Builder:
+        def __init__(self, store, table):
+            self.store, self.table_name, self.action = store, table, "select"
+            self.payload = None
+        def select(self, *_args, **_kwargs): self.action = "select"; return self
+        def eq(self, *_args, **_kwargs): return self
+        def lte(self, *_args, **_kwargs): return self
+        def update(self, payload): self.action, self.payload = "update", payload; return self
+        def insert(self, payload): self.action, self.payload = "insert", payload; return self
+        def execute(self):
+            if self.table_name == "sessions":
+                if self.action == "select":
+                    return SimpleNamespace(data=[] if self.store.closed else [self.store.session])
+                if self.action == "update":
+                    if self.store.closed: return SimpleNamespace(data=[])
+                    self.store.closed = True
+                    return SimpleNamespace(data=[self.store.session])
+            if self.table_name == "attendance": return SimpleNamespace(data=[{"status": "present"}, {"status": "pending"}, {"status": "absent"}])
+            if self.table_name == "checkin_attempts": return SimpleNamespace(data=[{"state": "rejected"}, {"state": "flagged"}])
+            if self.table_name == "enrollments": return SimpleNamespace(data=[{"student_id": "s1"}, {"student_id": "s2"}, {"student_id": "s3"}])
+            if self.table_name == "audit_log": self.store.audits.append(self.payload); return SimpleNamespace(data=[self.payload])
+            if self.table_name == "notifications": self.store.notifications.append(self.payload); return SimpleNamespace(data=[self.payload])
+            return SimpleNamespace(data=[])
+
+    class Store:
+        def __init__(self):
+            self.closed = False
+            self.session = {"id": "session-1", "class_id": "class-1", "created_by": "teacher-1", "ends_at": "2026-01-01T00:00:00+00:00"}
+            self.audits, self.notifications = [], []
+        def table(self, name): return Builder(self, name)
+
+    store = Store()
+    emitted = []
+    monkeypatch.setattr(main, "supa", lambda: store)
+    monkeypatch.setattr(main, "publish_event", lambda event, user_ids: emitted.append((event, user_ids)))
+    assert main.close_expired_sessions("2026-01-01T00:00:05+00:00") == ["session-1"]
+    assert main.close_expired_sessions("2026-01-01T00:00:06+00:00") == []
+    assert len(store.audits) == len(store.notifications) == len(emitted) == 1
+    assert emitted[0][0]["type"] == "session.closed"
+    assert emitted[0][0]["data"] == {
+        "session_id": "session-1", "present": 1, "needs_review": 1,
+        "absent": 1, "rejected_attempts": 1, "total_enrolled": 3,
+    }

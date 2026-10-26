@@ -12,6 +12,6 @@ class SafetyNotice extends StatelessWidget {
             style: Theme.of(context).textTheme.titleMedium),
         const SizedBox(height: 8),
         const Text(
-            'Camera captures are uploaded for this session only and removed locally after upload when possible. The API returns simulated suggestions; this demo does not recognize faces or retain images/templates. Notifications stay in this app.')
+            'Face enrollment stores only an encrypted embedding and consent time on the backend. Sweep frames are analyzed server-side and deleted after analysis except a short-lived private review filmstrip for flagged attempts. Manual roll call is always available.')
       ]));
 }

@@ -44,9 +44,13 @@ create table if not exists public.enrollments (
 create table if not exists public.sessions (
   id           uuid primary key default uuid_generate_v4(),
   class_id     uuid not null references public.classes(id),
-  status       text not null check (status in ('open', 'finalized')) default 'open',
+  status       text not null check (status in ('open', 'closed', 'finalized')) default 'open',
   created_by   uuid not null references public.profiles(id),
   created_at   timestamptz not null default now(),
+  starts_at    timestamptz not null default now(),
+  ends_at      timestamptz not null default (now() + interval '10 minutes'),
+  duration_minutes integer not null default 10 check (duration_minutes between 1 and 240),
+  closed_at    timestamptz,
   finalized_at timestamptz
 );
 
@@ -70,18 +74,36 @@ create table if not exists public.checkin_attempts (
   student_id uuid not null references public.profiles(id) on delete cascade,
   state      text not null check (state in ('evaluating', 'verified', 'flagged', 'rejected', 'error')),
   error_code text,
+  reason_code text,
+  rules_json jsonb not null default '{}'::jsonb,
+  metrics_json jsonb not null default '{}'::jsonb,
+  model_version text,
+  received_at timestamptz not null default now(),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
 
--- suggestions
-create table if not exists public.suggestions (
-  id         uuid primary key default uuid_generate_v4(),
-  session_id uuid not null references public.sessions(id) on delete cascade,
-  student_id uuid not null references public.profiles(id),
-  confidence real not null,
-  label      text not null,
-  created_at timestamptz not null default now()
+create unique index if not exists uq_one_verified_checkin_per_student_session
+  on public.checkin_attempts(session_id, student_id) where state = 'verified';
+
+-- Templates are ciphertext only. RLS has no client policy: backend service-role only.
+create table if not exists public.face_templates (
+  student_id uuid primary key references public.profiles(id) on delete cascade,
+  encrypted_embedding text not null,
+  model_version text not null,
+  consent_at timestamptz not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.submission_evidence (
+  id uuid primary key default uuid_generate_v4(),
+  attempt_id text not null references public.checkin_attempts(attempt_id) on delete cascade,
+  storage_path text not null,
+  frame_offset_ms integer not null,
+  heading_degrees real,
+  created_at timestamptz not null default now(),
+  unique (attempt_id, storage_path)
 );
 
 -- audit_log
@@ -110,6 +132,8 @@ create table if not exists public.notifications (
 -- 3. Indexes ──────────────────────────────────────────────────
 create index if not exists idx_attendance_student    on public.attendance(student_id);
 create index if not exists idx_checkin_session       on public.checkin_attempts(session_id);
+create index if not exists idx_sessions_open_end on public.sessions(ends_at) where status = 'open';
+create index if not exists idx_evidence_attempt on public.submission_evidence(attempt_id);
 create index if not exists idx_checkin_student       on public.checkin_attempts(student_id);
 create index if not exists idx_audit_session         on public.audit_log(session_id);
 create index if not exists idx_notifications_user    on public.notifications(user_id, created_at desc);
@@ -123,7 +147,7 @@ begin
     new.id,
     coalesce(new.raw_user_meta_data->>'name', split_part(new.email, '@', 1)),
     new.email,
-    coalesce(new.raw_user_meta_data->>'role', 'student')
+    'student'
   )
   on conflict (id) do nothing;
   return new;
@@ -141,10 +165,11 @@ alter table public.classes         enable row level security;
 alter table public.enrollments     enable row level security;
 alter table public.sessions        enable row level security;
 alter table public.attendance      enable row level security;
-alter table public.suggestions     enable row level security;
 alter table public.audit_log       enable row level security;
 alter table public.notifications   enable row level security;
 alter table public.checkin_attempts enable row level security;
+alter table public.face_templates enable row level security;
+alter table public.submission_evidence enable row level security;
 
 -- profiles: users can read their own; service role sees all
 create policy "profiles_read_own" on public.profiles
@@ -203,16 +228,6 @@ create policy "notifications_own" on public.notifications
 
 -- audit_log: teacher reads their session audits
 create policy "audit_teacher" on public.audit_log
-  for select using (
-    exists (
-      select 1 from public.sessions s
-      join public.classes c on c.id = s.class_id
-      where s.id = session_id and c.teacher_id = auth.uid()
-    )
-  );
-
--- suggestions: teacher reads for their sessions
-create policy "suggestions_teacher" on public.suggestions
   for select using (
     exists (
       select 1 from public.sessions s

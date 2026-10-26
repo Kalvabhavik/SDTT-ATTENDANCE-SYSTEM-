@@ -1,40 +1,24 @@
-# Delivery checklist and status
+# Delivery checklist and verification status
 
-## Flutter teacher/student application — prototype implemented
+## Implemented in source
 
-- Teacher sign-in, class/session workflow, simulated image capture, pending roster review, manual present/absent corrections, explicit finalization, and audit visibility are implemented.
-- Student sign-in, own attendance history and summary, and private in-app notification feed are implemented.
-- Android, iOS, and Web project scaffolding is generated. Flutter analysis, widget smoke test, and Flutter Web build pass.
-- **Not implemented:** facial recognition, actual student matching, demographic accuracy claims, and specific automated detection of poor lighting, occlusion, unidentified people, or duplicates. The capture endpoint returns synthetic suggestions only. The user/teacher must review and confirm attendance. An Android APK/device camera test remains unavailable because the sandbox has no Android SDK or mobile device.
+- Supabase-backed FastAPI authentication requires the account profile role to match the role selected at login. The database value remains teacher, presented as “Lecturer”.
+- Timed sessions carry server-generated start/end timestamps, lazy and background expiry closure, audit/notification events, and closed/finalized states.
+- POST /sessions/{id}/capture is retired with HTTP 410; no upload-size confidence or synthetic suggestion path remains in the intended UI. Lecturer manual roll call remains available.
+- Face enrollment encrypts templates with a configured Fernet key, returns only enrollment status, and records consent timestamp/model version. Sweep submission evaluates configured rules and persists verified, flagged or rejected outcomes. Flagged key frames use the private evidence bucket and retention worker.
+- The mobile client has role selection, consent/enrollment, camera sweep, gyroscope metadata, practice mode, secure token storage, and server-relative countdown code.
+- Vite dashboard is canonical and uses API data; apps/dashboard-next/ remains pending explicit deletion approval. backend/app/main_supabase.py remains a compatibility import.
+- SQL bootstrap and migration source include session/evidence/template changes and sensitive-table RLS. Migrations have not been applied to a live Supabase project here.
 
-## Shared API and audit trail — prototype implemented
+## Not verified / known limitations
 
-- Flutter and React dashboard use the shared FastAPI REST API, SQLite demo database, and WebSocket event stream.
-- Session creation, simulated capture, changes, and finalization are auditable. Students can read only their own attendance and notifications; teacher-only roster/report/audit/write routes are enforced by the API.
-- Captures are not persisted by the application; no face embeddings or biometric templates are generated or stored. In-app notifications only; no email, SMS, or push integration is configured.
+- No end-to-end test against a configured Supabase project, actual user accounts, storage bucket or production model files.
+- No Android real-device camera sweep, iOS native camera run, real classroom, or volunteer-manifest execution. No accuracy or lecturer-visible rate is claimed.
+- Lecturer detection currently relies on face detections; there is no independent person detector to prove a person is present when no face is detected.
+- YuNet/ArcFace model paths and legal model provenance need deployment review. InsightFace ArcFace pretrained weights have non-commercial research-only terms; commercial use requires a separate license. See docs/PRIVACY_AND_DEPLOYMENT.md.
+- The API keeps a retired capture URL returning 410 for compatibility. Dashboard and mobile UI do not expose synthetic capture suggestions.
+- Python dependencies could not be installed in this environment because pip failed with permission errors under its temporary wheel directory; pytest was not run. Flutter SDK is unavailable; flutter analyze and flutter test were not run. See the final report for exact command results.
 
-## Responsive web dashboard and exports — prototype implemented
+## Test cases awaiting configured CI/DB/device
 
-- Teacher dashboard supports classes, session start/review/finalize, history, audit, and session reports.
-- Session CSV is exported from backend report data. The print-friendly HTML report can be printed/saved as PDF from a browser; the backend does not itself render PDF files.
-- Student dashboard displays that signed-in student's own summary/history and notification feed. Offline/demo fallback data for the two student accounts is kept separate.
-
-## Realtime app/dashboard synchronization — implemented in source
-
-- Authenticated short-lived single-use WebSocket tickets are used. Session, attendance, finalization, and notification events cause affected dashboard/mobile views to refetch current API data, including after reconnect.
-- Backend WebSocket/API tests pass. Dashboard production build passes. No separate external production deployment, real-network mobile device test, or public browser end-to-end session was performed in this sandbox.
-
-## Privacy, security, and deployment — prototype limits documented
-
-- A manual teacher-review path exists; biometric recognition/enrollment and production operation are out of scope. Do not use real student information or run this as a live school attendance system.
-- Demo passwords, development secret/database defaults, local CORS configuration, and non-encrypted SQLite are development-only. TLS/WSS, production authentication, encryption/key management, retention/deletion policy, backup/monitoring, legal/privacy/fairness review, and production hosting still require separate implementation and review.
-- Requested accuracy/latency thresholds are evaluation targets only. No performance, accuracy, consent, or fairness evaluation is claimed.
-
-## Checks completed
-
-- `flutter analyze`: clean.
-- `flutter test`: widget smoke test passed.
-- `flutter build web`: succeeded.
-- Backend `pytest -q`: 4 passed.
-- Dashboard `npm run build`: succeeded after API/real-time integration changes.
-- Android APK and iOS native builds are not claimed: Android SDK/device unavailable in this sandbox; iOS build requires macOS/Xcode.
+Role mismatch, unauthorized lecturer routes, class membership, grace-window expiration, duplicate attempt ID, concurrent verified submissions, upload limits, image-quality/sweep/identity rules, and one-time session closure/counts have source tests or helper coverage. Database-dependent concurrency and full endpoint integration still need execution against the migration-backed Supabase test project. Do not treat source tests as passing until run.

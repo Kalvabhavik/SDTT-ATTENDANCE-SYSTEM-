@@ -5,6 +5,7 @@ import '../state/app_state.dart';
 import '../widgets/app_widgets.dart';
 import 'notifications_screen.dart';
 import 'session_screen.dart';
+import 'sweep_capture_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key, required this.state});
@@ -68,7 +69,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   tab == 1
                       ? 'Notifications'
                       : isTeacher
-                          ? 'Teacher Desk'
+                          ? 'Lecturer Desk'
                           : 'Attendance',
                   style: const TextStyle(
                     fontWeight: FontWeight.w900,
@@ -78,7 +79,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
                 Text(
                   user != null
-                      ? '${user.name} • ${isTeacher ? "Instructor" : "Student"}'
+                      ? '${user.name} • ${isTeacher ? "Lecturer" : "Student"}'
                       : 'Signed in',
                   style: const TextStyle(
                     fontSize: 12,
@@ -265,7 +266,32 @@ class TeacherHome extends StatelessWidget {
   }
 
   Future<void> _start(BuildContext context, Classroom classroom) async {
-    final ok = await state.startSession(classroom.id);
+    final durationController = TextEditingController(text: '20');
+    var custom = false;
+    var selected = 10;
+    final duration = await showDialog<int>(context: context, builder: (dialogContext) => StatefulBuilder(
+      builder: (dialogContext, setDialogState) => AlertDialog(
+        title: const Text('Session duration'),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          Wrap(spacing: 8, children: [
+            for (final minutes in [5, 10, 15]) ChoiceChip(label: Text('$minutes min'), selected: !custom && selected == minutes, onSelected: (_) => setDialogState(() { selected = minutes; custom = false; })),
+            ChoiceChip(label: const Text('Custom'), selected: custom, onSelected: (_) => setDialogState(() => custom = true)),
+          ]),
+          if (custom) TextField(controller: durationController, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: 'Minutes (max ${state.maxSessionMinutes})')),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
+          FilledButton(onPressed: () {
+            final value = custom ? int.tryParse(durationController.text) : selected;
+            if (value == null || value < 1 || value > state.maxSessionMinutes) return;
+            Navigator.pop(dialogContext, value);
+          }, child: const Text('Start')),
+        ],
+      ),
+    ));
+    durationController.dispose();
+    if (duration == null) return;
+    final ok = await state.startSession(classroom.id, durationMinutes: duration);
     if (!context.mounted) return;
     if (ok) {
       Navigator.of(context).push(
@@ -283,7 +309,7 @@ class TeacherHome extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final firstName = state.user?.name.split(' ').first ?? 'Instructor';
+    final firstName = state.user?.name.split(' ').first ?? 'Lecturer';
     final nowFormatted = DateFormat('EEEE, MMMM d').format(DateTime.now());
 
     return RefreshIndicator(
@@ -371,7 +397,7 @@ class TeacherHome extends StatelessWidget {
                         ),
                         const SizedBox(height: 4),
                         const Text(
-                          'Launch a session, inspect synthetic suggestions, and finalize with one tap.',
+                          'Create a timed session, review the roster, and finalize with an audit trail.',
                           style: TextStyle(
                             fontSize: 12.5,
                             color: Colors.white70,
@@ -610,6 +636,40 @@ class TeacherHome extends StatelessWidget {
   }
 }
 
+class _StudentActiveSessionCard extends StatefulWidget {
+  const _StudentActiveSessionCard({required this.session, required this.onMark});
+  final AttendanceSession session;
+  final VoidCallback onMark;
+  @override
+  State<_StudentActiveSessionCard> createState() => _StudentActiveSessionCardState();
+}
+
+class _StudentActiveSessionCardState extends State<_StudentActiveSessionCard> {
+  Timer? _timer;
+  @override
+  void initState() { super.initState(); _timer = Timer.periodic(const Duration(seconds: 1), (_) { if (mounted) setState(() {}); }); }
+  @override
+  void dispose() { _timer?.cancel(); super.dispose(); }
+  @override
+  Widget build(BuildContext context) {
+    final remaining = widget.session.timeRemaining;
+    final enabled = widget.session.isOpen && remaining != null && !remaining.isNegative && remaining > Duration.zero;
+    final seconds = remaining?.inSeconds.clamp(0, 999999) ?? 0;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: AppCard(child: Row(children: [
+        const Icon(Icons.timer_outlined, color: AppColors.primary),
+        const SizedBox(width: 12),
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(widget.session.className, style: const TextStyle(fontWeight: FontWeight.w800)),
+          Text(enabled ? 'Closes in ${seconds ~/ 60}:${(seconds % 60).toString().padLeft(2, '0')}' : 'Attendance window closed'),
+        ])),
+        FilledButton(onPressed: enabled ? widget.onMark : null, child: const Text('Mark Attendance')),
+      ])),
+    );
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // STUDENT HOME
 // ─────────────────────────────────────────────────────────────────────────────
@@ -806,6 +866,25 @@ class _StudentHomeState extends State<StudentHome> {
           ),
 
           const SizedBox(height: 26),
+
+          // Server-timed student check-in window
+          Text('Active sessions', style: Theme.of(context).textTheme.titleLarge),
+          const SizedBox(height: 10),
+          if (state.sessions.where((session) => session.isOpen).isEmpty)
+            const AppCard(child: Text('No active attendance window right now.'))
+          else
+            ...state.sessions.where((session) => session.isOpen).map((session) => _StudentActiveSessionCard(
+              session: session,
+              onMark: () async {
+                await state.openSession(session.id);
+                if (!context.mounted || state.activeSession == null) return;
+                Navigator.of(context).push(MaterialPageRoute<void>(
+                  builder: (_) => SweepCaptureScreen(state: state, session: state.activeSession!),
+                ));
+              },
+            )),
+
+          const SizedBox(height: 16),
 
           // Filter Segmented Controls
           FadeSlideIn(

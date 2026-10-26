@@ -1,30 +1,23 @@
 # Requirements review and implementation decisions
 
-## Requested product
+The active request expands the earlier prototype into a real Supabase-backed attendance workflow. Implementation has been extended in place; this file supersedes the earlier SQLite/synthetic-recognition description.
 
-The attached brief specifies an attendance system where a teacher opens a class session, captures a classroom photo, detects and recognizes enrolled students, reviews likely matches and confidence, makes manual corrections, and only then finalizes the record. It also asks for teacher class/session views and exports, a student history and percentage view, app notifications, audit history, a mobile app and web dashboard sharing a backend/database, and careful treatment of biometric and education data.
+## Architecture and role behavior
 
-The final line narrows notifications to the app only: no email. The prototype implements a private in-app notification feed; actual FCM push delivery requires a Firebase project and server credentials, which are not present and will not be invented.
+- backend/app/main.py is the sole API implementation and deployment entrypoint. backend/app/main_supabase.py is retained as a compatibility import.
+- apps/dashboard/ is the canonical React/Vite dashboard. apps/dashboard-next/ remains untouched pending explicit removal approval.
+- The database role stays teacher; user-facing role selection and workspace copy say “Lecturer”.
+- Login receives the selected role and compares it to the Supabase profile role. Only backend routes write attendance.
 
-## Requirement-to-component mapping
+## Attendance, verification and review
 
-- Teacher capture, class/session start, seeded roster review, manual attendance-status corrections, and finalization belong in the Flutter teacher flow and web teacher dashboard. This prototype does not include class enrollment or student roster creation/deletion.
-- Student history, dates, totals, percentage, and notifications are restricted to the logged-in student's own profile in both clients.
-- Session records, statuses, users/roles, audit entries, and notifications live in one SQLite-backed FastAPI service for the prototype.
-- A single REST API carries writes and reads; authenticated, short-lived WebSocket tickets and event messages keep the app and website views current.
-- CSV export and print-to-PDF are available from teacher report views. Audit events record session creation, capture, simulated suggestions, edits, and finalization with actor and timestamps.
-- Teacher confirmation is the only way to turn a suggestion into a final attendance status. Remaining pending students are explicitly marked absent by the teacher during finalization.
+- Sessions are timed by server timestamps, close in the lifespan background task and lazily on reads/submissions, and move open → closed → finalized.
+- The old capture endpoint returns 410. The dashboard/mobile no longer present synthetic confidence suggestions. Lecturers can use audited manual roll call.
+- Enrollment stores an encrypted embedding, model version and consent time. Sweep attempts carry frame timing and client gyroscope headings; these headings are untrusted supporting metadata.
+- Verification code uses a FaceEngine boundary, configured YuNet detector and ArcFace ONNX embeddings. Uncertain attempts enter lecturer review with private filmstrip evidence. No liveness claim is made.
+- The legacy suggestions table is no longer used but remains in the database migration path to avoid destructive deletion without approval.
+- See docs/API_CONTRACT.md and docs/PRIVACY_AND_DEPLOYMENT.md for routes, data handling and model-license caveats.
 
-## Safety boundary for this prototype
+## Evidence and limitations
 
-The reference brief identifies facial data as sensitive, calls for appropriate notice and consent, an opt-out/manual route, minimal retention, protected templates, access controls, and fairness assessment. This implementation therefore uses fictional seed students and simulated match suggestions. It does not run face recognition, create face embeddings, retain uploaded photos, or silently decide who attended. The capture request returns a mock review list and does not persist the upload in application storage; multipart parsing may use request-scoped temporary storage. Keep real student data and photos out of the demo.
-
-A future real-recognition pilot would need an approved model and license, lawful consent and age-appropriate governance, a deletion schedule, threat model, secure encrypted deployment, data-subject controls, liveness/anti-spoofing analysis if needed, and consented evaluation across lighting, pose, distance, occlusion, and demographic groups. The brief's ≥95% true-positive and latency values are target metrics to measure, not claims about this prototype.
-
-## Delivery sequence
-
-The implementation follows the user's sequence: first Flutter source and teacher/student workflows; second the responsive dashboard; third connect both to the same API and live event stream. Flutter was chosen over the managed Expo alternative. The sandbox initially had no Flutter or Dart; the user then explicitly approved installing the official stable Flutter SDK under `/home/ubuntu/tools/flutter`, without system-wide or sudo changes. Native compilation and device-only camera/push behavior are reported only if actually verified.
-
-## Explicit out-of-scope items for this first prototype
-
-Production hosting, real face recognition, production authentication/MFA, encrypted managed PostgreSQL, FCM credentials and actual push delivery, legal compliance certification, and accuracy/fairness claims are not configured. The data model and service boundaries should make these later phases possible without pretending they are already delivered.
+Source code and tests have been changed, but pytest could not run because dependencies were not available and installation failed. Flutter analysis/tests could not run because Flutter is unavailable. Dashboard typecheck and Vite production build passed using the native config loader. No Supabase migration, real model, browser attendance flow, device camera sweep, or volunteer classroom evaluation was performed. No accuracy or fairness results are asserted. Exact commands are in docs/BUILD_VALIDATION.md and the final response.

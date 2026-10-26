@@ -4,20 +4,21 @@ import '../state/app_state.dart';
 import '../widgets/app_widgets.dart';
 
 class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key, required this.state});
+  const LoginScreen({super.key, required this.state, required this.selectedRole, required this.onBack});
   final AppState state;
+  final String selectedRole;
+  final VoidCallback onBack;
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  final emailController = TextEditingController(text: 'teacher@demo.edu');
-  final passwordController = TextEditingController(text: 'teach123');
+  final emailController = TextEditingController();
+  final passwordController = TextEditingController();
   final formKey = GlobalKey<FormState>();
 
   bool obscure = true;
-  int selectedRoleIndex = 0; // 0: Teacher, 1: Student
 
   @override
   void dispose() {
@@ -26,24 +27,12 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  void _selectRole(int index) {
-    setState(() {
-      selectedRoleIndex = index;
-      if (index == 0) {
-        emailController.text = 'teacher@demo.edu';
-        passwordController.text = 'teach123';
-      } else {
-        emailController.text = 'student1@demo.edu';
-        passwordController.text = 'student123';
-      }
-    });
-  }
-
   Future<void> _login() async {
     if (!formKey.currentState!.validate()) return;
     final success = await widget.state.login(
       emailController.text,
       passwordController.text,
+      widget.selectedRole,
     );
     if (!success && mounted && widget.state.error != null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -177,40 +166,16 @@ class _LoginScreenState extends State<LoginScreen> {
 
                   const SizedBox(height: 28),
 
-                  // Interactive Role Switcher Pill
-                  FadeSlideIn(
-                    delay: const Duration(milliseconds: 100),
-                    child: Container(
-                      padding: const EdgeInsets.all(4),
-                      decoration: BoxDecoration(
-                        color: AppColors.cardSubtle,
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: AppColors.border),
-                      ),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: _RoleTab(
-                              label: 'Teacher Portal',
-                              icon: Icons.person_pin_rounded,
-                              isSelected: selectedRoleIndex == 0,
-                              onTap: () => _selectRole(0),
-                            ),
-                          ),
-                          Expanded(
-                            child: _RoleTab(
-                              label: 'Student View',
-                              icon: Icons.school_rounded,
-                              isSelected: selectedRoleIndex == 1,
-                              onTap: () => _selectRole(1),
-                            ),
-                          ),
-                        ],
-                      ),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton.icon(
+                      onPressed: widget.onBack,
+                      icon: const Icon(Icons.arrow_back_rounded),
+                      label: const Text('Change role'),
                     ),
                   ),
 
-                  const SizedBox(height: 18),
+                  const SizedBox(height: 8),
 
                   // Login Form Card
                   FadeSlideIn(
@@ -224,16 +189,16 @@ class _LoginScreenState extends State<LoginScreen> {
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
                             Text(
-                              selectedRoleIndex == 0
-                                  ? 'Sign in as Teacher'
+                              widget.selectedRole == 'teacher'
+                                  ? 'Sign in as Lecturer'
                                   : 'Sign in as Student',
                               style: Theme.of(context).textTheme.titleLarge,
                             ),
                             const SizedBox(height: 4),
                             Text(
-                              selectedRoleIndex == 0
-                                  ? 'Manage classes, take attendance, and export records'
-                                  : 'View your real-time attendance history and alerts',
+                              widget.selectedRole == 'teacher'
+                                  ? 'Manage sessions, review attendance, and export reports'
+                                  : 'Mark attendance and view your history and alerts',
                               style: Theme.of(context).textTheme.bodyMedium,
                             ),
                             const SizedBox(height: 20),
@@ -336,32 +301,6 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
 
                   const SizedBox(height: 22),
-
-                  // Demo accounts quick-switch pills
-                  FadeSlideIn(
-                    delay: const Duration(milliseconds: 240),
-                    child: Center(
-                      child: Wrap(
-                        spacing: 10,
-                        runSpacing: 10,
-                        alignment: WrapAlignment.center,
-                        children: [
-                          _QuickPill(
-                            label: 'Teacher demo',
-                            onTap: () => _selectRole(0),
-                            isActive: selectedRoleIndex == 0,
-                          ),
-                          _QuickPill(
-                            label: 'Student demo',
-                            onTap: () => _selectRole(1),
-                            isActive: selectedRoleIndex == 1,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-
-                  const SizedBox(height: 16),
 
                   // Server URL configuration button
                   FadeSlideIn(

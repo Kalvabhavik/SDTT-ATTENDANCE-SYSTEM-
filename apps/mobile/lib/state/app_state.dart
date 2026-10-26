@@ -1,6 +1,6 @@
-import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'dart:typed_data';
 
 import '../models/models.dart';
 import '../services/api_client.dart';
@@ -18,8 +18,9 @@ class AppState extends ChangeNotifier {
   List<AppNotification> notifications = [];
   StudentAttendance? studentAttendance;
   AttendanceSession? activeSession;
-  List<Suggestion> suggestions = [];
   bool busy = false;
+  bool enrollmentComplete = false;
+  int maxSessionMinutes = 60;
   String? error;
   String? liveMessage;
 
@@ -27,12 +28,12 @@ class AppState extends ChangeNotifier {
   bool get isTeacher => user?.isTeacher == true;
   int get unreadCount => notifications.where((n) => !n.read).length;
 
-  Future<bool> login(String email, String password) async {
+  Future<bool> login(String email, String password, String selectedRole) async {
     busy = true;
     error = null;
     notifyListeners();
     try {
-      auth = await api.login(email.trim(), password);
+      auth = await api.login(email.trim(), password, selectedRole);
       await loadHome();
       _startRealtime();
       return true;
@@ -45,12 +46,50 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  Future<void> restoreSession() async {
+    try {
+      final restored = await api.restoreUser();
+      if (restored != null) {
+        auth = AuthSession(accessToken: api.accessToken ?? '', user: restored);
+        await loadHome();
+        _startRealtime();
+      }
+    } on ApiException catch (e) {
+      error = e.message;
+    } catch (_) {
+      error = 'Secure token storage is unavailable on this device.';
+    } finally {
+      notifyListeners();
+    }
+  }
+
   Future<void> loadHome() async {
+    final config = await api.config();
+    maxSessionMinutes = int.tryParse(config['max_session_minutes'].toString()) ?? 60;
+    final enrollment = await api.enrollmentStatus();
+    enrollmentComplete = enrollment['enrolled'] == true;
     classes = await api.classes();
     sessions = await api.sessions();
     notifications = await api.notifications();
     if (!isTeacher) studentAttendance = await api.studentAttendance();
     notifyListeners();
+  }
+
+  Future<bool> enrollFace(Uint8List selfieBytes) async {
+    busy = true;
+    error = null;
+    notifyListeners();
+    try {
+      await api.enrollFace(selfieBytes);
+      enrollmentComplete = true;
+      return true;
+    } on ApiException catch (e) {
+      error = e.message;
+      return false;
+    } finally {
+      busy = false;
+      notifyListeners();
+    }
   }
 
   Future<void> retryHome() async {
@@ -96,7 +135,7 @@ class AppState extends ChangeNotifier {
     });
   }
 
-  Future<void> openSession(int sessionId) async {
+  Future<void> openSession(String sessionId) async {
     busy = true;
     error = null;
     notifyListeners();
@@ -110,12 +149,12 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  Future<bool> startSession(int classId) async {
+  Future<bool> startSession(String classId, {int durationMinutes = 10}) async {
     busy = true;
     error = null;
     notifyListeners();
     try {
-      activeSession = await api.createSession(classId);
+      activeSession = await api.createSession(classId, durationMinutes);
       sessions = await api.sessions();
       return true;
     } on ApiException catch (e) {
@@ -127,24 +166,7 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  Future<bool> uploadCapture(File file) async {
-    if (activeSession == null) return false;
-    busy = true;
-    error = null;
-    notifyListeners();
-    try {
-      suggestions = await api.capture(activeSession!.id, file);
-      return true;
-    } on ApiException catch (e) {
-      error = e.message;
-      return false;
-    } finally {
-      busy = false;
-      notifyListeners();
-    }
-  }
-
-  Future<bool> setAttendance(int studentId, String status) async {
+  Future<bool> setAttendance(String studentId, String status) async {
     if (activeSession == null) return false;
     try {
       await api.updateAttendance(activeSession!.id, studentId, status);
@@ -200,13 +222,12 @@ class AppState extends ChangeNotifier {
 
   Future<void> logout() async {
     await realtime.dispose();
-    api.accessToken = null;
+    await api.signOut();
     auth = null;
     classes = [];
     sessions = [];
     notifications = [];
     activeSession = null;
-    suggestions = [];
     notifyListeners();
   }
 

@@ -1,50 +1,22 @@
-# Classroom Attendance Backend
+# FastAPI attendance service
 
-FastAPI + SQLite prototype for the shared Flutter/web classroom attendance service. This is a **synthetic, review-first demo**, not a biometric or production attendance system.
+The backend uses FastAPI, Supabase Auth and Supabase Postgres. Deploy the single ASGI entrypoint app.main:app. app.main_supabase remains a compatibility import.
 
-## Run locally
+## Configure and run
 
-```bash
-cd backend
-python -m venv .venv
-. .venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env  # optional; load values in your shell or process manager
-uvicorn app.main:app --env-file .env --reload --host 0.0.0.0 --port 8000
-```
+Copy .env.example to .env and configure Supabase URL/keys, JWT secret, Fernet template-encryption key, and private YuNet/ArcFace model paths. Apply SQL through the Supabase migration workflow before launching. From this directory:
 
-The API is under `/api`; WebSocket tickets connect to `/api/ws?ticket=...` (and `/ws?ticket=...` is also accepted for clients using the short route).
+    pip install -r requirements.txt
+    uvicorn app.main:app --reload --port 8000
 
-## Demo accounts (development only)
+Without a configured Supabase project, keys, private face models and encryption key, the service cannot perform production authentication/enrollment/verification. It deliberately has no mock identity or synthetic confidence fallback.
 
-- `teacher@demo.edu` / `teach123`
-- `student1@demo.edu` / `student123`
-- `student2@demo.edu` / `student123`
+## Verification and privacy
 
-A single seeded class (`CS-101`) and two synthetic enrolled students are created on a new database. Do not use these credentials or the SQLite database for real student data.
+- The service verifies the authenticated Supabase identity and profile role; selected login role must match.
+- Session timing and attendance decisions use backend timestamps and state.
+- Templates are encrypted; enrollment responses never expose embeddings. Flagged evidence is stored in a private bucket with configured expiration.
+- The old capture route is retired with HTTP 410. Lecturer manual attendance remains available and audited.
+- See ../docs/API_CONTRACT.md, ../docs/PRIVACY_AND_DEPLOYMENT.md, and ../TODO.md.
 
-## Key workflow
-
-1. `POST /api/auth/login` to obtain a bearer token.
-2. Teacher lists classes, creates a session, and receives a pending roster.
-3. Teacher may upload `photo` to `/api/sessions/{id}/capture`. The capture is processed for this request and is not persisted by the application; the endpoint returns clearly labelled synthetic suggestions and writes a metadata audit entry. Multipart parsing can use temporary spooled storage for large uploads, which is handled by the framework for the request. No photo is kept in the application database or durable file storage, and no embedding is created.
-4. Teacher reviews/edits each status through `PATCH /api/sessions/{id}/attendance/{student_id}`.
-5. Teacher explicitly finalizes with `{ "mark_pending_absent": true }`. Remaining pending entries become absent, audit entries are written, and private in-app notifications are created for enrolled students.
-6. Students can read only their own attendance and notifications. Teachers can read class rosters, reports, and audit entries.
-7. `POST /api/auth/ws-ticket` creates a short-lived, single-use ticket for `/api/ws?ticket=...`. Events are informational; clients should refetch after reconnecting.
-
-## Configuration
-
-See `.env.example`. Secrets are environment inputs; the fallback `ATTENDANCE_APP_SECRET` is conspicuously development-only. Configure a strong secret, a private SQLite path, CORS origins, and token limits outside local demos.
-
-## Prototype boundaries
-
-No actual face recognition, biometric collection, embedding storage, email, SMS, real push adapter, or production security claim is included. `pdf_html` in the report endpoint is print-friendly report data, not a server PDF renderer. Production requires privacy/legal review, TLS, stronger identity/authentication, encrypted storage, retention/deletion controls, backup, monitoring, and a separately reviewed push provider.
-
-## Tests
-
-```bash
-pytest -q
-```
-
-Tests use a temporary SQLite database and cover login/roles, teacher session flow, simulated capture privacy, finalization notifications, student isolation, audit entries, and one-time WebSocket ticket behavior.
+Test files are in tests/. Exact commands and environment results are documented in ../docs/BUILD_VALIDATION.md. The legacy suggestions table is unused and has not been destructively dropped.

@@ -1,23 +1,19 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:classroom_attendance_mobile/app.dart';
-import 'package:classroom_attendance_mobile/models/models.dart';
 
 void main() {
-  testWidgets('login screen shows demo access and privacy disclosure',
-      (tester) async {
+  testWidgets('shows role selection before a blank role-bound login', (tester) async {
     await tester.pumpWidget(const AttendanceApp());
-    expect(find.text('Classroom\nattendance'), findsOneWidget);
-    expect(find.text('Teacher demo'), findsOneWidget);
-    expect(find.textContaining('no face recognition'), findsOneWidget);
-  });
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pumpAndSettle();
+    expect(find.text('I am a Student'), findsOneWidget);
+    expect(find.text('I am a Lecturer'), findsOneWidget);
 
-  test('simulated suggestion maps to a valid reviewed attendance status', () {
-    final suggestion = Suggestion.fromJson({
-      'student_id': 12,
-      'name': 'Synthetic Student',
-      'confidence': 0.86,
-      'status': 'suggestion',
-    });
-    expect(suggestion.status, 'present');
+    await tester.tap(find.text('I am a Student'));
+    await tester.pumpAndSettle();
+    expect(find.text('Sign in as Student'), findsOneWidget);
+    expect(find.text('Change role'), findsOneWidget);
+    expect(find.text('student1@demo.edu'), findsNothing);
+    expect(find.text('student123'), findsNothing);
   });
 }

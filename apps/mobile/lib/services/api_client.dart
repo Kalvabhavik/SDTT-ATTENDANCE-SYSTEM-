@@ -1,7 +1,8 @@
 import 'dart:convert';
-import 'dart:io';
-
+import 'dart:typed_data';
 import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../config/app_config.dart';
 import '../models/models.dart';
@@ -17,6 +18,7 @@ class ApiException implements Exception {
 class ApiClient {
   ApiClient({http.Client? client}) : _client = client ?? http.Client();
   final http.Client _client;
+  static const FlutterSecureStorage _secureStorage = FlutterSecureStorage();
   String? accessToken;
 
   Map<String, String> get _headers => {
@@ -70,13 +72,30 @@ class ApiClient {
     }
   }
 
-  Future<AuthSession> login(String email, String password) async {
+  Future<AuthSession> login(String email, String password, String selectedRole) async {
     final data = await _request('POST', '/auth/login',
-        body: {'email': email, 'password': password});
+        body: {'email': email, 'password': password, 'selected_role': selectedRole});
     final session =
         AuthSession.fromJson(Map<String, dynamic>.from(data as Map));
     accessToken = session.accessToken;
+    await _secureStorage.write(key: 'attendance_access_token', value: accessToken);
     return session;
+  }
+
+  Future<User?> restoreUser() async {
+    accessToken = await _secureStorage.read(key: 'attendance_access_token');
+    if (accessToken == null) return null;
+    try {
+      return User.fromJson(Map<String, dynamic>.from(await _request('GET', '/me') as Map));
+    } on ApiException {
+      await signOut();
+      return null;
+    }
+  }
+
+  Future<void> signOut() async {
+    accessToken = null;
+    await _secureStorage.delete(key: 'attendance_access_token');
   }
 
   Future<User> me() async => User.fromJson(
@@ -101,56 +120,66 @@ class ApiClient {
         .toList();
   }
 
-  Future<AttendanceSession> session(int sessionId) async =>
+  Future<AttendanceSession> session(String sessionId) async =>
       AttendanceSession.fromJson(Map<String, dynamic>.from(
           await _request('GET', '/sessions/$sessionId') as Map));
 
-  Future<AttendanceSession> createSession(int classId) async =>
+  Future<AttendanceSession> createSession(String classId, int durationMinutes) async =>
       AttendanceSession.fromJson(Map<String, dynamic>.from(
-          await _request('POST', '/sessions', body: {'class_id': classId})
+          await _request('POST', '/sessions', body: {'class_id': classId, 'duration_minutes': durationMinutes})
               as Map));
 
-  Future<List<Suggestion>> capture(int sessionId, File photo) async {
-    final uri = _endpoint('/sessions/$sessionId/capture');
-    final request = http.MultipartRequest('POST', uri);
+  Future<Map<String, dynamic>> enrollmentStatus() async =>
+      Map<String, dynamic>.from(await _request('GET', '/enrollment/status') as Map);
+
+  Future<Map<String, dynamic>> config() async =>
+      Map<String, dynamic>.from(await _request('GET', '/config') as Map);
+
+  Future<Map<String, dynamic>> enrollFace(Uint8List selfieBytes) async {
+    final request = http.MultipartRequest('POST', _endpoint('/enrollment/face'));
     request.headers['Accept'] = 'application/json';
-    if (accessToken != null) {
-      request.headers['Authorization'] = 'Bearer $accessToken';
+    if (accessToken != null) request.headers['Authorization'] = 'Bearer $accessToken';
+    request.fields['consent'] = 'true';
+    request.files.add(http.MultipartFile.fromBytes('photo', selfieBytes,
+        filename: 'enrollment-selfie.jpg', contentType: MediaType('image', 'jpeg')));
+    final response = await _client.send(request).timeout(const Duration(seconds: 30));
+    final text = await response.stream.bytesToString();
+    final decoded = text.isEmpty ? <String, dynamic>{} : jsonDecode(text);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      final detail = decoded is Map ? decoded['detail'] : null;
+      throw ApiException(detail?.toString() ?? 'Face enrollment failed (${response.statusCode}).', statusCode: response.statusCode);
     }
-    request.files.add(await http.MultipartFile.fromPath('photo', photo.path));
-    try {
-      final response =
-          await request.send().timeout(const Duration(seconds: 30));
-      final text = await response.stream.bytesToString();
-      final decoded = text.isEmpty ? <String, dynamic>{} : jsonDecode(text);
-      if (response.statusCode < 200 || response.statusCode >= 300) {
-        final detail =
-            decoded is Map ? decoded['detail'] ?? decoded['message'] : null;
-        throw ApiException(
-            detail?.toString() ??
-                'Camera capture failed (${response.statusCode}).',
-            statusCode: response.statusCode);
-      }
-      final raw = decoded is List
-          ? decoded
-          : decoded is Map
-              ? decoded['suggestions']
-              : <dynamic>[];
-      return (raw is List ? raw : <dynamic>[])
-          .map((e) => Suggestion.fromJson(Map<String, dynamic>.from(e as Map)))
-          .toList();
-    } on ApiException {
-      rethrow;
-    } on SocketException {
-      throw ApiException(
-          'Upload could not reach the service. Use manual roll call or retry.');
-    } catch (_) {
-      throw ApiException(
-          'Capture upload failed. Use manual roll call or retry.');
-    }
+    return Map<String, dynamic>.from(decoded as Map);
   }
 
-  Future<void> updateAttendance(int sessionId, int studentId, String status,
+  Future<Map<String, dynamic>> submitSweep({
+    required String sessionId,
+    required String attemptId,
+    required double durationSeconds,
+    required List<Uint8List> frames,
+    required List<Map<String, double>> metadata,
+  }) async {
+    final request = http.MultipartRequest('POST', _endpoint('/sessions/$sessionId/submissions'));
+    request.headers['Accept'] = 'application/json';
+    if (accessToken != null) request.headers['Authorization'] = 'Bearer $accessToken';
+    request.fields['attempt_id'] = attemptId;
+    request.fields['duration_seconds'] = durationSeconds.toStringAsFixed(3);
+    request.fields['frame_metadata'] = jsonEncode(metadata);
+    for (var index = 0; index < frames.length; index++) {
+      request.files.add(http.MultipartFile.fromBytes('frames', frames[index],
+          filename: 'frame-$index.jpg', contentType: MediaType('image', 'jpeg')));
+    }
+    final response = await _client.send(request).timeout(const Duration(minutes: 2));
+    final text = await response.stream.bytesToString();
+    final decoded = text.isEmpty ? <String, dynamic>{} : jsonDecode(text);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      final detail = decoded is Map ? decoded['detail'] : null;
+      throw ApiException(detail?.toString() ?? 'Attendance upload failed (${response.statusCode}).', statusCode: response.statusCode);
+    }
+    return Map<String, dynamic>.from(decoded as Map);
+  }
+
+  Future<void> updateAttendance(String sessionId, String studentId, String status,
       {String? note}) async {
     await _request('PATCH', '/sessions/$sessionId/attendance/$studentId',
         body: {
@@ -159,7 +188,7 @@ class ApiClient {
         });
   }
 
-  Future<void> finalizeSession(int sessionId) async =>
+  Future<void> finalizeSession(String sessionId) async =>
       _request('POST', '/sessions/$sessionId/finalize',
           body: {'mark_pending_absent': true});
 
@@ -180,7 +209,7 @@ class ApiClient {
         .toList();
   }
 
-  Future<void> markNotificationRead(int id) async =>
+  Future<void> markNotificationRead(String id) async =>
       _request('POST', '/notifications/$id/read');
 
   Future<String> wsTicket() async {
