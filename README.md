@@ -4,21 +4,53 @@ A shared Flutter mobile app and React dashboard backed by a FastAPI service and 
 
 ## Components
 
-- `apps/mobile/` — Flutter student/professor workflows, timed attendance, mobile image selection, personal history, in-app notifications, and WebSocket refresh.
-- `apps/dashboard/` — React/TypeScript role-aware dashboard for timed session scheduling, student panorama upload, professor image review/manual decisions, audit, history, and CSV/printable reports.
-- `backend/` — FastAPI service with Supabase Auth token verification, Postgres-backed records, private Storage uploads, image verification, retention cleanup, audit, and short-lived WebSocket tickets.
+- `apps/mobile/` — Flutter student/professor workflows, timed attendance, mobile image capture, personal history, in-app notifications, and WebSocket refresh.
+- `apps/dashboard/` — React/TypeScript dashboard for timed session scheduling, student panorama upload, professor image review/manual decisions, audit, history, and CSV/printable reports.
+- `backend/` — FastAPI service source for Supabase Auth token verification, database-backed records, private Storage uploads, image verification, retention cleanup, audit, and short-lived WebSocket tickets.
 - `backend/supabase_schema.sql` — complete fresh-project schema and attendance upgrade.
 - `backend/migrations/20261026_smart_attendance.sql` — upgrade for an existing database created from the earlier schema.
 - `docs/` — API, privacy, setup, and validation notes.
 
-## Setup
+## Hosted backend
 
-1. Create a Supabase project. For a fresh database, run `backend/supabase_schema.sql` in SQL Editor. For a project using the earlier schema, run that original schema first and then `backend/migrations/20261026_smart_attendance.sql`.
-2. In `backend/`, create a virtual environment, install `requirements.txt`, copy `.env.example` to `.env`, and set the Supabase URL, anon key, service-role key, JWT secret, allowed CORS origins, and image policy values. Never expose the service-role key or JWT secret in a client build or commit a real `.env` file.
-3. Provision Auth users and administrator-controlled `profiles` roles/enrollments. The guarded synthetic-account helper is development-only: set `DEMO_TEACHER_PASSWORD` and `DEMO_STUDENT_PASSWORD`, then run `python scripts/seed_demo_accounts.py` from `backend/`.
-4. Start the API with `uvicorn app.main:app --env-file .env --host 0.0.0.0 --port 8000` from `backend/`.
-5. Start the dashboard with `cd apps/dashboard && npm ci && VITE_API_BASE_URL=http://localhost:8000/api npm run dev`. Use the API host reachable from the browser, not `localhost`, when these run on different machines.
-6. For Flutter, run `cd apps/mobile && flutter pub get && flutter run --dart-define=API_BASE_URL=http://10.0.2.2:8000/api` for an Android emulator, or provide the host's LAN URL for a physical device. Set the same API base URL for the web build as required.
+The web and mobile clients default to the deployed Render API at **`https://sdtt-attendance-system.onrender.com/api`**. A read-only health check is available at [`/api/health`](https://sdtt-attendance-system.onrender.com/api/health). Normal client use does not require starting the backend locally.
+
+To use a different API, set `VITE_API_BASE_URL` for a dashboard build or pass `--dart-define=API_BASE_URL=https://your-api.example.com/api` to Flutter. Keep backend credentials out of frontend configuration. The deployment must allow requests from the frontend's origin in its CORS settings.
+
+## Client setup
+
+For local dashboard development while using the hosted API:
+
+```bash
+cd apps/dashboard
+npm ci
+npm run dev
+```
+
+For Flutter, in an environment with Flutter installed:
+
+```bash
+cd apps/mobile
+flutter pub get
+flutter run
+```
+
+The clients use the hosted API unless you provide an explicit override.
+
+## Optional backend development or self-hosting
+
+The `backend/` source remains in the repository for maintaining, testing, and deploying the service; it is not the default client target. To run your own backend, create a Supabase project. For a fresh database, run `backend/supabase_schema.sql` in SQL Editor. For a project using the earlier schema, run that original schema first and then `backend/migrations/20261026_smart_attendance.sql`.
+
+In `backend/`, create a virtual environment, install `requirements.txt`, copy `.env.example` to `.env`, and set the Supabase URL, anon key, service-role key, JWT secret, allowed CORS origins, and image policy values. Never expose the service-role key or JWT secret in a client build or commit a real `.env` file. Provision Auth users and administrator-controlled `profiles` roles/enrollments. The guarded synthetic-account helper is development-only and reads passwords from environment variables.
+
+Run the local API only when doing backend development or self-hosting:
+
+```bash
+cd backend
+uvicorn app.main:app --env-file .env --host 0.0.0.0 --port 8000
+```
+
+For a local client-to-local API test, explicitly override the default URL with `http://localhost:8000/api` for the web client or a device-reachable address for Flutter.
 
 ## Attendance workflow
 

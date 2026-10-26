@@ -1,6 +1,6 @@
 import { type AttendanceEntry, type AuditItem, type ClassItem, type ImageSubmission, type Notification, type Report, type ReportRow, type Role, type Session, type SessionStatus, type StudentAttendance, type User } from './types'
 
-const API_BASE = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api').replace(/\/$/, '')
+const API_BASE = (import.meta.env.VITE_API_BASE_URL || 'https://sdtt-attendance-system.onrender.com/api').replace(/\/$/, '')
 
 export const getApiBase = () => API_BASE
 

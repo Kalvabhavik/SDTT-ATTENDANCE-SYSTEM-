@@ -71,7 +71,7 @@ class _LoginScreenState extends State<LoginScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              'Set the API endpoint. For USB debugging, use localhost (with adb reverse). For Wi-Fi, enter your PC\'s LAN IP (e.g. http://10.0.4.99:8000/api).',
+              'The app uses the hosted Render API by default. Change this only if your administrator gave you a different API endpoint.',
               style: TextStyle(fontSize: 13, color: AppColors.slate),
             ),
             const SizedBox(height: 16),
@@ -79,7 +79,7 @@ class _LoginScreenState extends State<LoginScreen> {
               controller: controller,
               decoration: const InputDecoration(
                 labelText: 'API Base URL',
-                hintText: 'http://localhost:8000/api',
+                hintText: 'https://sdtt-attendance-system.onrender.com/api',
                 isDense: true,
               ),
             ),
