@@ -1,12 +1,35 @@
-export type Role = 'teacher' | 'student'
+export type Role = 'teacher' | 'student' | 'controller'
 export type AttendanceStatus = 'present' | 'absent' | 'pending'
 
 export interface User { id: string; name: string; email: string; role: Role }
+export interface ControllerClass {
+  id: string
+  name: string
+  code: string
+  section?: string
+  room_number?: string
+  capacity?: number
+  hall_type?: string
+  room_photo?: string
+  student_count?: number
+  teacher_name?: string
+  reference_captured_at?: string
+}
+export interface ControllerStudent {
+  id: string
+  name: string
+  email: string
+  roll_number?: string
+  student_id?: string
+  registration_locked: boolean
+  has_template: boolean
+}
 export interface ClassItem { id: string; name: string; code?: string; schedule?: string; room?: string; student_count?: number }
 export interface AttendanceEntry { student_id: string; student_name: string; student_email?: string; status: AttendanceStatus; confidence?: number; note?: string; changed_at?: string; updated_at?: string }
 export interface Suggestion { student_id: string; student_name: string; confidence: number; status?: 'suggestion' | AttendanceStatus }
 export interface ReviewItem {
   id: string
+  attempt_id?: string
   session_id: string
   student_id: string
   student_name: string
@@ -46,6 +69,7 @@ export interface ReportRow { name: string; email: string; status: AttendanceStat
 export interface Report { session: Session; rows: ReportRow[]; csv: string; pdf_html: string }
 
 export const demoTeacher: User = { id: 'teacher-1', name: 'Dr. Mira Chen', email: 'teacher@demo.edu', role: 'teacher' }
+export const demoController: User = { id: 'controller-1', name: 'Dr. Sarah Vance', email: 'controller@demo.edu', role: 'controller' }
 export const demoStudent: User = { id: 'student-1', name: 'Jordan Ellis', email: 'student1@demo.edu', role: 'student' }
 export const demoStudent2: User = { id: 'student-2', name: 'Samira Patel', email: 'student2@demo.edu', role: 'student' }
 export const demoClasses: ClassItem[] = [

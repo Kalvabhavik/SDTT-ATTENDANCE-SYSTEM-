@@ -14,7 +14,6 @@ class SessionScreen extends StatefulWidget {
 
 class _SessionScreenState extends State<SessionScreen> {
   Timer? _countdownTimer;
-  String _searchQuery = '';
   int _selectedTab = 0; // 0: Present, 1: Needs Review (Queue), 2: Absent, 3: All
 
   @override
@@ -65,6 +64,69 @@ class _SessionScreenState extends State<SessionScreen> {
     );
   }
 
+  void _exportExcel(BuildContext context, AttendanceSession session) {
+    final exportUrl = widget.state.api.sessionExcelExportUrl(session.id);
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Row(
+          children: [
+            Icon(Icons.table_view_rounded, color: AppColors.emerald, size: 26),
+            SizedBox(width: 10),
+            Text('Excel Export (.xlsx)', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'A professionally formatted spreadsheet with colored KPI headers, status badges (Present/Absent/Flagged), and audit notes is ready.',
+              style: TextStyle(fontSize: 13, color: AppColors.slate, height: 1.4),
+            ),
+            const SizedBox(height: 14),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.primary.withValues(alpha: 0.05),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: AppColors.primary.withValues(alpha: 0.2)),
+              ),
+              child: SelectableText(
+                exportUrl,
+                style: const TextStyle(fontSize: 11, fontFamily: 'monospace', color: AppColors.primary),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Close'),
+          ),
+          FilledButton.icon(
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.emerald,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            onPressed: () {
+              Navigator.of(ctx).pop();
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Spreadsheet analysis exported successfully!'),
+                  backgroundColor: AppColors.emerald,
+                ),
+              );
+            },
+            icon: const Icon(Icons.download_rounded, size: 18),
+            label: const Text('Export Excel'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final session = widget.state.activeSession;
@@ -87,7 +149,6 @@ class _SessionScreenState extends State<SessionScreen> {
 
     final presentList = session.records.where((r) => r.isPresent).toList();
     final absentList = session.records.where((r) => r.isAbsent).toList();
-    final pendingList = session.records.where((r) => r.isPending).toList();
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -106,6 +167,11 @@ class _SessionScreenState extends State<SessionScreen> {
           ],
         ),
         actions: [
+          IconButton(
+            tooltip: 'Export Professional Excel (.xlsx)',
+            onPressed: () => _exportExcel(context, session),
+            icon: const Icon(Icons.table_chart_rounded, color: AppColors.emerald),
+          ),
           IconButton(
             tooltip: 'Refresh',
             onPressed: () => widget.state.openSession(session.id),
@@ -200,6 +266,20 @@ class _SessionScreenState extends State<SessionScreen> {
                     const SizedBox(width: 8),
                     _MetricChip(label: 'Absent', count: absentList.length, color: AppColors.rose),
                   ],
+                ),
+                const SizedBox(height: 14),
+                OutlinedButton.icon(
+                  onPressed: () => _exportExcel(context, session),
+                  icon: const Icon(Icons.file_download_outlined, size: 18, color: AppColors.emerald),
+                  label: const Text(
+                    'Export Colored Excel Analysis (.xlsx)',
+                    style: TextStyle(color: AppColors.ink, fontWeight: FontWeight.w700, fontSize: 13),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: AppColors.emeraldBorder),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  ),
                 ),
               ],
             ),

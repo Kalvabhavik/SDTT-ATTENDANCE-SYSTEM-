@@ -31,7 +31,12 @@ class AppState extends ChangeNotifier {
 
   User? get user => auth?.user;
   bool get isTeacher => user?.isTeacher == true;
+  bool get isStudent => user?.isStudent == true;
+  bool get isController => user?.isController == true;
   int get unreadCount => notifications.where((n) => !n.read).length;
+
+  List<Classroom> controllerClasses = [];
+  List<ControllerStudent> controllerStudents = [];
 
   /// Returns current server-authoritative time estimated via clock offset
   DateTime get serverTimeNow => DateTime.now().add(serverClockOffset);
@@ -79,14 +84,115 @@ class AppState extends ChangeNotifier {
     } catch (_) {}
   }
 
+  Future<void> loadControllerData() async {
+    try {
+      controllerClasses = await api.controllerClasses();
+      controllerStudents = await api.controllerStudents();
+      notifyListeners();
+    } catch (_) {}
+  }
+
   Future<void> loadHome() async {
     classes = await api.classes();
     sessions = await api.sessions();
     notifications = await api.notifications();
-    if (!isTeacher) {
+    if (isController) {
+      await loadControllerData();
+    } else if (isStudent) {
       studentAttendance = await api.studentAttendance();
+      await checkEnrollment();
     }
     notifyListeners();
+  }
+
+  Future<bool> createClassroom({
+    required String name,
+    required String code,
+    String? section,
+    String? roomNumber,
+    String? roomPhoto,
+  }) async {
+    busy = true;
+    error = null;
+    notifyListeners();
+    try {
+      await api.controllerCreateClass(
+        name: name,
+        code: code,
+        section: section,
+        roomNumber: roomNumber,
+        roomPhoto: roomPhoto,
+      );
+      await loadControllerData();
+      return true;
+    } on ApiException catch (e) {
+      error = e.message;
+      return false;
+    } finally {
+      busy = false;
+      notifyListeners();
+    }
+  }
+
+  Future<bool> createStudent({
+    required String name,
+    required String email,
+    required String rollNumber,
+    String? studentId,
+    List<String> classIds = const [],
+  }) async {
+    busy = true;
+    error = null;
+    notifyListeners();
+    try {
+      await api.controllerCreateStudent(
+        name: name,
+        email: email,
+        rollNumber: rollNumber,
+        studentId: studentId,
+        classIds: classIds,
+      );
+      await loadControllerData();
+      return true;
+    } on ApiException catch (e) {
+      error = e.message;
+      return false;
+    } finally {
+      busy = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> unlockStudent(String studentId) async {
+    try {
+      await api.controllerUnlockStudent(studentId);
+      await loadControllerData();
+    } catch (_) {}
+  }
+
+  Future<AttendanceVerifyResult> verifyAttendanceLive(
+    String sessionId, {
+    required List<int> faceBytes,
+    List<int>? roomBytes,
+  }) async {
+    busy = true;
+    error = null;
+    notifyListeners();
+    try {
+      final res = await api.verifyAttendanceLive(
+        sessionId,
+        faceBytes: faceBytes,
+        roomBytes: roomBytes,
+      );
+      await loadHome();
+      return res;
+    } on ApiException catch (e) {
+      error = e.message;
+      rethrow;
+    } finally {
+      busy = false;
+      notifyListeners();
+    }
   }
 
   Future<void> retryHome() async {
@@ -238,8 +344,19 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  Future<void> markNotificationRead(AppNotification notification) async {
+    try {
+      await api.markNotificationRead(notification.id);
+      notifications = notifications
+          .map((n) => n.id == notification.id ? n.copyWith(readAt: DateTime.now()) : n)
+          .toList();
+      notifyListeners();
+    } catch (_) {}
+  }
+
   Future<void> logout() async {
     realtime.disconnect();
+    api.accessToken = null;
     auth = null;
     selectedRole = null;
     activeSession = null;

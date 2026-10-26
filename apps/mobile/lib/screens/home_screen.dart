@@ -7,6 +7,8 @@ import '../widgets/app_widgets.dart';
 import 'notifications_screen.dart';
 import 'session_screen.dart';
 import 'sweep_capture_screen.dart';
+import 'controller_screen.dart';
+import 'live_face_verification_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key, required this.state});
@@ -69,9 +71,11 @@ class _HomeScreenState extends State<HomeScreen> {
                 Text(
                   tab == 1
                       ? 'Notifications'
-                      : isTeacher
-                          ? 'Lecturer Desk'
-                          : 'Attendance',
+                      : widget.state.isController
+                          ? 'Academic Controller'
+                          : isTeacher
+                              ? 'Lecturer Desk'
+                              : 'Attendance',
                   style: const TextStyle(
                     fontWeight: FontWeight.w900,
                     fontSize: 18,
@@ -80,7 +84,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
                 Text(
                   user != null
-                      ? '${user.name} • ${isTeacher ? "Lecturer" : "Student"}'
+                      ? '${user.name} • ${widget.state.isController ? "Controller" : isTeacher ? "Lecturer" : "Student"}'
                       : 'Signed in',
                   style: const TextStyle(
                     fontSize: 12,
@@ -171,20 +175,27 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       body: tab == 1
           ? NotificationsScreen(state: widget.state)
-          : isTeacher
-              ? TeacherHome(state: widget.state)
-              : StudentHome(state: widget.state),
+          : widget.state.isController
+              ? ControllerScreen(state: widget.state)
+              : isTeacher
+                  ? TeacherHome(state: widget.state)
+                  : StudentHome(state: widget.state),
       bottomNavigationBar: NavigationBar(
         selectedIndex: tab,
         onDestinationSelected: (index) => setState(() => tab = index),
         destinations: [
           NavigationDestination(
-            icon: Icon(isTeacher
-                ? Icons.dashboard_outlined
-                : Icons.insights_outlined),
-            selectedIcon: Icon(
-                isTeacher ? Icons.dashboard_rounded : Icons.insights_rounded),
-            label: isTeacher ? 'Classes' : 'Overview',
+            icon: Icon(widget.state.isController
+                ? Icons.admin_panel_settings_outlined
+                : isTeacher
+                    ? Icons.dashboard_outlined
+                    : Icons.insights_outlined),
+            selectedIcon: Icon(widget.state.isController
+                ? Icons.admin_panel_settings_rounded
+                : isTeacher
+                    ? Icons.dashboard_rounded
+                    : Icons.insights_rounded),
+            label: widget.state.isController ? 'Management' : isTeacher ? 'Classes' : 'Overview',
           ),
           NavigationDestination(
             icon: Badge(
@@ -591,9 +602,7 @@ class TeacherHome extends StatelessWidget {
                             ),
                             const SizedBox(height: 3),
                             Text(
-                              s.createdAt != null
-                                  ? DateFormat.yMMMd().add_jm().format(s.createdAt!.toLocal())
-                                  : 'Session #${s.id}',
+                              DateFormat.yMMMd().add_jm().format(s.createdAt.toLocal()),
                               style: const TextStyle(
                                 fontSize: 12,
                                 color: AppColors.muted,
@@ -703,6 +712,48 @@ class _StudentHomeState extends State<StudentHome> {
 
           const SizedBox(height: 18),
 
+          // Registration Locked Status Banner
+          if (state.enrollmentStatus?.registrationLocked == true)
+            Container(
+              margin: const EdgeInsets.only(bottom: 16),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                color: AppColors.emerald.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: AppColors.emerald.withValues(alpha: 0.25)),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.lock_outline_rounded, color: AppColors.emerald, size: 20),
+                  SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Biometric Registration Complete & Locked',
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.ink,
+                          ),
+                        ),
+                        SizedBox(height: 2),
+                        Text(
+                          'Your facial embedding is securely stored. Registration is closed. Contact Controller if reset needed.',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: AppColors.slate,
+                            height: 1.3,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
           // Active Session Card (If Any Open)
           if (openSessions.isNotEmpty) ...[
             ...openSessions.map((session) {
@@ -781,7 +832,7 @@ class _StudentHomeState extends State<StudentHome> {
                       ),
                       const SizedBox(height: 12),
                       Text(
-                        session.className ?? 'Classroom Session',
+                        session.className.isNotEmpty ? session.className : 'Classroom Session',
                         style: const TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.w800,
@@ -806,6 +857,33 @@ class _StudentHomeState extends State<StudentHome> {
                               : () {
                                   Navigator.of(context).push(
                                     MaterialPageRoute(
+                                      builder: (_) => LiveFaceVerificationScreen(
+                                        state: state,
+                                        session: session,
+                                      ),
+                                    ),
+                                  );
+                                },
+                          icon: const Icon(Icons.face_retouching_natural_rounded, size: 20),
+                          label: Text(
+                            isExpired ? 'Window Closed' : 'Mark Attendance (Live Face & Room Scan)',
+                            style: const TextStyle(fontWeight: FontWeight.w800),
+                          ),
+                          style: FilledButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                            backgroundColor: isExpired ? AppColors.slate : AppColors.primary,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Center(
+                        child: TextButton.icon(
+                          onPressed: isExpired
+                              ? null
+                              : () {
+                                  Navigator.of(context).push(
+                                    MaterialPageRoute(
                                       builder: (_) => SweepCaptureScreen(
                                         state: state,
                                         session: session,
@@ -813,15 +891,10 @@ class _StudentHomeState extends State<StudentHome> {
                                     ),
                                   );
                                 },
-                          icon: const Icon(Icons.camera_rounded, size: 20),
-                          label: Text(
-                            isExpired ? 'Window Closed' : 'Mark Attendance (Sweep Capture)',
-                            style: const TextStyle(fontWeight: FontWeight.w700),
-                          ),
-                          style: FilledButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                            backgroundColor: isExpired ? AppColors.slate : AppColors.primary,
+                          icon: const Icon(Icons.cameraswitch_outlined, size: 16),
+                          label: const Text(
+                            'Alternative: 360° Sweep Capture',
+                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
                           ),
                         ),
                       ),
@@ -987,6 +1060,12 @@ class _StudentHomeState extends State<StudentHome> {
                       selected: filter == 'absent',
                       onTap: () => setState(() => filter = 'absent'),
                     ),
+                    const SizedBox(width: 6),
+                    _FilterChip(
+                      label: 'Pending',
+                      selected: filter == 'pending',
+                      onTap: () => setState(() => filter = 'pending'),
+                    ),
                   ],
                 ),
               ],
@@ -1057,8 +1136,8 @@ class _StudentHomeState extends State<StudentHome> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              record.className?.isNotEmpty == true
-                                  ? record.className!
+                              record.className.isNotEmpty
+                                  ? record.className
                                   : 'Class Session',
                               style: Theme.of(context).textTheme.titleMedium,
                             ),

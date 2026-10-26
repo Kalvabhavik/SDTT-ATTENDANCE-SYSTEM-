@@ -267,4 +267,109 @@ class ApiClient {
     final data = await _request('GET', '/sessions/$sessionId/report');
     return SessionReport.fromJson(Map<String, dynamic>.from(data as Map));
   }
+
+  String sessionExcelExportUrl(String sessionId) {
+    return '${AppConfig.apiBaseUrl}/sessions/$sessionId/export/excel';
+  }
+
+  Future<AttendanceVerifyResult> verifyAttendanceLive(
+    String sessionId, {
+    required List<int> faceBytes,
+    List<int>? roomBytes,
+  }) async {
+    final uri = _endpoint('/sessions/$sessionId/verify-attendance');
+    final req = http.MultipartRequest('POST', uri);
+    if (accessToken != null) {
+      req.headers['Authorization'] = 'Bearer $accessToken';
+    }
+    req.files.add(http.MultipartFile.fromBytes(
+      'face_image',
+      faceBytes,
+      filename: 'live_face.jpg',
+    ));
+    if (roomBytes != null && roomBytes.isNotEmpty) {
+      req.files.add(http.MultipartFile.fromBytes(
+        'classroom_image',
+        roomBytes,
+        filename: 'classroom_room.jpg',
+      ));
+    }
+
+    try {
+      final streamed = await req.send().timeout(const Duration(seconds: 25));
+      final resp = await http.Response.fromStream(streamed);
+      final body = resp.body.isNotEmpty ? jsonDecode(resp.body) : {};
+      if (resp.statusCode >= 400) {
+        final detail = body is Map ? body['detail'] : resp.body;
+        throw ApiException(detail?.toString() ?? 'Verification failed', statusCode: resp.statusCode);
+      }
+      return AttendanceVerifyResult.fromJson(Map<String, dynamic>.from(body as Map));
+    } on SocketException {
+      throw ApiException('Unable to reach the attendance server.', statusCode: 0);
+    }
+  }
+
+  Future<List<Classroom>> controllerClasses() async {
+    final raw = await _request('GET', '/controller/classes');
+    final list = raw is List ? raw : <dynamic>[];
+    return list
+        .map((e) => Classroom.fromJson(Map<String, dynamic>.from(e as Map)))
+        .toList();
+  }
+
+  Future<Classroom> controllerCreateClass({
+    required String name,
+    required String code,
+    String? section,
+    String? roomNumber,
+    String? roomPhoto,
+    String? teacherId,
+  }) async {
+    final data = await _request(
+      'POST',
+      '/controller/classes',
+      body: {
+        'name': name,
+        'code': code,
+        'section': section,
+        'room_number': roomNumber,
+        'room_photo': roomPhoto,
+        'teacher_id': teacherId,
+      },
+    );
+    return Classroom.fromJson(Map<String, dynamic>.from(data as Map));
+  }
+
+  Future<List<ControllerStudent>> controllerStudents() async {
+    final raw = await _request('GET', '/controller/students');
+    final list = raw is List ? raw : <dynamic>[];
+    return list
+        .map((e) => ControllerStudent.fromJson(Map<String, dynamic>.from(e as Map)))
+        .toList();
+  }
+
+  Future<ControllerStudent> controllerCreateStudent({
+    required String name,
+    required String email,
+    required String rollNumber,
+    String? studentId,
+    List<String> classIds = const [],
+  }) async {
+    final data = await _request(
+      'POST',
+      '/controller/students',
+      body: {
+        'name': name,
+        'email': email,
+        'roll_number': rollNumber,
+        'student_id': studentId,
+        'class_ids': classIds,
+      },
+    );
+    return ControllerStudent.fromJson(Map<String, dynamic>.from(data as Map));
+  }
+
+  Future<void> controllerUnlockStudent(String studentId) async {
+    await _request('POST', '/controller/students/$studentId/unlock');
+  }
 }

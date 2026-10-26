@@ -21,12 +21,18 @@ class RoleSelectionScreen extends StatelessWidget {
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 20.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Spacer(flex: 1),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            return SingleChildScrollView(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                child: IntrinsicHeight(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 14.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        const Spacer(flex: 1),
               // Brand Mark
               Center(
                 child: Container(
@@ -107,6 +113,16 @@ class RoleSelectionScreen extends StatelessWidget {
                 color: AppColors.secondary,
                 onTap: () => _chooseRole(context, 'lecturer'),
               ),
+              const SizedBox(height: 16),
+
+              // Controller Card
+              _RoleCard(
+                title: 'Academic Controller',
+                description: 'Add and manage classes, sections, student rosters, and registration locks.',
+                icon: Icons.admin_panel_settings_rounded,
+                color: const Color(0xFF7C3AED),
+                onTap: () => _chooseRole(context, 'controller'),
+              ),
 
               const Spacer(flex: 2),
               Center(
@@ -119,8 +135,13 @@ class RoleSelectionScreen extends StatelessWidget {
                   ),
                 ),
               ),
-            ],
-          ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            );
+          },
         ),
       ),
     );

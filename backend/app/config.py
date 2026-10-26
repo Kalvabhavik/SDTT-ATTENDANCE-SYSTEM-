@@ -60,9 +60,9 @@ VISUAL_CONTINUITY_MIN_SCORE = float(os.getenv("ATTENDANCE_VISUAL_CONTINUITY_MIN"
 # ── Image Quality Thresholds ──────────────────────────────────────────────────
 MIN_IMAGE_WIDTH = 320
 MIN_IMAGE_HEIGHT = 240
-MIN_LAPLACIAN_VAR = float(os.getenv("ATTENDANCE_MIN_LAPLACIAN_VAR", "35.0"))  # Blur check
-MIN_LUMINANCE = float(os.getenv("ATTENDANCE_MIN_LUMINANCE", "30.0"))          # Underexposure check
-MAX_LUMINANCE = float(os.getenv("ATTENDANCE_MAX_LUMINANCE", "235.0"))         # Overexposure check
+MIN_LAPLACIAN_VAR = float(os.getenv("ATTENDANCE_MIN_LAPLACIAN_VAR", "100.0"))  # Blur check
+MIN_LUMINANCE = float(os.getenv("ATTENDANCE_MIN_LUMINANCE", "40.0"))          # Underexposure check
+MAX_LUMINANCE = float(os.getenv("ATTENDANCE_MAX_LUMINANCE", "220.0"))         # Overexposure check
 
 # ── Biometric & Face Verification Thresholds ──────────────────────────────────
 # Cosine similarity for ArcFace 512-d unit embeddings:

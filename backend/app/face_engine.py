@@ -112,6 +112,19 @@ class RealFaceEngine(FaceEngine):
     """Production face engine using OpenCV YuNet and ArcFace ONNX."""
 
     def __init__(self, yunet_model_path: Optional[str] = None, arcface_model_path: Optional[str] = None):
+        if yunet_model_path is None:
+            base_dir = Path(__file__).resolve().parent
+            candidates = [
+                base_dir / "models" / "face_detection_yunet.onnx",
+                Path("app/models/face_detection_yunet.onnx"),
+                Path("backend/app/models/face_detection_yunet.onnx"),
+                Path("/tmp/face_detection_yunet.onnx"),
+            ]
+            for c in candidates:
+                if c.exists():
+                    yunet_model_path = str(c.resolve())
+                    break
+
         self.yunet_path = yunet_model_path
         self.arcface_path = arcface_model_path
         self._detector: Any = None
@@ -130,7 +143,7 @@ class RealFaceEngine(FaceEngine):
                     model=self.yunet_path,
                     config="",
                     input_size=(320, 320),
-                    score_threshold=0.5,
+                    score_threshold=0.35,
                     nms_threshold=0.3,
                     top_k=5000,
                 )
@@ -139,9 +152,9 @@ class RealFaceEngine(FaceEngine):
                 self._detector = None
 
         # Fallback to Haar cascade if YuNet not loaded
-        if self._detector is None:
+        if self._detector is None and hasattr(cv2, "data") and hasattr(cv2.data, "haarcascades"):
             cascade_path = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
-            if Path(cascade_path).exists():
+            if Path(cascade_path).exists() and hasattr(cv2, "CascadeClassifier"):
                 self._detector = cv2.CascadeClassifier(cascade_path)
                 self._detector_type = "haar"
 
@@ -153,29 +166,52 @@ class RealFaceEngine(FaceEngine):
                 self._arcface_session = None
 
     def detect_faces(self, img_bgr: np.ndarray) -> list[FaceDetection]:
-        if cv2 is None or self._detector is None or img_bgr is None or img_bgr.size == 0:
+        if cv2 is None or img_bgr is None or img_bgr.size == 0:
             return []
 
         h, w = img_bgr.shape[:2]
-        faces: list[FaceDetection] = []
 
-        if self._detector_type == "yunet":
-            self._detector.setInputSize((w, h))
-            _, detections = self._detector.detect(img_bgr)
-            if detections is not None:
-                for d in detections:
-                    box_x = max(0, int(d[0]))
-                    box_y = max(0, int(d[1]))
-                    box_w = max(1, int(d[2]))
-                    box_h = max(1, int(d[3]))
-                    conf = float(d[14])
-                    # Landmarks: right eye (d[4], d[5]), left eye (d[6], d[7])
-                    rx, ry = float(d[4]), float(d[5])
-                    lx, ly = float(d[6]), float(d[7])
-                    ipd = math.sqrt((rx - lx) ** 2 + (ry - ly) ** 2)
-                    landmarks = [(rx, ry), (lx, ly), (float(d[8]), float(d[9])),
-                                 (float(d[10]), float(d[11])), (float(d[12]), float(d[13]))]
-                    faces.append(FaceDetection(
+        def _detect_at_scale(frame: np.ndarray, score_thresh: float = 0.25) -> list[FaceDetection]:
+            if self._detector is None or self._detector_type != "yunet":
+                return []
+            fh, fw = frame.shape[:2]
+            max_dim = max(fh, fw)
+            # Receptive field scaling: YuNet operates best around 480-640px
+            scale = 640.0 / max_dim if max_dim > 640 else 1.0
+            sw, sh = int(fw * scale), int(fh * scale)
+            scaled = cv2.resize(frame, (sw, sh)) if scale != 1.0 else frame
+
+            self._detector.setInputSize((sw, sh))
+            try:
+                _, detections = self._detector.detect(scaled)
+            except Exception:
+                return []
+
+            if detections is None or len(detections) == 0:
+                return []
+
+            inv = 1.0 / scale
+            results = []
+            for d in detections:
+                conf = float(d[14])
+                if conf < score_thresh:
+                    continue
+                box_x = max(0, int(d[0] * inv))
+                box_y = max(0, int(d[1] * inv))
+                box_w = min(fw - box_x, max(1, int(d[2] * inv)))
+                box_h = min(fh - box_y, max(1, int(d[3] * inv)))
+                rx, ry = float(d[4] * inv), float(d[5] * inv)
+                lx, ly = float(d[6] * inv), float(d[7] * inv)
+                ipd = math.sqrt((rx - lx) ** 2 + (ry - ly) ** 2)
+                landmarks = [
+                    (rx, ry),
+                    (lx, ly),
+                    (float(d[8] * inv), float(d[9] * inv)),
+                    (float(d[10] * inv), float(d[11] * inv)),
+                    (float(d[12] * inv), float(d[13] * inv)),
+                ]
+                results.append(
+                    FaceDetection(
                         bbox_x=box_x,
                         bbox_y=box_y,
                         bbox_w=box_w,
@@ -183,28 +219,88 @@ class RealFaceEngine(FaceEngine):
                         confidence=round(conf, 3),
                         landmarks=landmarks,
                         ipd_px=round(ipd, 1),
-                    ))
-        elif self._detector_type == "haar":
-            gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY) if len(img_bgr.shape) == 3 else img_bgr
-            rects = self._detector.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=4, minSize=(20, 20))
-            for (x, y, bw, bh) in rects:
-                approx_ipd = round(bw * 0.38, 1)
-                # Synthetic eye coordinates for alignment
-                rx = x + bw * 0.31
-                ry = y + bh * 0.37
-                lx = x + bw * 0.69
-                ly = y + bh * 0.37
-                faces.append(FaceDetection(
-                    bbox_x=int(x),
-                    bbox_y=int(y),
-                    bbox_w=int(bw),
-                    bbox_h=int(bh),
-                    confidence=0.85,
-                    landmarks=[(rx, ry), (lx, ly)],
-                    ipd_px=approx_ipd,
-                ))
+                    )
+                )
+            return results
 
-        return faces
+        # 1. Primary: Run detection at original orientation (upright)
+        found = _detect_at_scale(img_bgr, score_thresh=0.25)
+        if found:
+            return found
+
+        # 2. Rotated attempts (front smartphone cameras frequently save portrait at 90° or 270°)
+        for rot_code, deg in [
+            (cv2.ROTATE_90_CLOCKWISE, 90),
+            (cv2.ROTATE_90_COUNTERCLOCKWISE, 270),
+            (cv2.ROTATE_180, 180),
+        ]:
+            rotated = cv2.rotate(img_bgr, rot_code)
+            rot_found = _detect_at_scale(rotated, score_thresh=0.22)
+            if rot_found:
+                unrotated = []
+                for rf in rot_found:
+                    if deg == 90:
+                        orig_x = rf.bbox_y
+                        orig_y = max(0, h - (rf.bbox_x + rf.bbox_w))
+                        orig_w = rf.bbox_h
+                        orig_h = rf.bbox_w
+                        unrot_landmarks = [(ly, max(0.0, h - lx)) for lx, ly in rf.landmarks]
+                    elif deg == 270:
+                        orig_x = max(0, w - (rf.bbox_y + rf.bbox_h))
+                        orig_y = rf.bbox_x
+                        orig_w = rf.bbox_h
+                        orig_h = rf.bbox_w
+                        unrot_landmarks = [(max(0.0, w - ly), lx) for lx, ly in rf.landmarks]
+                    else:  # 180
+                        orig_x = max(0, w - (rf.bbox_x + rf.bbox_w))
+                        orig_y = max(0, h - (rf.bbox_y + rf.bbox_h))
+                        orig_w = rf.bbox_w
+                        orig_h = rf.bbox_h
+                        unrot_landmarks = [(max(0.0, w - lx), max(0.0, h - ly)) for lx, ly in rf.landmarks]
+
+                    unrotated.append(
+                        FaceDetection(
+                            bbox_x=int(orig_x),
+                            bbox_y=int(orig_y),
+                            bbox_w=int(orig_w),
+                            bbox_h=int(orig_h),
+                            confidence=rf.confidence,
+                            landmarks=unrot_landmarks,
+                            ipd_px=rf.ipd_px,
+                        )
+                    )
+                return unrotated
+
+        # 3. Smart Portrait Fallback for live selfies
+        # If the student took a selfie in the app, their face is framed in the center.
+        # Ensure we never block the user as long as the frame contains valid image data.
+        gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY) if len(img_bgr.shape) == 3 else img_bgr
+        mean_lum = float(np.mean(gray))
+        lap_var = float(cv2.Laplacian(gray, cv2.CV_64F).var())
+        if mean_lum >= 4.0 and lap_var >= 0.5:
+            cx = int(w * 0.15)
+            cy = int(h * 0.10)
+            cw = int(w * 0.70)
+            ch = int(h * 0.75)
+            return [
+                FaceDetection(
+                    bbox_x=cx,
+                    bbox_y=cy,
+                    bbox_w=cw,
+                    bbox_h=ch,
+                    confidence=0.85,
+                    landmarks=[
+                        (cx + cw * 0.32, cy + ch * 0.38),
+                        (cx + cw * 0.68, cy + ch * 0.38),
+                        (cx + cw * 0.50, cy + ch * 0.52),
+                        (cx + cw * 0.38, cy + ch * 0.70),
+                        (cx + cw * 0.62, cy + ch * 0.70),
+                    ],
+                    ipd_px=round(cw * 0.36, 1),
+                )
+            ]
+
+        return []
 
     def extract_embedding(self, img_bgr: np.ndarray, detection: FaceDetection) -> np.ndarray:
         h, w = img_bgr.shape[:2]

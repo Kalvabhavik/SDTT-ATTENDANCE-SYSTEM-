@@ -19,6 +19,12 @@ try:
 except ImportError:
     cv2 = None
 
+try:
+    from PIL import Image, ImageOps
+except ImportError:
+    Image = None
+    ImageOps = None
+
 from app.config import (
     FILMSTRIP_KEY_FRAMES,
     HEADING_MAX_GAP_DEG,
@@ -70,12 +76,25 @@ class VerificationOutcome:
 
 
 def parse_image_frame(image_bytes: bytes) -> Optional[np.ndarray]:
-    """Decode raw image bytes into a BGR NumPy array."""
-    if cv2 is None or not image_bytes:
+    """Decode raw image bytes into a BGR NumPy array with EXIF orientation correction."""
+    if not image_bytes:
+        return None
+    if Image is not None and ImageOps is not None:
+        try:
+            pil_img = Image.open(io.BytesIO(image_bytes))
+            pil_img = ImageOps.exif_transpose(pil_img)
+            if pil_img.mode != "RGB":
+                pil_img = pil_img.convert("RGB")
+            rgb = np.array(pil_img)
+            if cv2 is not None:
+                return cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
+            return rgb[:, :, ::-1]  # RGB to BGR
+        except Exception:
+            pass
+    if cv2 is None:
         return None
     arr = np.frombuffer(image_bytes, np.uint8)
-    img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
-    return img
+    return cv2.imdecode(arr, cv2.IMREAD_COLOR)
 
 
 def compute_image_metrics(img_bgr: np.ndarray) -> tuple[float, float]:

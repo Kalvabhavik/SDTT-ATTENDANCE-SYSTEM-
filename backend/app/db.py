@@ -220,23 +220,101 @@ class InMemoryDatabase:
 
     def seed_defaults(self) -> None:
         self.tables.clear()
-        # Seed default profiles (teacher + 2 students)
         teacher_id = "00000000-0000-0000-0000-000000000001"
         student1_id = "00000000-0000-0000-0000-000000000002"
         student2_id = "00000000-0000-0000-0000-000000000003"
+        controller_id = "00000000-0000-0000-0000-000000000004"
         class1_id = "11111111-1111-1111-1111-111111111111"
+        class2_id = "22222222-2222-2222-2222-222222222222"
+        class3_id = "33333333-3333-3333-3333-333333333333"
+        class4_id = "44444444-4444-4444-4444-444444444444"
 
         self.tables["profiles"] = [
             {"id": teacher_id, "name": "Prof. Alan Turing", "email": "teacher@demo.edu", "role": "teacher"},
-            {"id": student1_id, "name": "Ada Lovelace", "email": "student1@demo.edu", "role": "student"},
-            {"id": student2_id, "name": "Grace Hopper", "email": "student2@demo.edu", "role": "student"},
+            {
+                "id": student1_id,
+                "name": "Ada Lovelace",
+                "email": "student1@demo.edu",
+                "role": "student",
+                "roll_number": "CS-2026-001",
+                "student_id": "STU-001",
+                "registration_locked": False,
+            },
+            {
+                "id": student2_id,
+                "name": "Grace Hopper",
+                "email": "student2@demo.edu",
+                "role": "student",
+                "roll_number": "CS-2026-002",
+                "student_id": "STU-002",
+                "registration_locked": False,
+            },
+            {
+                "id": controller_id,
+                "name": "Academic Controller",
+                "email": "controller@demo.edu",
+                "role": "controller",
+            },
         ]
         self.tables["classes"] = [
-            {"id": class1_id, "name": "CS-101: Introduction to Computing", "code": "CS-101", "teacher_id": teacher_id, "created_at": utc_now()},
+            {
+                "id": class1_id,
+                "name": "CS-101: Introduction to Computing",
+                "code": "CS-101",
+                "section": "Section A",
+                "room_number": "LH-120",
+                "capacity": 120,
+                "hall_type": "120-Seater Lecture Theater",
+                "room_photo": "https://images.unsplash.com/photo-1580582932707-520aed937b7b?w=800",
+                "teacher_id": teacher_id,
+                "created_at": utc_now(),
+            },
+            {
+                "id": class2_id,
+                "name": "CS-204: Data Structures & Algorithms",
+                "code": "CS-204",
+                "section": "Section B",
+                "room_number": "SEM-80",
+                "capacity": 80,
+                "hall_type": "80-Seater Seminar Hall",
+                "room_photo": "https://images.unsplash.com/photo-1517245386807-bb43f82c33c4?w=800",
+                "teacher_id": teacher_id,
+                "created_at": utc_now(),
+            },
+            {
+                "id": class3_id,
+                "name": "CS-301: Operating Systems & Architecture",
+                "code": "CS-301",
+                "section": "Section C",
+                "room_number": "AMP-240",
+                "capacity": 240,
+                "hall_type": "240-Seater Tiered Amphitheater",
+                "room_photo": "https://images.unsplash.com/photo-1524178232363-1fb2b075b655?w=800",
+                "teacher_id": teacher_id,
+                "created_at": utc_now(),
+            },
+            {
+                "id": class4_id,
+                "name": "CS-405: Computer Vision & AI",
+                "code": "CS-405",
+                "section": "Honors",
+                "room_number": "AUD-260",
+                "capacity": 260,
+                "hall_type": "260-Seater Grand Auditorium",
+                "room_photo": "https://images.unsplash.com/photo-1562774053-701939374585?w=800",
+                "teacher_id": teacher_id,
+                "created_at": utc_now(),
+            },
         ]
         self.tables["enrollments"] = [
             {"class_id": class1_id, "student_id": student1_id},
             {"class_id": class1_id, "student_id": student2_id},
+            {"class_id": class2_id, "student_id": student1_id},
+            {"class_id": class2_id, "student_id": student2_id},
+            {"class_id": class3_id, "student_id": student1_id},
+            {"class_id": class3_id, "student_id": student2_id},
+            {"class_id": class4_id, "student_id": student1_id},
+            {"class_id": class4_id, "student_id": student2_id},
         ]
         self.tables["sessions"] = []
         self.tables["attendance"] = []
@@ -244,6 +322,16 @@ class InMemoryDatabase:
         self.tables["face_templates"] = []
         self.tables["audit_log"] = []
         self.tables["notifications"] = []
+        self.tables["system_settings"] = [
+            {
+                "id": "setting-reg-window",
+                "key": "registration_window",
+                "value": "open",
+                "is_open": True,
+                "updated_at": utc_now(),
+                "updated_by": controller_id,
+            }
+        ]
 
 
 # Singleton client holder

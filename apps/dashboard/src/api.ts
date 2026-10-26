@@ -1,4 +1,5 @@
-import { demoClasses, demoNotifications, demoNotifications2, demoRoster, demoSessions, demoStudent, demoStudent2, demoStudentAttendance, demoStudentAttendance2, demoTeacher, type AttendanceEntry, type AuditItem, type ClassItem, type Notification, type Report, type ReportRow, type ReviewItem, type Role, type Session, type StudentAttendance, type Suggestion, type User } from './types'
+import { demoClasses, demoController, demoNotifications, demoNotifications2, demoRoster, demoSessions, demoStudent, demoStudent2, demoStudentAttendance, demoStudentAttendance2, demoTeacher, type AttendanceEntry, type AuditItem, type ClassItem, type ControllerClass, type ControllerStudent, type Notification, type Report, type ReportRow, type ReviewItem, type Role, type Session, type StudentAttendance, type Suggestion, type User } from './types'
+export type { ControllerClass, ControllerStudent } from './types'
 
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api').replace(/\/$/, '')
 const localModeKey = 'rollcall-local-mode'
@@ -15,7 +16,9 @@ function number(value: unknown, fallback = 0): number { return typeof value === 
 function status(value: unknown): AttendanceEntry['status'] { return value === 'present' || value === 'absent' || value === 'pending' ? value : 'pending' }
 function normalizeUser(value: unknown): User {
   const raw = record(value)
-  return { id: id(raw.id), name: text(raw.name, 'User'), email: text(raw.email), role: raw.role === 'teacher' ? 'teacher' : 'student' }
+  const r = text(raw.role)
+  const role: Role = r === 'controller' ? 'controller' : r === 'teacher' ? 'teacher' : 'student'
+  return { id: id(raw.id), name: text(raw.name, 'User'), email: text(raw.email), role }
 }
 function normalizeAttendance(value: unknown): AttendanceEntry {
   const raw = record(value)
@@ -37,14 +40,18 @@ function normalizeSuggestion(value: unknown): Suggestion {
 }
 function normalizeReviewItem(value: unknown): ReviewItem {
   const raw = record(value)
+  const rawStatus = String(raw.status ?? raw.state ?? 'flagged')
+  const status: ReviewItem['status'] = rawStatus === 'verified' || rawStatus === 'rejected' ? rawStatus : 'flagged'
+  const reasonCodes = list(raw.reason_codes).map(r => String(r))
   return {
-    id: id(raw.id),
+    id: id(raw.id ?? raw.attempt_id),
+    attempt_id: raw.attempt_id === undefined || raw.attempt_id === null ? id(raw.id) : String(raw.attempt_id),
     session_id: id(raw.session_id),
     student_id: id(raw.student_id),
     student_name: text(raw.student_name, 'Student'),
     student_email: text(raw.student_email),
-    status: (raw.status as ReviewItem['status']) || 'flagged',
-    reason_codes: list(raw.reason_codes).map(r => String(r)),
+    status,
+    reason_codes: reasonCodes.length > 0 ? reasonCodes : (raw.error_code ? [String(raw.error_code)] : ['FLAGGED']),
     created_at: text(raw.created_at),
     filmstrip_urls: list(raw.filmstrip_urls).map(u => String(u)),
     metrics: record(raw.metrics),
@@ -202,9 +209,86 @@ export async function reports(sessionId: string): Promise<Report> {
   const raw = record(await request<unknown>(`/reports/sessions/${encodeURIComponent(sessionId)}`))
   return { session: normalizeSession(raw.session), rows: list(raw.rows).map(normalizeReportRow), csv: text(raw.csv), pdf_html: text(raw.pdf_html ?? raw.pdf) }
 }
-export async function audit(sessionId: string): Promise<AuditItem[]> {
-  if (isLocalMode()) return [{ id: 'audit-1', session_id: sessionId, action: 'session.created', actor_name: demoTeacher.name, timestamp: new Date(Date.now() - 3600000).toISOString(), created_at: new Date(Date.now() - 3600000).toISOString(), note: 'Created from HCI class' }, { id: 'audit-2', session_id: sessionId, action: 'capture.simulated', actor_name: demoTeacher.name, timestamp: new Date(Date.now() - 1800000).toISOString(), created_at: new Date(Date.now() - 1800000).toISOString(), note: '3 synthetic suggestions generated; image discarded' }]
-  return list(await request<unknown>(`/audit?session_id=${encodeURIComponent(sessionId)}`)).map(normalizeAudit)
+export interface AnalyticsData {
+  summary: {
+    total_sessions: number
+    total_classes: number
+    total_students: number
+    total_attendance_records: number
+    present_count: number
+    absent_count: number
+    pending_count: number
+    attendance_rate: number
+    verified_live_count: number
+    proxy_blocked_count: number
+  }
+  classes: Array<{
+    id: string
+    name: string
+    code: string
+    room_number: string
+    session_count: number
+  }>
+  students: Array<{
+    id: string
+    name: string
+    roll_number: string
+    email: string
+    registration_locked: boolean
+    present_count: number
+    total_sessions: number
+    attendance_rate: number
+    last_verified_at: string | null
+    last_status: string
+  }>
+  recent_audits: AuditItem[]
+}
+
+export async function getAnalytics(): Promise<AnalyticsData> {
+  if (isLocalMode()) {
+    return {
+      summary: {
+        total_sessions: 3,
+        total_classes: 2,
+        total_students: 28,
+        total_attendance_records: 84,
+        present_count: 76,
+        absent_count: 5,
+        pending_count: 3,
+        attendance_rate: 90.5,
+        verified_live_count: 74,
+        proxy_blocked_count: 2,
+      },
+      classes: [
+        { id: 'c1', name: 'Computer Networks', code: 'CS-301', room_number: 'LH-302', session_count: 2 },
+        { id: 'c2', name: 'Software Engineering', code: 'CS-401', room_number: 'Lab-104', session_count: 1 },
+      ],
+      students: [
+        { id: 's1', name: 'Ada Lovelace', roll_number: 'CS-2024-001', email: 'student1@demo.edu', registration_locked: true, present_count: 3, total_sessions: 3, attendance_rate: 100, last_verified_at: new Date().toISOString(), last_status: 'present' },
+        { id: 's2', name: 'Grace Hopper', roll_number: 'CS-2024-002', email: 'student2@demo.edu', registration_locked: true, present_count: 2, total_sessions: 3, attendance_rate: 66.7, last_verified_at: new Date().toISOString(), last_status: 'present' },
+      ],
+      recent_audits: [
+        { id: 'a1', session_id: 'global', action: 'attendance.verified_live', actor_name: 'Ada Lovelace', timestamp: new Date().toISOString(), note: 'Face verified: Ada Lovelace (CS-2024-001) — 88% match + Classroom LH-302 confirmed' },
+        { id: 'a2', session_id: 'global', action: 'attendance.proxy_rejected', actor_name: 'System Shield', timestamp: new Date(Date.now() - 300000).toISOString(), note: 'Proxy rejected: Scanned face matches Grace Hopper, not registered identity' },
+      ],
+    }
+  }
+  return request<AnalyticsData>('/analytics')
+}
+
+export function getMasterExcelUrl(): string {
+  const t = token ? `?token=${encodeURIComponent(token)}` : ''
+  return `${API_BASE}/reports/analytics/excel${t}`
+}
+
+export async function audit(sessionId?: string): Promise<AuditItem[]> {
+  if (isLocalMode()) return [
+    { id: 'audit-1', session_id: sessionId || 'global', action: 'session.created', actor_name: demoTeacher.name, timestamp: new Date(Date.now() - 3600000).toISOString(), created_at: new Date(Date.now() - 3600000).toISOString(), note: 'Created CS-101 session in LH-302' },
+    { id: 'audit-2', session_id: sessionId || 'global', action: 'attendance.verified_live', actor_name: 'Ada Lovelace', timestamp: new Date(Date.now() - 1800000).toISOString(), created_at: new Date(Date.now() - 1800000).toISOString(), note: 'Face verified (89% ArcFace match) + Classroom LH-302 confirmed' },
+    { id: 'audit-3', session_id: sessionId || 'global', action: 'attendance.proxy_blocked', actor_name: 'Security Shield', timestamp: new Date(Date.now() - 900000).toISOString(), created_at: new Date(Date.now() - 900000).toISOString(), note: 'Proxy blocked: Face template matched another registered student' },
+  ]
+  const url = sessionId ? `/audit?session_id=${encodeURIComponent(sessionId)}` : '/audit'
+  return list(await request<unknown>(url)).map(normalizeAudit)
 }
 export async function studentAttendance(): Promise<StudentAttendance> { if (isLocalMode()) return cachedUser?.id === demoStudent2.id ? demoStudentAttendance2 : demoStudentAttendance; return normalizeStudentAttendance(await request<unknown>('/students/me/attendance')) }
 export async function notifications(): Promise<Notification[]> { if (isLocalMode()) return cachedUser?.role === 'teacher' ? [] : cachedUser?.id === demoStudent2.id ? demoNotifications2 : demoNotifications; return list(await request<unknown>('/notifications')).map(normalizeNotification) }
@@ -220,4 +304,199 @@ export function openRealtime(ticket: string, onMessage: (event: { type: string; 
   return () => socket.close()
 }
 
-export const roleLabel = (role: Role) => role === 'teacher' ? 'Lecturer workspace' : 'Student view'
+export const roleLabel = (role: Role) => role === 'controller' ? 'Academic Controller' : role === 'teacher' ? 'Lecturer workspace' : 'Student view'
+
+export function getExcelExportUrl(sessionId: string): string {
+  const t = token ? `?token=${encodeURIComponent(token)}` : ''
+  return `${API_BASE}/sessions/${encodeURIComponent(sessionId)}/export/excel${t}`
+}
+
+export async function getControllerClasses(): Promise<ControllerClass[]> {
+  if (isLocalMode()) {
+    return [
+      { id: 'class-1', name: 'Computer Networks', code: 'CS-301', section: 'Section A', room_number: 'LH-302', room_photo: 'https://images.unsplash.com/photo-1580582932707-520aed937b7b?w=800', student_count: 32 },
+      { id: 'class-2', name: 'Software Engineering', code: 'CS-401', section: 'Section B', room_number: 'Lab-104', room_photo: 'https://images.unsplash.com/photo-1517245386807-bb43f82c33c4?w=800', student_count: 28 },
+    ]
+  }
+  return list(await request<unknown>('/controller/classes')).map(c => {
+    const raw = record(c)
+    return {
+      id: id(raw.id),
+      name: text(raw.name),
+      code: text(raw.code),
+      section: text(raw.section),
+      room_number: text(raw.room_number),
+      capacity: number(raw.capacity, 120),
+      hall_type: text(raw.hall_type, '120-Seater Lecture Theater'),
+      room_photo: text(raw.room_photo),
+      student_count: number(raw.student_count),
+      teacher_name: text(raw.teacher_name, 'Unassigned'),
+      reference_captured_at: raw.reference_captured_at ? text(raw.reference_captured_at) : undefined,
+    }
+  })
+}
+
+export async function createControllerClass(data: {
+  name: string
+  code: string
+  section?: string
+  room_number?: string
+  capacity?: number
+  hall_type?: string
+  room_photo?: string
+}): Promise<ControllerClass> {
+  const res = record(await request<unknown>('/controller/classes', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  }))
+  return {
+    id: id(res.id),
+    name: text(res.name),
+    code: text(res.code),
+    section: text(res.section),
+    room_number: text(res.room_number),
+    capacity: number(res.capacity, 120),
+    hall_type: text(res.hall_type, '120-Seater Lecture Theater'),
+    room_photo: text(res.room_photo),
+    student_count: number(res.student_count),
+    teacher_name: text(res.teacher_name, 'Unassigned'),
+  }
+}
+
+export async function captureClassRoom(classId: string, data: {
+  photo_base64?: string
+  capacity?: number
+  hall_type?: string
+  room_number?: string
+}): Promise<ControllerClass> {
+  const formData = new FormData()
+  if (data.photo_base64) formData.append('photo_base64', data.photo_base64)
+  if (data.capacity) formData.append('capacity', String(data.capacity))
+  if (data.hall_type) formData.append('hall_type', data.hall_type)
+  if (data.room_number) formData.append('room_number', data.room_number)
+
+  const currentToken = token || window.localStorage.getItem('rollcall-token') || ''
+  const headers: Record<string, string> = {}
+  if (currentToken) headers['Authorization'] = `Bearer ${currentToken}`
+
+  const res = await fetch(`${API_BASE}/controller/classes/${encodeURIComponent(classId)}/capture-room`, {
+    method: 'POST',
+    headers,
+    body: formData,
+  })
+  if (!res.ok) throw new Error('Failed to capture room reference')
+  const json = await res.json()
+  return {
+    id: id(json.class_id || classId),
+    name: text(json.name),
+    code: text(json.code),
+    room_number: text(json.room_number),
+    capacity: number(json.capacity, 120),
+    hall_type: text(json.hall_type),
+    room_photo: text(json.room_photo),
+  }
+}
+
+export async function getControllerStudents(): Promise<ControllerStudent[]> {
+  if (isLocalMode()) {
+    return [
+      { id: 'student-1', name: 'Jordan Ellis', email: 'student1@demo.edu', roll_number: 'CS-2026-001', student_id: 'STU-9021', registration_locked: true, has_template: true },
+      { id: 'student-2', name: 'Samira Patel', email: 'student2@demo.edu', roll_number: 'CS-2026-002', student_id: 'STU-9022', registration_locked: false, has_template: false },
+    ]
+  }
+  return list(await request<unknown>('/controller/students')).map(s => {
+    const raw = record(s)
+    return {
+      id: id(raw.id),
+      name: text(raw.name),
+      email: text(raw.email),
+      roll_number: text(raw.roll_number),
+      student_id: text(raw.student_id),
+      registration_locked: Boolean(raw.registration_locked),
+      has_template: Boolean(raw.has_template),
+    }
+  })
+}
+
+export async function createControllerStudent(data: { name: string; email: string; roll_number?: string; student_id?: string }): Promise<ControllerStudent> {
+  const res = record(await request<unknown>('/controller/students', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  }))
+  return {
+    id: id(res.id),
+    name: text(res.name),
+    email: text(res.email),
+    roll_number: text(res.roll_number),
+    student_id: text(res.student_id),
+    registration_locked: Boolean(res.registration_locked),
+    has_template: Boolean(res.has_template),
+  }
+}
+
+export async function unlockStudentRegistration(studentId: string): Promise<void> {
+  await request(`/controller/students/${encodeURIComponent(studentId)}/unlock`, {
+    method: 'POST',
+  })
+}
+
+export async function setSessionReference(sessionId: string, data: { photo_base64?: string; photo?: File }): Promise<{ session_id: string; status: string; room_photo: string }> {
+  const currentToken = token || window.localStorage.getItem('rollcall-token') || ''
+  const headers: Record<string, string> = {}
+  if (currentToken) headers['Authorization'] = `Bearer ${currentToken}`
+
+  const formData = new FormData()
+  if (data.photo) formData.append('photo', data.photo)
+  if (data.photo_base64) formData.append('photo_base64', data.photo_base64)
+
+  const res = await fetch(`${API_BASE}/sessions/${encodeURIComponent(sessionId)}/reference`, {
+    method: 'POST',
+    headers,
+    body: formData,
+  })
+  if (!res.ok) throw new Error('Failed to set session reference')
+  return res.json()
+}
+
+export async function getRegistrationWindow(): Promise<{ is_open: boolean; updated_at: string; updated_by?: string }> {
+  if (isLocalMode()) return { is_open: true, updated_at: new Date().toISOString() }
+  return request<{ is_open: boolean; updated_at: string; updated_by?: string }>('/controller/registration-window')
+}
+
+export async function setRegistrationWindow(isOpen: boolean, note?: string): Promise<{ is_open: boolean; status: string; message: string }> {
+  if (isLocalMode()) return { is_open: isOpen, status: isOpen ? 'open' : 'closed', message: 'Local updated' }
+  return request<{ is_open: boolean; status: string; message: string }>('/controller/registration-window', {
+    method: 'POST',
+    body: JSON.stringify({ is_open: isOpen, note }),
+  })
+}
+
+export async function importStudentRegistry(params: { file?: File; csvText?: string }): Promise<{
+  total_processed: number
+  imported: number
+  updated: number
+  error_count: number
+  errors: string[]
+  message: string
+}> {
+  const currentToken = token || window.localStorage.getItem('rollcall-token') || ''
+  const headers: Record<string, string> = {}
+  if (currentToken) headers['Authorization'] = `Bearer ${currentToken}`
+
+  const formData = new FormData()
+  if (params.file) formData.append('file', params.file)
+  if (params.csvText) formData.append('csv_text', params.csvText)
+
+  const res = await fetch(`${API_BASE}/controller/registry/import`, {
+    method: 'POST',
+    headers,
+    body: formData,
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Import failed' }))
+    throw new Error(err.detail || 'Failed to import student registry')
+  }
+  return res.json()
+}
+
+

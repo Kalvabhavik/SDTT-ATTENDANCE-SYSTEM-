@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'screens/controller_screen.dart';
 import 'screens/enrollment_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/role_selection_screen.dart';
@@ -59,9 +60,11 @@ class _AttendanceAppState extends State<AttendanceApp> {
         },
         child: state.user == null
             ? RoleSelectionScreen(key: const ValueKey('role_select'), state: state)
-            : (state.enrollmentStatus?.enrolled == false
-                ? EnrollmentScreen(key: const ValueKey('enrollment'), state: state)
-                : HomeScreen(key: const ValueKey('home'), state: state)),
+            : (state.isController
+                ? ControllerScreen(key: const ValueKey('controller'), state: state)
+                : (state.isStudent && state.enrollmentStatus?.enrolled == false
+                    ? EnrollmentScreen(key: const ValueKey('enrollment'), state: state)
+                    : HomeScreen(key: const ValueKey('home'), state: state))),
       ),
     );
   }

@@ -1,6 +1,5 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import '../config/app_config.dart';
 import '../state/app_state.dart';
 import '../widgets/app_widgets.dart';
 
@@ -31,13 +30,23 @@ class _LoginScreenState extends State<LoginScreen> {
     super.initState();
     currentRole = widget.role ?? widget.state.selectedRole ?? 'student';
     final isLecturer = currentRole == 'lecturer' || currentRole == 'teacher';
+    final isController = currentRole == 'controller' || currentRole == 'admin';
 
-    // Only prefill demo credentials in debug mode
+    String defaultEmail = 'student1@demo.edu';
+    String defaultPass = 'student123';
+    if (isLecturer) {
+      defaultEmail = 'teacher@demo.edu';
+      defaultPass = 'teach123';
+    } else if (isController) {
+      defaultEmail = 'controller@demo.edu';
+      defaultPass = 'admin123';
+    }
+
     emailController = TextEditingController(
-      text: kDebugMode ? (isLecturer ? 'teacher@demo.edu' : 'student1@demo.edu') : '',
+      text: kDebugMode ? defaultEmail : '',
     );
     passwordController = TextEditingController(
-      text: kDebugMode ? (isLecturer ? 'teach123' : 'student123') : '',
+      text: kDebugMode ? defaultPass : '',
     );
   }
 
@@ -84,8 +93,9 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     final isLecturer = currentRole == 'lecturer' || currentRole == 'teacher';
-    final roleLabel = isLecturer ? 'Lecturer' : 'Student';
-    final roleColor = isLecturer ? AppColors.secondary : AppColors.primary;
+    final isController = currentRole == 'controller' || currentRole == 'admin';
+    final roleLabel = isController ? 'Academic Controller' : (isLecturer ? 'Lecturer' : 'Student');
+    final roleColor = isController ? const Color(0xFF7C3AED) : (isLecturer ? AppColors.secondary : AppColors.primary);
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -132,10 +142,10 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                   ),
                   const SizedBox(height: 6),
-                  Center(
+                  const Center(
                     child: Text(
                       'Sign in with your verified campus credentials',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 13.5,
                         color: AppColors.slate,
                       ),
