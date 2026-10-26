@@ -6,6 +6,17 @@ import '../widgets/app_widgets.dart';
 import 'notifications_screen.dart';
 import 'session_screen.dart';
 
+void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+  runApp(
+    MaterialApp(
+      debugShowCheckedModeBanner: false,
+      theme: buildTheme(),
+      home: HomeScreen(state: AppState()),
+    ),
+  );
+}
+
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key, required this.state});
   final AppState state;
