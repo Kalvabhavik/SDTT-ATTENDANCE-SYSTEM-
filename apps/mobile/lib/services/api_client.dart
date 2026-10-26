@@ -59,22 +59,25 @@ class ApiClient {
       return decoded;
     } on SocketException {
       throw ApiException(
-          'Cannot reach the attendance service. Check your connection or API base URL.');
+          'Cannot reach attendance service. Check your network connection.');
     } on http.ClientException {
       throw ApiException('The attendance service is unavailable. Try again.');
     } on ApiException {
       rethrow;
     } catch (_) {
       throw ApiException(
-          'The request timed out. Check your connection and retry.');
+          'The request timed out. Check connection and retry.');
     }
   }
 
-  Future<AuthSession> login(String email, String password) async {
-    final data = await _request('POST', '/auth/login',
-        body: {'email': email, 'password': password});
-    final session =
-        AuthSession.fromJson(Map<String, dynamic>.from(data as Map));
+  Future<AuthSession> login(String email, String password, {String? selectedRole}) async {
+    final body = <String, dynamic>{
+      'email': email.trim(),
+      'password': password,
+      if (selectedRole != null) 'selected_role': selectedRole,
+    };
+    final data = await _request('POST', '/auth/login', body: body);
+    final session = AuthSession.fromJson(Map<String, dynamic>.from(data as Map));
     accessToken = session.accessToken;
     return session;
   }
@@ -82,86 +85,162 @@ class ApiClient {
   Future<User> me() async => User.fromJson(
       Map<String, dynamic>.from(await _request('GET', '/me') as Map));
 
+  Future<DateTime> serverTime() async {
+    final res = await _request('GET', '/time');
+    if (res is Map && res['server_time'] != null) {
+      return DateTime.tryParse(res['server_time'].toString()) ?? DateTime.now();
+    }
+    return DateTime.now();
+  }
+
+  Future<EnrollmentStatus> enrollmentStatus() async {
+    final res = await _request('GET', '/auth/enrollment-status');
+    return EnrollmentStatus.fromJson(Map<String, dynamic>.from(res as Map));
+  }
+
+  Future<Map<String, dynamic>> enrollReferenceSelfie(
+      List<int> imageBytes, bool consent) async {
+    final uri = _endpoint('/auth/enroll');
+    final req = http.MultipartRequest('POST', uri);
+    if (accessToken != null) {
+      req.headers['Authorization'] = 'Bearer $accessToken';
+    }
+    req.fields['consent'] = consent ? 'true' : 'false';
+    req.files.add(http.MultipartFile.fromBytes(
+      'photo',
+      imageBytes,
+      filename: 'reference_selfie.jpg',
+    ));
+
+    final streamed = await _client.send(req).timeout(const Duration(seconds: 25));
+    final text = await streamed.stream.bytesToString();
+    dynamic decoded;
+    try {
+      decoded = jsonDecode(text);
+    } catch (_) {
+      decoded = text;
+    }
+    if (streamed.statusCode != 200) {
+      final msg = decoded is Map ? (decoded['detail'] ?? decoded['message']) : null;
+      throw ApiException(msg?.toString() ?? 'Enrollment failed (${streamed.statusCode}).',
+          statusCode: streamed.statusCode);
+    }
+    return Map<String, dynamic>.from(decoded as Map);
+  }
+
   Future<List<Classroom>> classes() async {
     final raw = await _request('GET', '/classes');
-    final list =
-        raw is List ? raw : (raw is Map ? raw['classes'] : <dynamic>[]);
-    return (list is List ? list : <dynamic>[])
+    final list = raw is List ? raw : <dynamic>[];
+    return list
         .map((e) => Classroom.fromJson(Map<String, dynamic>.from(e as Map)))
         .toList();
   }
 
   Future<List<AttendanceSession>> sessions() async {
     final raw = await _request('GET', '/sessions');
-    final list =
-        raw is List ? raw : (raw is Map ? raw['sessions'] : <dynamic>[]);
-    return (list is List ? list : <dynamic>[])
-        .map((e) =>
-            AttendanceSession.fromJson(Map<String, dynamic>.from(e as Map)))
+    final list = raw is List ? raw : <dynamic>[];
+    return list
+        .map((e) => AttendanceSession.fromJson(Map<String, dynamic>.from(e as Map)))
         .toList();
   }
 
-  Future<AttendanceSession> session(int sessionId) async =>
-      AttendanceSession.fromJson(Map<String, dynamic>.from(
-          await _request('GET', '/sessions/$sessionId') as Map));
+  Future<AttendanceSession> session(String id) async =>
+      AttendanceSession.fromJson(
+          Map<String, dynamic>.from(await _request('GET', '/sessions/$id') as Map));
 
-  Future<AttendanceSession> createSession(int classId) async =>
-      AttendanceSession.fromJson(Map<String, dynamic>.from(
-          await _request('POST', '/sessions', body: {'class_id': classId})
-              as Map));
+  Future<AttendanceSession> createSession(String classId, {int durationMinutes = 10}) async {
+    final data = await _request(
+      'POST',
+      '/sessions',
+      body: {'class_id': classId, 'duration_minutes': durationMinutes},
+    );
+    return AttendanceSession.fromJson(Map<String, dynamic>.from(data as Map));
+  }
 
-  Future<List<Suggestion>> capture(int sessionId, File photo) async {
-    final uri = _endpoint('/sessions/$sessionId/capture');
-    final request = http.MultipartRequest('POST', uri);
-    request.headers['Accept'] = 'application/json';
+  Future<Map<String, dynamic>> checkinSweep({
+    required String sessionId,
+    required String attemptId,
+    required List<Map<String, dynamic>> metadata,
+    required List<List<int>> frameBytesList,
+  }) async {
+    final uri = _endpoint('/sessions/$sessionId/checkin');
+    final req = http.MultipartRequest('POST', uri);
     if (accessToken != null) {
-      request.headers['Authorization'] = 'Bearer $accessToken';
+      req.headers['Authorization'] = 'Bearer $accessToken';
     }
-    request.files.add(await http.MultipartFile.fromPath('photo', photo.path));
+    req.fields['attempt_id'] = attemptId;
+    req.fields['metadata'] = jsonEncode(metadata);
+
+    for (int i = 0; i < frameBytesList.length; i++) {
+      req.files.add(http.MultipartFile.fromBytes(
+        'frames',
+        frameBytesList[i],
+        filename: 'frame_$i.jpg',
+      ));
+    }
+
+    final streamed = await _client.send(req).timeout(const Duration(seconds: 40));
+    final text = await streamed.stream.bytesToString();
+    dynamic decoded;
     try {
-      final response =
-          await request.send().timeout(const Duration(seconds: 30));
-      final text = await response.stream.bytesToString();
-      final decoded = text.isEmpty ? <String, dynamic>{} : jsonDecode(text);
-      if (response.statusCode < 200 || response.statusCode >= 300) {
-        final detail =
-            decoded is Map ? decoded['detail'] ?? decoded['message'] : null;
-        throw ApiException(
-            detail?.toString() ??
-                'Camera capture failed (${response.statusCode}).',
-            statusCode: response.statusCode);
-      }
-      final raw = decoded is List
-          ? decoded
-          : decoded is Map
-              ? decoded['suggestions']
-              : <dynamic>[];
-      return (raw is List ? raw : <dynamic>[])
-          .map((e) => Suggestion.fromJson(Map<String, dynamic>.from(e as Map)))
-          .toList();
-    } on ApiException {
-      rethrow;
-    } on SocketException {
-      throw ApiException(
-          'Upload could not reach the service. Use manual roll call or retry.');
+      decoded = jsonDecode(text);
     } catch (_) {
-      throw ApiException(
-          'Capture upload failed. Use manual roll call or retry.');
+      decoded = text;
     }
+    if (streamed.statusCode != 200) {
+      final msg = decoded is Map ? (decoded['detail'] ?? decoded['message']) : null;
+      throw ApiException(msg?.toString() ?? 'Sweep checkin failed (${streamed.statusCode}).',
+          statusCode: streamed.statusCode);
+    }
+    return Map<String, dynamic>.from(decoded as Map);
   }
 
-  Future<void> updateAttendance(int sessionId, int studentId, String status,
-      {String? note}) async {
-    await _request('PATCH', '/sessions/$sessionId/attendance/$studentId',
-        body: {
-          'status': status,
-          if (note != null && note.isNotEmpty) 'note': note
-        });
+  Future<List<CheckinReviewItem>> reviewQueue(String sessionId) async {
+    final raw = await _request('GET', '/sessions/$sessionId/review-queue');
+    final list = raw is List ? raw : <dynamic>[];
+    return list
+        .map((e) => CheckinReviewItem.fromJson(Map<String, dynamic>.from(e as Map)))
+        .toList();
   }
 
-  Future<void> finalizeSession(int sessionId) async =>
-      _request('POST', '/sessions/$sessionId/finalize',
-          body: {'mark_pending_absent': true});
+  Future<Map<String, dynamic>> reviewDecision(
+    String sessionId,
+    String attemptId,
+    String decision, {
+    String? note,
+  }) async {
+    final res = await _request(
+      'POST',
+      '/sessions/$sessionId/review/$attemptId',
+      body: {'decision': decision, if (note != null) 'note': note},
+    );
+    return Map<String, dynamic>.from(res as Map);
+  }
+
+  Future<void> updateAttendance(
+    String sessionId,
+    String studentId,
+    String status, {
+    String? note,
+  }) async {
+    await _request(
+      'PATCH',
+      '/sessions/$sessionId/attendance/$studentId',
+      body: {'status': status, 'note': note},
+    );
+  }
+
+  Future<AttendanceSession> finalizeSession(
+    String sessionId, {
+    bool markPendingAbsent = true,
+  }) async {
+    final data = await _request(
+      'POST',
+      '/sessions/$sessionId/finalize',
+      body: {'mark_pending_absent': markPendingAbsent},
+    );
+    return AttendanceSession.fromJson(Map<String, dynamic>.from(data as Map));
+  }
 
   Future<StudentAttendance> studentAttendance() async =>
       StudentAttendance.fromJson(Map<String, dynamic>.from(
@@ -169,22 +248,23 @@ class ApiClient {
 
   Future<List<AppNotification>> notifications() async {
     final raw = await _request('GET', '/notifications');
-    final list = raw is List
-        ? raw
-        : raw is Map
-            ? raw['notifications']
-            : <dynamic>[];
-    return (list is List ? list : <dynamic>[])
-        .map((e) =>
-            AppNotification.fromJson(Map<String, dynamic>.from(e as Map)))
+    final list = raw is List ? raw : <dynamic>[];
+    return list
+        .map((e) => AppNotification.fromJson(Map<String, dynamic>.from(e as Map)))
         .toList();
   }
 
-  Future<void> markNotificationRead(int id) async =>
-      _request('POST', '/notifications/$id/read');
+  Future<void> markNotificationRead(String id) async {
+    await _request('POST', '/notifications/$id/read');
+  }
 
   Future<String> wsTicket() async {
-    final data = await _request('POST', '/auth/ws-ticket');
+    final data = await _request('POST', '/realtime/ticket');
     return (data as Map)['ticket'].toString();
+  }
+
+  Future<SessionReport> report(String sessionId) async {
+    final data = await _request('GET', '/sessions/$sessionId/report');
+    return SessionReport.fromJson(Map<String, dynamic>.from(data as Map));
   }
 }

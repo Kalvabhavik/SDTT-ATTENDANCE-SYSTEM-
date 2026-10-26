@@ -1,5 +1,4 @@
-import 'dart:io';
-
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import '../models/models.dart';
@@ -10,15 +9,22 @@ class AppState extends ChangeNotifier {
   AppState() {
     realtime = RealtimeService(api);
   }
+
   final ApiClient api = ApiClient();
   late final RealtimeService realtime;
+
   AuthSession? auth;
+  String? selectedRole; // 'student' or 'lecturer'
+  Duration serverClockOffset = Duration.zero;
+  EnrollmentStatus? enrollmentStatus;
+
   List<Classroom> classes = [];
   List<AttendanceSession> sessions = [];
   List<AppNotification> notifications = [];
   StudentAttendance? studentAttendance;
   AttendanceSession? activeSession;
-  List<Suggestion> suggestions = [];
+  List<CheckinReviewItem> reviewItems = [];
+
   bool busy = false;
   String? error;
   String? liveMessage;
@@ -27,12 +33,33 @@ class AppState extends ChangeNotifier {
   bool get isTeacher => user?.isTeacher == true;
   int get unreadCount => notifications.where((n) => !n.read).length;
 
+  /// Returns current server-authoritative time estimated via clock offset
+  DateTime get serverTimeNow => DateTime.now().add(serverClockOffset);
+
+  void setRole(String role) {
+    selectedRole = role;
+    notifyListeners();
+  }
+
+  Future<void> syncServerTime() async {
+    try {
+      final st = await api.serverTime();
+      serverClockOffset = st.difference(DateTime.now());
+    } catch (_) {}
+  }
+
   Future<bool> login(String email, String password) async {
     busy = true;
     error = null;
     notifyListeners();
     try {
-      auth = await api.login(email.trim(), password);
+      await syncServerTime();
+      auth = await api.login(
+        email.trim(),
+        password,
+        selectedRole: selectedRole,
+      );
+      enrollmentStatus = await api.enrollmentStatus();
       await loadHome();
       _startRealtime();
       return true;
@@ -45,11 +72,20 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  Future<void> checkEnrollment() async {
+    try {
+      enrollmentStatus = await api.enrollmentStatus();
+      notifyListeners();
+    } catch (_) {}
+  }
+
   Future<void> loadHome() async {
     classes = await api.classes();
     sessions = await api.sessions();
     notifications = await api.notifications();
-    if (!isTeacher) studentAttendance = await api.studentAttendance();
+    if (!isTeacher) {
+      studentAttendance = await api.studentAttendance();
+    }
     notifyListeners();
   }
 
@@ -58,6 +94,7 @@ class AppState extends ChangeNotifier {
     error = null;
     notifyListeners();
     try {
+      await syncServerTime();
       await loadHome();
     } on ApiException catch (e) {
       error = e.message;
@@ -69,39 +106,67 @@ class AppState extends ChangeNotifier {
 
   void _startRealtime() {
     realtime.connect(onEvent: (event) async {
-      liveMessage = 'Live update: ${event.type}';
+      liveMessage = 'Live: ${event.type}';
       if (event.type == 'connected') {
         await loadHome();
-        liveMessage = 'Live updates connected';
         return;
       }
-      if (event.type == 'notification.created' ||
-          event.type == 'session.finalized') {
+      if (event.type == 'notification.created') {
         notifications = await api.notifications();
       }
-      if (event.type == 'session.finalized' && !isTeacher) {
-        studentAttendance = await api.studentAttendance();
+      if (event.type == 'session.closed') {
+        sessions = await api.sessions();
+        if (activeSession != null) {
+          activeSession = await api.session(activeSession!.id);
+        }
       }
       if (event.type == 'attendance.changed' && activeSession != null) {
         activeSession = await api.session(activeSession!.id);
+        if (isTeacher) {
+          reviewItems = await api.reviewQueue(activeSession!.id);
+        }
       }
-      if (event.type == 'session.created' ||
-          event.type == 'session.finalized') {
+      if (event.type == 'session.created' || event.type == 'session.finalized') {
         sessions = await api.sessions();
+        if (!isTeacher) {
+          studentAttendance = await api.studentAttendance();
+        }
       }
       notifyListeners();
-    }, onError: (message) {
-      liveMessage = message;
+    }, onError: (msg) {
+      liveMessage = msg;
       notifyListeners();
     });
   }
 
-  Future<void> openSession(int sessionId) async {
+  Future<bool> startSession(String classId, {int durationMinutes = 10}) async {
     busy = true;
     error = null;
     notifyListeners();
     try {
+      await syncServerTime();
+      activeSession = await api.createSession(classId, durationMinutes: durationMinutes);
+      await loadHome();
+      return true;
+    } on ApiException catch (e) {
+      error = e.message;
+      return false;
+    } finally {
+      busy = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> openSession(String sessionId) async {
+    busy = true;
+    error = null;
+    notifyListeners();
+    try {
+      await syncServerTime();
       activeSession = await api.session(sessionId);
+      if (isTeacher) {
+        reviewItems = await api.reviewQueue(sessionId);
+      }
     } on ApiException catch (e) {
       error = e.message;
     } finally {
@@ -110,109 +175,80 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  Future<bool> startSession(int classId) async {
+  Future<void> refreshReviewQueue(String sessionId) async {
+    try {
+      reviewItems = await api.reviewQueue(sessionId);
+      notifyListeners();
+    } catch (_) {}
+  }
+
+  Future<void> reviewDecision(
+    String sessionId,
+    String attemptId,
+    String decision, {
+    String? note,
+  }) async {
     busy = true;
     error = null;
     notifyListeners();
     try {
-      activeSession = await api.createSession(classId);
-      sessions = await api.sessions();
-      return true;
+      await api.reviewDecision(sessionId, attemptId, decision, note: note);
+      activeSession = await api.session(sessionId);
+      reviewItems = await api.reviewQueue(sessionId);
     } on ApiException catch (e) {
       error = e.message;
-      return false;
     } finally {
       busy = false;
       notifyListeners();
     }
   }
 
-  Future<bool> uploadCapture(File file) async {
-    if (activeSession == null) return false;
-    busy = true;
-    error = null;
-    notifyListeners();
+  Future<void> updateAttendance(
+    String studentId,
+    String status, {
+    String? note,
+  }) async {
+    if (activeSession == null) return;
     try {
-      suggestions = await api.capture(activeSession!.id, file);
-      return true;
-    } on ApiException catch (e) {
-      error = e.message;
-      return false;
-    } finally {
-      busy = false;
-      notifyListeners();
-    }
-  }
-
-  Future<bool> setAttendance(int studentId, String status) async {
-    if (activeSession == null) return false;
-    try {
-      await api.updateAttendance(activeSession!.id, studentId, status);
+      await api.updateAttendance(activeSession!.id, studentId, status, note: note);
       activeSession = await api.session(activeSession!.id);
       notifyListeners();
-      return true;
     } on ApiException catch (e) {
       error = e.message;
       notifyListeners();
-      return false;
     }
   }
 
-  Future<bool> finalizeActive() async {
-    if (activeSession == null) return false;
+  Future<void> finalizeSession({bool markPendingAbsent = true}) async {
+    if (activeSession == null) return;
     busy = true;
     error = null;
     notifyListeners();
     try {
-      await api.finalizeSession(activeSession!.id);
-      activeSession = await api.session(activeSession!.id);
-      sessions = await api.sessions();
-      return true;
+      activeSession = await api.finalizeSession(
+        activeSession!.id,
+        markPendingAbsent: markPendingAbsent,
+      );
+      await loadHome();
     } on ApiException catch (e) {
       error = e.message;
-      return false;
     } finally {
       busy = false;
-      notifyListeners();
-    }
-  }
-
-  Future<void> markNotificationRead(AppNotification item) async {
-    if (item.read) return;
-    try {
-      await api.markNotificationRead(item.id);
-      notifications = notifications
-          .map((n) => n.id == item.id
-              ? AppNotification(
-                  id: n.id,
-                  title: n.title,
-                  message: n.message,
-                  read: true,
-                  createdAt: n.createdAt)
-              : n)
-          .toList();
-      notifyListeners();
-    } on ApiException catch (e) {
-      error = e.message;
       notifyListeners();
     }
   }
 
   Future<void> logout() async {
-    await realtime.dispose();
-    api.accessToken = null;
+    realtime.disconnect();
     auth = null;
-    classes = [];
-    sessions = [];
-    notifications = [];
+    selectedRole = null;
     activeSession = null;
-    suggestions = [];
+    classes.clear();
+    sessions.clear();
+    notifications.clear();
+    reviewItems.clear();
+    studentAttendance = null;
+    enrollmentStatus = null;
     notifyListeners();
-  }
-
-  @override
-  void dispose() {
-    realtime.dispose();
-    super.dispose();
   }
 }

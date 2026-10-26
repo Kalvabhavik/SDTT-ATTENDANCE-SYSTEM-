@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { AlertCircle, ArrowRight, Bell, BookOpen, Check, CheckCircle2, ChevronRight, CircleHelp, CloudOff, Download, FileCheck2, FileText, History, LayoutDashboard, LockKeyhole, LogOut, Menu, MessageSquare, Pencil, Play, Printer, RefreshCw, ScanFace, ShieldCheck, Sparkles, UserRound, Users, Wifi, WifiOff, X, Zap } from 'lucide-react'
 import * as api from './api'
-import { demoClasses, demoRoster, demoSessions, demoStudent, demoTeacher, type AttendanceEntry, type AuditItem, type ClassItem, type Notification, type Report, type Session, type Suggestion, type StudentAttendance, type User } from './types'
+import { demoClasses, demoRoster, demoSessions, demoStudent, demoTeacher, type AttendanceEntry, type AuditItem, type ClassItem, type Notification, type Report, type ReviewItem, type Session, type StudentAttendance, type User } from './types'
 import './styles.css'
 
 type Section = 'overview' | 'sessions' | 'attendance' | 'notifications'
@@ -82,7 +82,7 @@ function App() {
 function Login({ onLogin }: { onLogin: (user: User, local: boolean) => void }) {
   const [email, setEmail] = useState('teacher@demo.edu'); const [password, setPassword] = useState('teach123'); const [loading, setLoading] = useState(false); const [error, setError] = useState('')
   async function submit(event: React.FormEvent) { event.preventDefault(); setLoading(true); setError(''); try { const result = await api.login(email, password); onLogin(result.user, result.local) } catch { setError('That sign-in did not work. Try one of the demo accounts below.') } finally { setLoading(false) } }
-  return <div className="login-page"><div className="login-panel"><div className="brand-block login-brand"><div className="brand-mark"><span>R</span></div><div><strong>rollcall</strong><small>Campus attendance</small></div></div><div className="login-copy"><p className="eyebrow">Campus tool · secure demo</p><h1>Make every class count.</h1><p>Simple attendance workflows for faculty and students, with a clear audit trail behind every decision.</p></div><form onSubmit={submit} className="login-form"><label>Email address<input type="email" value={email} onChange={e => setEmail(e.target.value)} autoComplete="username" required /></label><label>Password<input type="password" value={password} onChange={e => setPassword(e.target.value)} autoComplete="current-password" required /></label>{error && <div className="inline-error"><AlertCircle size={16} /> {error}</div>}<button className="primary-button full" type="submit" disabled={loading}>{loading ? 'Signing in…' : 'Sign in'} <ArrowRight size={17} /></button></form><div className="demo-logins"><span>Quick demo access</span><button onClick={() => { setEmail('teacher@demo.edu'); setPassword('teach123') }}><Users size={14} /> Teacher</button><button onClick={() => { setEmail('student1@demo.edu'); setPassword('student123') }}><UserRound size={14} /> Student</button></div><p className="login-foot"><LockKeyhole size={14} /> Prototype environment · seeded accounts only</p></div><div className="login-aside"><div className="aside-orbit orbit-one" /><div className="aside-orbit orbit-two" /><div className="login-quote"><Sparkles size={20} /><p>“Attendance should be a signal for support, not a source of friction.”</p><small>Built for thoughtful campus teams</small></div><div className="login-points"><div><Check size={15} /> Role-aware workspaces</div><div><Check size={15} /> Explicit review before finalizing</div><div><Check size={15} /> Privacy-first simulated capture</div></div></div></div>
+  return <div className="login-page"><div className="login-panel"><div className="brand-block login-brand"><div className="brand-mark"><span>R</span></div><div><strong>rollcall</strong><small>Campus attendance</small></div></div><div className="login-copy"><p className="eyebrow">Campus tool · secure demo</p><h1>Make every class count.</h1><p>Simple attendance workflows for lecturers and students, with a clear audit trail behind every decision.</p></div><form onSubmit={submit} className="login-form"><label>Email address<input type="email" value={email} onChange={e => setEmail(e.target.value)} autoComplete="username" required /></label><label>Password<input type="password" value={password} onChange={e => setPassword(e.target.value)} autoComplete="current-password" required /></label>{error && <div className="inline-error"><AlertCircle size={16} /> {error}</div>}<button className="primary-button full" type="submit" disabled={loading}>{loading ? 'Signing in…' : 'Sign in'} <ArrowRight size={17} /></button></form><div className="demo-logins"><span>Quick demo access</span><button onClick={() => { setEmail('teacher@demo.edu'); setPassword('teach123') }}><Users size={14} /> Lecturer</button><button onClick={() => { setEmail('student1@demo.edu'); setPassword('student123') }}><UserRound size={14} /> Student</button></div><p className="login-foot"><LockKeyhole size={14} /> Prototype environment · seeded accounts only</p></div><div className="login-aside"><div className="aside-orbit orbit-one" /><div className="aside-orbit orbit-two" /><div className="login-quote"><Sparkles size={20} /><p>“Attendance should be a signal for support, not a source of friction.”</p><small>Built for thoughtful campus teams</small></div><div className="login-points"><div><Check size={15} /> Role-aware workspaces</div><div><Check size={15} /> Explicit review before finalizing</div><div><Check size={15} /> Continuous sweep 9-rule verification</div></div></div></div>
 }
 
 function Overview({ user, onNavigate }: { user: User; onNavigate: (s: Section) => void }) {
@@ -97,7 +97,7 @@ function TeacherOverview({ user, onNavigate }: { user: User; onNavigate: (s: Sec
   const displaySessions = sessions.length ? sessions : api.isLocalMode() ? demoSessions : []
   const finalized = sessions.filter(s => s.status === 'finalized').length
   const enrolled = displayClasses.reduce((total, item) => total + (item.student_count || 0), 0)
-  return <><PageIntro eyebrow={new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }).format(new Date())} title={`Good morning, ${user.name.split(' ')[0]}.`} description="Keep your classes moving. Start a session, review suggestions, and finalize when you’re ready." action={<button className="primary-button" onClick={() => onNavigate('sessions')}><Play size={16} /> Start a session</button>} /><div className="metric-grid"><Metric icon={<BookOpen />} label="Active classes" value={loading ? '—' : String(displayClasses.length)} detail="This term" tone="teal" /><Metric icon={<Zap />} label="Open sessions" value={String(open)} detail="Needs your attention" tone="amber" /><Metric icon={<CheckCircle2 />} label="Finalized sessions" value={String(finalized)} detail="Recorded sessions" tone="violet" /><Metric icon={<MessageSquare />} label="Enrolled students" value={String(enrolled)} detail="Across listed classes" tone="blue" /></div><div className="section-heading"><div><p className="eyebrow">Your teaching space</p><h2>Classes at a glance</h2></div><button className="text-button" onClick={() => onNavigate('attendance')}>View session history <ArrowRight size={15} /></button></div><div className="class-grid">{displayClasses.map(item => <ClassCard key={item.id} item={item} onStart={() => onNavigate('sessions')} />)}</div><div className="dashboard-lower"><div className="panel recent-panel"><div className="panel-heading"><div><p className="eyebrow">Recent activity</p><h3>Session history</h3></div><button className="icon-button" onClick={() => onNavigate('attendance')} aria-label="View all sessions"><ArrowRight size={17} /></button></div>{displaySessions.slice(0, 3).map(s => <SessionRow session={s} key={s.id} />)}</div><div className="panel callout-panel"><div className="callout-icon"><CircleHelp size={20} /></div><div><p className="eyebrow">A calm workflow</p><h3>Review before you finalize</h3><p>Capture suggestions never change attendance automatically. You stay in control, and every edit is audited.</p><button className="text-button" onClick={() => onNavigate('sessions')}>See the workflow <ArrowRight size={15} /></button></div></div></div></>
+  return <><PageIntro eyebrow={new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }).format(new Date())} title={`Good morning, ${user.name.split(' ')[0]}.`} description="Keep your classes moving. Start a timed session, monitor live check-ins, and inspect flagged attempts." action={<button className="primary-button" onClick={() => onNavigate('sessions')}><Play size={16} /> Start a session</button>} /><div className="metric-grid"><Metric icon={<BookOpen />} label="Active classes" value={loading ? '—' : String(displayClasses.length)} detail="This term" tone="teal" /><Metric icon={<Zap />} label="Open sessions" value={String(open)} detail="Needs your attention" tone="amber" /><Metric icon={<CheckCircle2 />} label="Finalized sessions" value={String(finalized)} detail="Recorded sessions" tone="violet" /><Metric icon={<MessageSquare />} label="Enrolled students" value={String(enrolled)} detail="Across listed classes" tone="blue" /></div><div className="section-heading"><div><p className="eyebrow">Your teaching space</p><h2>Classes at a glance</h2></div><button className="text-button" onClick={() => onNavigate('attendance')}>View session history <ArrowRight size={15} /></button></div><div className="class-grid">{displayClasses.map(item => <ClassCard key={item.id} item={item} onStart={() => onNavigate('sessions')} />)}</div><div className="dashboard-lower"><div className="panel recent-panel"><div className="panel-heading"><div><p className="eyebrow">Recent activity</p><h3>Session history</h3></div><button className="icon-button" onClick={() => onNavigate('attendance')} aria-label="View all sessions"><ArrowRight size={17} /></button></div>{displaySessions.slice(0, 3).map(s => <SessionRow session={s} key={s.id} />)}</div><div className="panel callout-panel"><div className="callout-icon"><CircleHelp size={20} /></div><div><p className="eyebrow">Continuous sweep pipeline</p><h3>Review before you finalize</h3><p>Flagged submissions are routed to your review queue with key-frame filmstrips. You stay in control, and every action is audited.</p><button className="text-button" onClick={() => onNavigate('sessions')}>See the workflow <ArrowRight size={15} /></button></div></div></div></>
 }
 function StudentOverview({ user, onNavigate }: { user: User; onNavigate: (s: Section) => void }) {
   const [attendance, setAttendance] = useState<StudentAttendance | null>(null); const [notes, setNotes] = useState<Notification[]>([])
@@ -109,24 +109,278 @@ function StudentOverview({ user, onNavigate }: { user: User; onNavigate: (s: Sec
 
 function TeacherSessions() {
   const [classes, setClasses] = useState<ClassItem[]>([]); const [sessions, setSessions] = useState<Session[]>([]); const [active, setActive] = useState<Session | null>(null); const [loading, setLoading] = useState(true)
+  const [duration, setDuration] = useState(10); const [customDuration, setCustomDuration] = useState('20'); const [isCustom, setIsCustom] = useState(false)
   const displayClasses = classes.length ? classes : api.isLocalMode() ? demoClasses : []
   const load = useCallback(async () => { setLoading(true); try { setClasses(await api.getClasses()); setSessions(await api.getSessions()) } finally { setLoading(false) } }, [])
   useEffect(() => { load(); const fn = () => load(); window.addEventListener('rollcall:refresh', fn); return () => window.removeEventListener('rollcall:refresh', fn) }, [load])
-  async function start(classId: string) { const created = await api.startSession(classId); setActive({ ...created, class_name: classes.find(c => c.id === classId)?.name || created.class_name }); setSessions(prev => [created, ...prev]) }
-  return <><PageIntro eyebrow="Faculty workspace" title="Live sessions" description="Start a session, add a photo file to generate synthetic suggestions, then review every row before you finalize." action={<button className="secondary-button" onClick={load}><RefreshCw size={16} /> Refresh</button>} /><div className="workflow-strip"><WorkflowStep number="01" title="Start" body="Choose a class" active={!active} /><ArrowRight size={17} /><WorkflowStep number="02" title="Review" body="Check suggestions" active={!!active} /><ArrowRight size={17} /><WorkflowStep number="03" title="Finalize" body="Publish the record" active={false} /></div>{active ? <SessionWorkspace session={active} onClose={() => setActive(null)} onFinished={() => { setActive(null); load() }} /> : <div className="session-start-grid"><div className="panel start-panel"><div className="panel-heading"><div><p className="eyebrow">Choose a class</p><h2>Start attendance</h2></div><div className="session-live-dot">Ready</div></div><p className="muted">Opening a session creates a pending roster. No attendance is finalized until you explicitly confirm it.</p><div className="class-list">{!displayClasses.length && <p className="muted">No classes are available for this account.</p>}{displayClasses.map(c => <div className="class-list-row" key={c.id}><div className="class-avatar">{c.code?.slice(0, 2) || 'CL'}</div><div className="class-list-copy"><strong>{c.name}</strong><span>{c.code} · {c.schedule || 'Schedule flexible'} · {c.student_count || 0} students</span></div><button className="primary-button small" onClick={() => start(c.id)}><Play size={14} /> Start</button></div>)}</div></div><div className="panel info-panel"><div className="soft-icon amber"><ScanFace size={21} /></div><p className="eyebrow">Simulated capture</p><h3>Nothing is recognized or saved</h3><p>Uploads are sent only for this request-scoped simulation; the app does not persist them. The response is a list of suggested names and confidence values. The application does not persist the file.</p><div className="disclosure"><ShieldCheck size={15} /><span>Not facial recognition · no embeddings · no email or SMS</span></div></div></div>}</>
+  async function start(classId: string) {
+    const finalDuration = isCustom ? Math.min(60, Math.max(1, parseInt(customDuration, 10) || 10)) : duration
+    const created = await api.startSession(classId, finalDuration)
+    setActive({ ...created, class_name: classes.find(c => c.id === classId)?.name || created.class_name })
+    setSessions(prev => [created, ...prev])
+  }
+  return <><PageIntro eyebrow="Lecturer workspace" title="Live sessions" description="Launch timed attendance sessions with continuous sweep verification, monitor live counts, and review flagged attempts." action={<button className="secondary-button" onClick={load}><RefreshCw size={16} /> Refresh</button>} /><div className="workflow-strip"><WorkflowStep number="01" title="Duration" body="Set time limit" active={!active} /><ArrowRight size={17} /><WorkflowStep number="02" title="Sweep" body="Students capture" active={!!active} /><ArrowRight size={17} /><WorkflowStep number="03" title="Review & Finalize" body="Inspect flagged items" active={false} /></div>{active ? <SessionWorkspace session={active} onClose={() => setActive(null)} onFinished={() => { setActive(null); load() }} /> : <div className="session-start-grid"><div className="panel start-panel"><div className="panel-heading"><div><p className="eyebrow">Choose a class & duration</p><h2>Start attendance session</h2></div><div className="session-live-dot">Ready</div></div><p className="muted">Select attendance window length. Server clock strictly enforces the deadline.</p><div className="duration-selector"><span className="muted" style={{ fontWeight: 700, marginRight: 4 }}>Duration:</span>{[5, 10, 15].map(mins => <button key={mins} type="button" className={`duration-chip ${!isCustom && duration === mins ? 'selected' : ''}`} onClick={() => { setDuration(mins); setIsCustom(false) }}>{mins} min</button>)}<button type="button" className={`duration-chip ${isCustom ? 'selected' : ''}`} onClick={() => setIsCustom(true)}>Custom</button>{isCustom && <input type="number" min="1" max="60" value={customDuration} onChange={e => setCustomDuration(e.target.value)} className="duration-custom-input" placeholder="min" />}</div><div className="class-list">{!displayClasses.length && <p className="muted">No classes are available for this account.</p>}{displayClasses.map(c => <div className="class-list-row" key={c.id}><div className="class-avatar">{c.code?.slice(0, 2) || 'CL'}</div><div className="class-list-copy"><strong>{c.name}</strong><span>{c.code} · {c.schedule || 'Schedule flexible'} · {c.student_count || 0} students</span></div><button className="primary-button small" onClick={() => start(c.id)}><Play size={14} /> Start</button></div>)}</div></div><div className="panel info-panel"><div className="soft-icon teal"><ShieldCheck size={21} /></div><p className="eyebrow">9-Rule Continuous Sweep Pipeline</p><h3>Continuous 180° Sweep Verification</h3><p>Students capture a single smooth sweep from front-camera selfie across neighbors towards the lecturer stage. The backend verifies blur, monotonic gyroscope heading, selfie match, neighbor presence, and lecturer visibility (IPD ≥ 30px).</p><div className="disclosure"><LockKeyhole size={15} /><span>Zero-knowledge storage: ephemeral raw frames purged immediately. Only filmstrip key frames for FLAGGED attempts retained for review.</span></div></div></div>}</>
 }
 
 function SessionWorkspace({ session, onClose, onFinished }: { session: Session; onClose: () => void; onFinished: () => void }) {
-  const [roster, setRoster] = useState<AttendanceEntry[]>(session.attendance || []); const [suggestions, setSuggestions] = useState<Suggestion[]>(session.suggestions || []); const [auditItems, setAuditItems] = useState<AuditItem[]>([]); const [busy, setBusy] = useState(false); const [error, setError] = useState(''); const [finalized, setFinalized] = useState(false)
-  const load = useCallback(async () => { try { const [detail, audit] = await Promise.all([api.getRoster(session.id), api.audit(session.id)]); setRoster(detail.attendance || []); setSuggestions(detail.suggestions || []); setAuditItems(audit); setFinalized(detail.status === 'finalized') } catch { /* keep the current roster visible while offline */ } }, [session.id])
-  useEffect(() => { load(); const fn = () => load(); window.addEventListener('rollcall:refresh', fn); return () => window.removeEventListener('rollcall:refresh', fn) }, [load])
-  async function onFile(file: File) { setBusy(true); setError(''); try { const result = await api.capture(session.id, file); setSuggestions(result); setAuditItems(prev => [{ id: `capture-${Date.now()}`, session_id: session.id, action: 'capture.simulated', actor_name: 'You', timestamp: new Date().toISOString(), created_at: new Date().toISOString(), note: `${result.length} synthetic suggestions generated; image discarded` }, ...prev]) } catch { setError('Capture failed. Check the API connection and retry.'); } finally { setBusy(false) } }
-  async function update(studentId: string, status: AttendanceEntry['status'], note?: string) { setRoster(prev => prev.map(row => row.student_id === studentId ? { ...row, status, note } : row)); try { await api.patchAttendance(session.id, studentId, status, note) } catch { setError('Could not save that edit. Please retry.'); } }
-  async function finalizeSession() { if (!window.confirm('Finalize this session? Remaining pending students will be marked absent and each change will be audited.')) return; setBusy(true); try { await api.finalize(session.id); setRoster(prev => prev.map(r => r.status === 'pending' ? { ...r, status: 'absent' } : r)); setFinalized(true); setAuditItems(prev => [{ id: `finalize-${Date.now()}`, session_id: session.id, action: 'session.finalized', actor_name: 'You', timestamp: new Date().toISOString(), created_at: new Date().toISOString(), note: 'Pending students marked absent' }, ...prev]) } catch { setError('Could not finalize the session. Please retry.'); } finally { setBusy(false) } }
-  return <div className="workspace"><div className="workspace-header"><div><button className="back-button" onClick={onClose}>← All sessions</button><p className="eyebrow">Live session · {formatDate(session.started_at, true)}</p><h2>{session.class_name || 'Class attendance'}</h2><span className="session-id">{session.id}</span></div><div className="workspace-actions"><span className={`status-chip ${finalized ? 'status-present' : 'status-pending'}`}><span className="chip-dot" /> {finalized ? 'Finalized' : 'Open'}</span>{!finalized && <button className="primary-button" onClick={finalizeSession} disabled={busy}><FileCheck2 size={16} /> Finalize session</button>}</div></div>{error && <div className="inline-error"><AlertCircle size={16} /> {error}</div>}<div className="workspace-grid"><div className="panel capture-panel"><div className="panel-heading"><div><p className="eyebrow">Step 1 · simulated capture</p><h3>Add a photo file</h3></div><span className="safe-tag"><ShieldCheck size={14} /> Discarded after capture</span></div><p className="muted">Use a class photo for the simulated response. This prototype does not recognize faces and never saves images.</p><label className={`dropzone ${busy ? 'is-busy' : ''}`}><input type="file" accept="image/*" onChange={e => { const file = e.target.files?.[0]; if (file) onFile(file) }} disabled={busy || finalized} /><div className="dropzone-icon"><Download size={21} /></div><strong>{busy ? 'Generating suggestions…' : 'Drop an image or browse'}</strong><span>PNG, JPG up to 10 MB · file is not stored</span></label>{suggestions.length > 0 && <div className="suggestions"><div className="subheading"><span><Sparkles size={15} /> Suggested matches</span><small>Review each before applying</small></div>{suggestions.map(s => <div className="suggestion-row" key={s.student_id}><div className="mini-avatar">{initials(s.student_name)}</div><div><strong>{s.student_name}</strong><span>{Math.round(s.confidence * 100)}% synthetic confidence</span></div><button className="ghost-button" disabled={finalized} onClick={() => update(s.student_id, 'present', 'Accepted synthetic suggestion')}><Check size={14} /> Accept</button></div>)}</div>}</div><div className="panel roster-panel"><div className="panel-heading"><div><p className="eyebrow">Step 2 · review roster</p><h3>{roster.length} students</h3></div><span className="muted">{roster.filter(r => r.status === 'pending').length} pending</span></div><AttendanceTable entries={roster} onUpdate={update} disabled={finalized} /></div></div><div className="workspace-lower"><AuditLog items={auditItems} /><div className="panel guidance-panel"><div className="soft-icon teal"><CheckCircle2 size={20} /></div><h3>Before you finalize</h3><ul><li>Review every “needs review” row.</li><li>Use manual status buttons for corrections.</li><li>Finalizing marks remaining pending students absent.</li><li>Students receive a private in-app notification.</li></ul></div></div></div>
+  const [detail, setDetail] = useState<Session>(session)
+  const [roster, setRoster] = useState<AttendanceEntry[]>(session.attendance || [])
+  const [reviewItems, setReviewItems] = useState<ReviewItem[]>([])
+  const [auditItems, setAuditItems] = useState<AuditItem[]>([])
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const [finalized, setFinalized] = useState(session.status === 'finalized')
+  const [reviewNotes, setReviewNotes] = useState<Record<string, string>>({})
+  const [remainingSec, setRemainingSec] = useState<number | null>(null)
+
+  const load = useCallback(async () => {
+    try {
+      const [currentRoster, reviewQueue, auditList] = await Promise.all([
+        api.getRoster(session.id),
+        api.getReviewQueue(session.id),
+        api.audit(session.id),
+      ])
+      setDetail(currentRoster)
+      setRoster(currentRoster.attendance || [])
+      setReviewItems(reviewQueue)
+      setAuditItems(auditList)
+      setFinalized(currentRoster.status === 'finalized')
+    } catch {
+      // keep offline state visible
+    }
+  }, [session.id])
+
+  useEffect(() => {
+    load()
+    const fn = () => load()
+    window.addEventListener('rollcall:refresh', fn)
+    return () => window.removeEventListener('rollcall:refresh', fn)
+  }, [load])
+
+  useEffect(() => {
+    if (!detail.ends_at || finalized) return
+    let activeTimer = true
+    const checkTimer = () => {
+      const endsAt = new Date(detail.ends_at!).getTime()
+      const now = Date.now()
+      const diff = Math.floor((endsAt - now) / 1000)
+      if (activeTimer) setRemainingSec(diff)
+    }
+    checkTimer()
+    const interval = window.setInterval(checkTimer, 1000)
+    return () => { activeTimer = false; window.clearInterval(interval) }
+  }, [detail.ends_at, finalized])
+
+  const isClosed = (remainingSec !== null && remainingSec <= 0) || detail.status === 'closed' || finalized
+
+  async function update(studentId: string, status: AttendanceEntry['status'], note?: string) {
+    setRoster(prev => prev.map(row => row.student_id === studentId ? { ...row, status, note } : row))
+    try {
+      await api.patchAttendance(session.id, studentId, status, note)
+      load()
+    } catch {
+      setError('Could not save that edit. Please retry.')
+    }
+  }
+
+  async function handleReview(item: ReviewItem, decision: 'verified' | 'rejected') {
+    setBusy(true)
+    setError('')
+    try {
+      const note = reviewNotes[item.id] || (decision === 'verified' ? 'Lecturer accepted from review queue' : 'Lecturer rejected attempt')
+      await api.submitReviewDecision(session.id, item.id, decision, note)
+      await load()
+    } catch {
+      setError('Could not submit review decision. Please retry.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function finalizeSession() {
+    if (!window.confirm('Finalize this session? Remaining pending students will be marked absent and records will be published.')) return
+    setBusy(true)
+    try {
+      await api.finalize(session.id)
+      setRoster(prev => prev.map(r => r.status === 'pending' ? { ...r, status: 'absent' } : r))
+      setFinalized(true)
+      await load()
+    } catch {
+      setError('Could not finalize the session. Please retry.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const presentCount = roster.filter(r => r.status === 'present').length
+  const pendingCount = roster.filter(r => r.status === 'pending').length
+  const absentCount = roster.filter(r => r.status === 'absent').length
+  const totalStudents = roster.length
+
+  const countdownText = remainingSec === null
+    ? '—'
+    : remainingSec <= 0
+      ? 'Window Closed'
+      : `${Math.floor(remainingSec / 60).toString().padStart(2, '0')}:${((remainingSec % 60 + 60) % 60).toString().padStart(2, '0')}`
+
+  return (
+    <div className="workspace">
+      <div className="workspace-header">
+        <div>
+          <button className="back-button" onClick={onClose}>← All sessions</button>
+          <p className="eyebrow">Session · {formatDate(detail.started_at, true)}</p>
+          <h2>{detail.class_name || 'Class attendance'}</h2>
+          <span className="session-id">{detail.id}</span>
+        </div>
+        <div className="workspace-actions">
+          <span className={`countdown-tag ${isClosed ? 'expired' : ''}`}>
+            {isClosed ? 'Window Closed' : `Window: ${countdownText}`}
+          </span>
+          <span className={`status-chip ${finalized ? 'status-present' : isClosed ? 'status-absent' : 'status-pending'}`}>
+            <span className="chip-dot" /> {finalized ? 'Finalized' : isClosed ? 'Closed' : 'Open'}
+          </span>
+          {!finalized && (
+            <button className="primary-button" onClick={finalizeSession} disabled={busy}>
+              <FileCheck2 size={16} /> Finalize session
+            </button>
+          )}
+        </div>
+      </div>
+
+      {error && <div className="inline-error"><AlertCircle size={16} /> {error}</div>}
+
+      <div className="headline-stat-bar">
+        <div className="headline-stat">
+          <strong>{presentCount}</strong>
+          <span>Present (Verified)</span>
+        </div>
+        <div className="headline-stat">
+          <strong style={{ color: '#c77c13' }}>{reviewItems.length}</strong>
+          <span>Needs Review (Flagged)</span>
+        </div>
+        <div className="headline-stat">
+          <strong style={{ color: '#b44d45' }}>{absentCount}</strong>
+          <span>Absent</span>
+        </div>
+        <div className="headline-stat">
+          <strong>{totalStudents}</strong>
+          <span>Total Enrolled</span>
+        </div>
+      </div>
+
+      <div className="workspace-grid">
+        <div className="panel review-panel">
+          <div className="panel-heading">
+            <div>
+              <p className="eyebrow">Lecturer Review Queue</p>
+              <h3>Flagged Attempts ({reviewItems.length})</h3>
+            </div>
+            <span className="safe-tag"><ShieldCheck size={14} /> Filmstrip Key Frames</span>
+          </div>
+          <p className="muted">Attempts flagged due to low optical resolution at distance or neighbor presence. Inspect filmstrip and accept or reject.</p>
+
+          {reviewItems.length === 0 ? (
+            <EmptyState
+              icon={<CheckCircle2 />}
+              title="Review queue empty"
+              body="No submissions currently require manual review. Verified attempts are already recorded as present."
+            />
+          ) : (
+            reviewItems.map(item => (
+              <div className="review-card flagged" key={item.id}>
+                <div className="review-card-header">
+                  <div>
+                    <strong>{item.student_name}</strong>
+                    <div className="muted">{item.student_email || item.student_id}</div>
+                  </div>
+                  <span className="status-chip status-pending">Flagged</span>
+                </div>
+
+                <div className="reason-tags">
+                  {item.reason_codes.map((rc, idx) => (
+                    <span className="reason-tag" key={idx}>
+                      {rc.replace(/_/g, ' ')}
+                    </span>
+                  ))}
+                </div>
+
+                {item.filmstrip_urls.length > 0 && (
+                  <div className="filmstrip-strip">
+                    {item.filmstrip_urls.map((url, fIdx) => (
+                      <img
+                        key={fIdx}
+                        src={url}
+                        alt={`Key frame ${fIdx + 1}`}
+                        className="filmstrip-thumb"
+                        onError={(e) => {
+                          e.currentTarget.style.display = 'none'
+                        }}
+                      />
+                    ))}
+                  </div>
+                )}
+
+                <div className="review-actions">
+                  <input
+                    type="text"
+                    placeholder="Decision note (optional)"
+                    className="review-note-input"
+                    value={reviewNotes[item.id] || ''}
+                    onChange={e => setReviewNotes({ ...reviewNotes, [item.id]: e.target.value })}
+                    disabled={busy || finalized}
+                  />
+                  <button
+                    className="primary-button small"
+                    disabled={busy || finalized}
+                    onClick={() => handleReview(item, 'verified')}
+                  >
+                    <Check size={13} /> Accept
+                  </button>
+                  <button
+                    className="secondary-button small"
+                    style={{ color: '#b44d45' }}
+                    disabled={busy || finalized}
+                    onClick={() => handleReview(item, 'rejected')}
+                  >
+                    <X size={13} /> Reject
+                  </button>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+
+        <div className="panel roster-panel">
+          <div className="panel-heading">
+            <div>
+              <p className="eyebrow">Manual Roll-Call Roster</p>
+              <h3>{roster.length} Students</h3>
+            </div>
+            <span className="muted">{pendingCount} pending</span>
+          </div>
+          <p className="muted">Lecturer manual override route. Tap Present, Absent, or Note to manually adjust any student.</p>
+          <AttendanceTable entries={roster} onUpdate={update} disabled={finalized} />
+        </div>
+      </div>
+
+      <div className="workspace-lower">
+        <AuditLog items={auditItems} />
+        <div className="panel guidance-panel">
+          <div className="soft-icon teal"><CheckCircle2 size={20} /></div>
+          <h3>Session Verification Policies</h3>
+          <ul>
+            <li>Submissions allowed only while session window is open (+5s server grace).</li>
+            <li>All verified sweeps are automatically marked Present.</li>
+            <li>Lecturer check flags at distance (IPD &lt; 30px) for visual confirmation.</li>
+            <li>Finalizing marks remaining pending students absent and locks the session.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  )
 }
 
-function TeacherHistory() { const [sessions, setSessions] = useState<Session[]>([]); const [selected, setSelected] = useState<Session | null>(null); const load = useCallback(() => { api.getSessions().then(setSessions).catch(() => undefined) }, []); const displaySessions = sessions.length ? sessions : api.isLocalMode() ? demoSessions : []; useEffect(() => { load(); const fn = () => load(); window.addEventListener('rollcall:refresh', fn); return () => window.removeEventListener('rollcall:refresh', fn) }, [load]); return <><PageIntro eyebrow="Faculty workspace" title="Session history" description="A clear, auditable record of every class session." action={<button className="secondary-button" onClick={() => api.getSessions().then(setSessions)}><RefreshCw size={16} /> Refresh</button>} /><div className="panel table-panel history-table"><div className="table-toolbar"><div><p className="eyebrow">All sessions</p><h3>{displaySessions.length} recorded sessions</h3></div><span className="muted">CSV and print exports available per session</span></div><div className="history-list">{displaySessions.map(s => <div className="history-row" key={s.id}><div className="history-date"><strong>{new Intl.DateTimeFormat('en-US', { day: '2-digit' }).format(new Date(s.started_at))}</strong><span>{new Intl.DateTimeFormat('en-US', { month: 'short' }).format(new Date(s.started_at))}</span></div><div className="history-copy"><strong>{s.class_name || 'Class session'}</strong><span>{formatDate(s.started_at, true)} · {s.id}</span></div><span className={`status-chip ${s.status === 'open' ? 'status-pending' : 'status-present'}`}>{s.status === 'open' ? 'Open' : 'Finalized'}</span><button className="icon-button" aria-label={`Open ${s.class_name || 'session'}`} onClick={() => setSelected(s)}><ChevronRight size={17} /></button></div>)}</div></div>{selected && <ReportDrawer session={selected} onClose={() => setSelected(null)} />}</> }
+function TeacherHistory() { const [sessions, setSessions] = useState<Session[]>([]); const [selected, setSelected] = useState<Session | null>(null); const load = useCallback(() => { api.getSessions().then(setSessions).catch(() => undefined) }, []); const displaySessions = sessions.length ? sessions : api.isLocalMode() ? demoSessions : []; useEffect(() => { load(); const fn = () => load(); window.addEventListener('rollcall:refresh', fn); return () => window.removeEventListener('rollcall:refresh', fn) }, [load]); return <><PageIntro eyebrow="Lecturer workspace" title="Session history" description="A clear, auditable record of every class session." action={<button className="secondary-button" onClick={() => api.getSessions().then(setSessions)}><RefreshCw size={16} /> Refresh</button>} /><div className="panel table-panel history-table"><div className="table-toolbar"><div><p className="eyebrow">All sessions</p><h3>{displaySessions.length} recorded sessions</h3></div><span className="muted">CSV and print exports available per session</span></div><div className="history-list">{displaySessions.map(s => <div className="history-row" key={s.id}><div className="history-date"><strong>{new Intl.DateTimeFormat('en-US', { day: '2-digit' }).format(new Date(s.started_at))}</strong><span>{new Intl.DateTimeFormat('en-US', { month: 'short' }).format(new Date(s.started_at))}</span></div><div className="history-copy"><strong>{s.class_name || 'Class session'}</strong><span>{formatDate(s.started_at, true)} · {s.id}</span></div><span className={`status-chip ${s.status === 'open' ? 'status-pending' : 'status-present'}`}>{s.status === 'open' ? 'Open' : 'Finalized'}</span><button className="icon-button" aria-label={`Open ${s.class_name || 'session'}`} onClick={() => setSelected(s)}><ChevronRight size={17} /></button></div>)}</div></div>{selected && <ReportDrawer session={selected} onClose={() => setSelected(null)} />}</> }
 
 function StudentAttendanceView() { const [attendance, setAttendance] = useState<StudentAttendance | null>(null); const load = useCallback(() => { api.studentAttendance().then(setAttendance).catch(() => undefined) }, []); useEffect(() => { load(); const fn = () => load(); window.addEventListener('rollcall:refresh', fn); return () => window.removeEventListener('rollcall:refresh', fn) }, [load]); const summary = attendance?.summary || { present: 0, absent: 0, pending: 0, total_finalized: 0, percentage: null }; return <><PageIntro eyebrow="Student view" title="My attendance" description="Your personal record, available only to you." action={<button className="secondary-button" onClick={() => api.studentAttendance().then(setAttendance)}><RefreshCw size={16} /> Refresh</button>} /><div className="metric-grid student-metrics"><Metric icon={<CheckCircle2 />} label="Present" value={String(summary.present)} detail="Sessions attended" tone="teal" /><Metric icon={<X />} label="Absent" value={String(summary.absent)} detail="Sessions missed" tone="coral" /><Metric icon={<Zap />} label="Attendance rate" value={formatPct(summary.percentage)} detail="Across all sessions" tone="violet" /></div><div className="panel table-panel"><div className="table-toolbar"><div><p className="eyebrow">Personal record</p><h3>Attendance by date</h3></div><div className="private-label"><LockKeyhole size={14} /> Private to you</div></div><AttendanceTable entries={(attendance?.entries || []).map(e => ({ student_id: e.session_id, student_name: e.class_name || 'Class session', status: e.status, changed_at: e.created_at, updated_at: e.updated_at }))} studentView /></div></> }
 

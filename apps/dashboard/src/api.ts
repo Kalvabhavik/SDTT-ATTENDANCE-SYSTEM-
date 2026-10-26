@@ -1,4 +1,4 @@
-import { demoClasses, demoNotifications, demoNotifications2, demoRoster, demoSessions, demoStudent, demoStudent2, demoStudentAttendance, demoStudentAttendance2, demoTeacher, type AttendanceEntry, type AuditItem, type ClassItem, type Notification, type Report, type ReportRow, type Role, type Session, type StudentAttendance, type Suggestion, type User } from './types'
+import { demoClasses, demoNotifications, demoNotifications2, demoRoster, demoSessions, demoStudent, demoStudent2, demoStudentAttendance, demoStudentAttendance2, demoTeacher, type AttendanceEntry, type AuditItem, type ClassItem, type Notification, type Report, type ReportRow, type ReviewItem, type Role, type Session, type StudentAttendance, type Suggestion, type User } from './types'
 
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api').replace(/\/$/, '')
 const localModeKey = 'rollcall-local-mode'
@@ -35,22 +35,45 @@ function normalizeSuggestion(value: unknown): Suggestion {
   const raw = record(value)
   return { student_id: id(raw.student_id ?? raw.id), student_name: text(raw.name ?? raw.student_name, 'Student'), confidence: number(raw.confidence), status: raw.status === 'suggestion' ? 'suggestion' : status(raw.status) }
 }
+function normalizeReviewItem(value: unknown): ReviewItem {
+  const raw = record(value)
+  return {
+    id: id(raw.id),
+    session_id: id(raw.session_id),
+    student_id: id(raw.student_id),
+    student_name: text(raw.student_name, 'Student'),
+    student_email: text(raw.student_email),
+    status: (raw.status as ReviewItem['status']) || 'flagged',
+    reason_codes: list(raw.reason_codes).map(r => String(r)),
+    created_at: text(raw.created_at),
+    filmstrip_urls: list(raw.filmstrip_urls).map(u => String(u)),
+    metrics: record(raw.metrics),
+  }
+}
 function normalizeSession(value: unknown): Session {
   const raw = record(value)
   const createdAt = text(raw.created_at ?? raw.started_at)
+  const rawStatus = text(raw.status)
+  const statusVal: Session['status'] = rawStatus === 'finalized' ? 'finalized' : rawStatus === 'closed' ? 'closed' : 'open'
   return {
     id: id(raw.id ?? raw.session_id),
     class_id: id(raw.class_id),
     class_name: raw.class_name === null || raw.class_name === undefined ? undefined : text(raw.class_name),
     started_at: createdAt,
     created_at: createdAt,
+    starts_at: raw.starts_at === undefined || raw.starts_at === null ? undefined : text(raw.starts_at),
+    ends_at: raw.ends_at === undefined || raw.ends_at === null ? undefined : text(raw.ends_at),
+    duration_minutes: raw.duration_minutes === undefined ? undefined : number(raw.duration_minutes),
     finalized_at: raw.finalized_at === null || raw.finalized_at === undefined ? null : text(raw.finalized_at),
-    status: raw.status === 'finalized' ? 'finalized' : 'open',
+    status: statusVal,
     attendance: list(raw.attendance).map(normalizeAttendance),
     suggestions: list(raw.suggestions).map(normalizeSuggestion),
     present_count: raw.present_count === undefined ? undefined : number(raw.present_count),
     absent_count: raw.absent_count === undefined ? undefined : number(raw.absent_count),
     pending_count: raw.pending_count === undefined ? undefined : number(raw.pending_count),
+    needs_review_count: raw.needs_review_count === undefined ? undefined : number(raw.needs_review_count),
+    rejected_count: raw.rejected_count === undefined ? undefined : number(raw.rejected_count),
+    total_enrolled: raw.total_enrolled === undefined ? undefined : number(raw.total_enrolled),
   }
 }
 function normalizeClass(value: unknown): ClassItem {
@@ -130,19 +153,47 @@ export async function login(email: string, password: string): Promise<{ user: Us
 export async function getClasses(): Promise<ClassItem[]> { if (isLocalMode()) return demoClasses; return list(await request<unknown>('/classes')).map(normalizeClass) }
 export async function getSessions(): Promise<Session[]> { if (isLocalMode()) return demoSessions; return list(await request<unknown>('/sessions')).map(normalizeSession) }
 export async function getRoster(sessionId: string): Promise<Session> { if (isLocalMode()) return { ...demoSessions[0], id: sessionId, status: 'open', started_at: new Date().toISOString(), created_at: new Date().toISOString(), attendance: demoRoster, suggestions: [] }; return normalizeSession(await request<unknown>(`/sessions/${encodeURIComponent(sessionId)}`)) }
-export async function startSession(classId: string): Promise<Session> {
-  if (isLocalMode()) return { id: `local-${Date.now()}`, class_id: classId, class_name: demoClasses.find(c => c.id === classId)?.name, started_at: new Date().toISOString(), created_at: new Date().toISOString(), status: 'open', attendance: demoRoster.map(s => ({ ...s, status: 'pending', confidence: undefined })) }
-  return normalizeSession(await request<unknown>('/sessions', { method: 'POST', body: JSON.stringify({ class_id: number(classId) }) }))
+
+export async function serverTime(): Promise<Date> {
+  if (isLocalMode()) return new Date()
+  try {
+    const res = await request<{ server_time: string }>('/time')
+    return new Date(res.server_time)
+  } catch {
+    return new Date()
+  }
 }
-export async function capture(sessionId: string, file: File): Promise<Suggestion[]> {
-  if (isLocalMode()) return [
-    { student_id: 'student-1', student_name: 'Jordan Ellis', confidence: 0.97, status: 'suggestion' },
-    { student_id: 'student-2', student_name: 'Samira Patel', confidence: 0.91, status: 'suggestion' },
-    { student_id: 'student-6', student_name: 'Naomi Brooks', confidence: 0.86, status: 'suggestion' },
-  ]
-  const body = new FormData(); body.append('photo', file)
-  const result = record(await request<unknown>(`/sessions/${encodeURIComponent(sessionId)}/capture`, { method: 'POST', body }))
-  return list(result.suggestions ?? result).map(normalizeSuggestion)
+
+export async function startSession(classId: string, durationMinutes = 10): Promise<Session> {
+  if (isLocalMode()) return {
+    id: `local-${Date.now()}`,
+    class_id: classId,
+    class_name: demoClasses.find(c => c.id === classId)?.name,
+    started_at: new Date().toISOString(),
+    created_at: new Date().toISOString(),
+    starts_at: new Date().toISOString(),
+    ends_at: new Date(Date.now() + durationMinutes * 60000).toISOString(),
+    duration_minutes: durationMinutes,
+    status: 'open',
+    attendance: demoRoster.map(s => ({ ...s, status: 'pending', confidence: undefined })),
+  }
+  return normalizeSession(await request<unknown>('/sessions', {
+    method: 'POST',
+    body: JSON.stringify({ class_id: classId, duration_minutes: durationMinutes }),
+  }))
+}
+
+export async function getReviewQueue(sessionId: string): Promise<ReviewItem[]> {
+  if (isLocalMode()) return []
+  return list(await request<unknown>(`/sessions/${encodeURIComponent(sessionId)}/review-queue`)).map(normalizeReviewItem)
+}
+
+export async function submitReviewDecision(sessionId: string, attemptId: string, decision: 'verified' | 'rejected', note?: string): Promise<void> {
+  if (isLocalMode()) return
+  await request(`/sessions/${encodeURIComponent(sessionId)}/review/${encodeURIComponent(attemptId)}`, {
+    method: 'POST',
+    body: JSON.stringify({ decision, note }),
+  })
 }
 export async function patchAttendance(sessionId: string, studentId: string, attendanceStatus: AttendanceEntry['status'], note?: string) { if (isLocalMode()) return; return request(`/sessions/${encodeURIComponent(sessionId)}/attendance/${encodeURIComponent(studentId)}`, { method: 'PATCH', body: JSON.stringify({ status: attendanceStatus, note }) }) }
 export async function finalize(sessionId: string) { if (isLocalMode()) return; return request(`/sessions/${encodeURIComponent(sessionId)}/finalize`, { method: 'POST', body: JSON.stringify({ mark_pending_absent: true }) }) }
@@ -169,4 +220,4 @@ export function openRealtime(ticket: string, onMessage: (event: { type: string; 
   return () => socket.close()
 }
 
-export const roleLabel = (role: Role) => role === 'teacher' ? 'Faculty workspace' : 'Student view'
+export const roleLabel = (role: Role) => role === 'teacher' ? 'Lecturer workspace' : 'Student view'

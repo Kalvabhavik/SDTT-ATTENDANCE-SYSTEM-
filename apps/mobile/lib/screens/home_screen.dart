@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models/models.dart';
@@ -5,6 +6,7 @@ import '../state/app_state.dart';
 import '../widgets/app_widgets.dart';
 import 'notifications_screen.dart';
 import 'session_screen.dart';
+import 'sweep_capture_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key, required this.state});
@@ -68,7 +70,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   tab == 1
                       ? 'Notifications'
                       : isTeacher
-                          ? 'Teacher Desk'
+                          ? 'Lecturer Desk'
                           : 'Attendance',
                   style: const TextStyle(
                     fontWeight: FontWeight.w900,
@@ -78,7 +80,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
                 Text(
                   user != null
-                      ? '${user.name} • ${isTeacher ? "Instructor" : "Student"}'
+                      ? '${user.name} • ${isTeacher ? "Lecturer" : "Student"}'
                       : 'Signed in',
                   style: const TextStyle(
                     fontSize: 12,
@@ -265,7 +267,13 @@ class TeacherHome extends StatelessWidget {
   }
 
   Future<void> _start(BuildContext context, Classroom classroom) async {
-    final ok = await state.startSession(classroom.id);
+    final chosenDuration = await showDialog<int>(
+      context: context,
+      builder: (ctx) => _DurationPresetDialog(classroom: classroom),
+    );
+    if (chosenDuration == null) return;
+
+    final ok = await state.startSession(classroom.id, durationMinutes: chosenDuration);
     if (!context.mounted) return;
     if (ok) {
       Navigator.of(context).push(
@@ -371,7 +379,7 @@ class TeacherHome extends StatelessWidget {
                         ),
                         const SizedBox(height: 4),
                         const Text(
-                          'Launch a session, inspect synthetic suggestions, and finalize with one tap.',
+                          'Launch a timed session, observe live verified counts, and inspect flagged attempts in the review queue.',
                           style: TextStyle(
                             fontSize: 12.5,
                             color: Colors.white70,
@@ -624,6 +632,21 @@ class StudentHome extends StatefulWidget {
 
 class _StudentHomeState extends State<StudentHome> {
   String filter = 'all'; // 'all', 'present', 'absent', 'pending'
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -640,6 +663,8 @@ class _StudentHomeState extends State<StudentHome> {
       if (filter == 'pending') return e.isPending;
       return true;
     }).toList();
+
+    final openSessions = state.sessions.where((s) => s.isOpen).toList();
 
     return RefreshIndicator(
       onRefresh: state.retryHome,
@@ -677,6 +702,135 @@ class _StudentHomeState extends State<StudentHome> {
           ),
 
           const SizedBox(height: 18),
+
+          // Active Session Card (If Any Open)
+          if (openSessions.isNotEmpty) ...[
+            ...openSessions.map((session) {
+              final endsAt = session.endsAt;
+              final remaining = endsAt != null ? endsAt.difference(state.serverTimeNow) : Duration.zero;
+              final isExpired = remaining.isNegative;
+              final minutes = remaining.inMinutes;
+              final seconds = (remaining.inSeconds % 60).clamp(0, 59);
+              final timerStr = isExpired
+                  ? 'Window Closed'
+                  : '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+
+              return FadeSlideIn(
+                delay: const Duration(milliseconds: 30),
+                child: Container(
+                  margin: const EdgeInsets.only(bottom: 18),
+                  padding: const EdgeInsets.all(18),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: isExpired
+                          ? AppColors.slate.withValues(alpha: 0.3)
+                          : AppColors.primary.withValues(alpha: 0.3),
+                      width: 1.5,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppColors.primary.withValues(alpha: 0.08),
+                        blurRadius: 16,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: isExpired ? AppColors.roseBg : AppColors.emeraldBg,
+                              borderRadius: BorderRadius.circular(999),
+                              border: Border.all(
+                                color: isExpired ? AppColors.roseBorder : AppColors.emeraldBorder,
+                              ),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                _PulsingDot(color: isExpired ? AppColors.rose : AppColors.emerald),
+                                const SizedBox(width: 5),
+                                Text(
+                                  isExpired ? 'WINDOW CLOSED' : 'ACTIVE SESSION',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w800,
+                                    color: isExpired ? AppColors.rose : AppColors.emerald,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Text(
+                            timerStr,
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w900,
+                              fontFamily: 'monospace',
+                              color: isExpired ? AppColors.rose : AppColors.primary,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        session.className ?? 'Classroom Session',
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.ink,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      const Text(
+                        'Continuous sweep attendance window. Hold phone at arm\'s length and sweep across neighbors to the lecturer.',
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          color: AppColors.slate,
+                          height: 1.35,
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton.icon(
+                          onPressed: isExpired
+                              ? null
+                              : () {
+                                  Navigator.of(context).push(
+                                    MaterialPageRoute(
+                                      builder: (_) => SweepCaptureScreen(
+                                        state: state,
+                                        session: session,
+                                      ),
+                                    ),
+                                  );
+                                },
+                          icon: const Icon(Icons.camera_rounded, size: 20),
+                          label: Text(
+                            isExpired ? 'Window Closed' : 'Mark Attendance (Sweep Capture)',
+                            style: const TextStyle(fontWeight: FontWeight.w700),
+                          ),
+                          style: FilledButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                            backgroundColor: isExpired ? AppColors.slate : AppColors.primary,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }),
+          ],
 
           // Hero Attendance Card with Circular Gauge & Counters
           FadeSlideIn(
@@ -1024,6 +1178,104 @@ class _FilterChip extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _DurationPresetDialog extends StatefulWidget {
+  const _DurationPresetDialog({required this.classroom});
+  final Classroom classroom;
+
+  @override
+  State<_DurationPresetDialog> createState() => _DurationPresetDialogState();
+}
+
+class _DurationPresetDialogState extends State<_DurationPresetDialog> {
+  int selectedMinutes = 10;
+  bool isCustom = false;
+  final TextEditingController customController = TextEditingController(text: '20');
+
+  @override
+  void dispose() {
+    customController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      title: Text('Start Session: ${widget.classroom.name}'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Select attendance window duration. Server clock strictly enforces deadline.',
+            style: TextStyle(fontSize: 13, color: AppColors.slate),
+          ),
+          const SizedBox(height: 16),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [5, 10, 15].map((mins) {
+              final isSel = !isCustom && selectedMinutes == mins;
+              return ChoiceChip(
+                label: Text('$mins mins'),
+                selected: isSel,
+                onSelected: (val) {
+                  if (val) {
+                    setState(() {
+                      selectedMinutes = mins;
+                      isCustom = false;
+                    });
+                  }
+                },
+              );
+            }).toList()
+              ..add(
+                ChoiceChip(
+                  label: const Text('Custom'),
+                  selected: isCustom,
+                  onSelected: (val) {
+                    setState(() {
+                      isCustom = true;
+                    });
+                  },
+                ),
+              ),
+          ),
+          if (isCustom) ...[
+            const SizedBox(height: 12),
+            TextField(
+              controller: customController,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(
+                labelText: 'Duration (minutes, max 60)',
+                border: OutlineInputBorder(),
+                isDense: true,
+              ),
+            ),
+          ],
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () {
+            int duration = selectedMinutes;
+            if (isCustom) {
+              final parsed = int.tryParse(customController.text.trim()) ?? 10;
+              duration = parsed.clamp(1, 60);
+            }
+            Navigator.of(context).pop(duration);
+          },
+          child: const Text('Launch Session'),
+        ),
+      ],
     );
   }
 }
