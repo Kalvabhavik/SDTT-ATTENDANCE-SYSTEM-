@@ -10,6 +10,7 @@
 - Submissions and review metadata are stored in Postgres; image bytes use a private Supabase Storage bucket. Professor-only short-lived signed URLs support review. The backend retention worker deletes image objects after the configured default 30 days and clears image hashes/paths while preserving attendance and review metadata.
 - Uncertain/rejected items remain pending. Professors see image/quality/scene evidence and can approve or reject with a required reason; attendance provenance distinguishes automatic scene verification from manual review. Manual roster edits, audited finalization, student-only attendance, in-app notifications, realtime refresh, CSV, and print-friendly report HTML are wired.
 - The client login no longer pre-fills credentials or presents demo shortcuts. A guarded synthetic-account seeder accepts passwords only from environment variables.
+- The teacher dashboard now presents explicit loading/error/retry/empty states, refresh timestamps, unknown-safe summary values, session-scoped submission/roster search and status filters, reason forms for audited review/correction actions, and session report counts from returned data. See [`TEACHER_DASHBOARD_SCOPE_AND_CONTRACT.md`](TEACHER_DASHBOARD_SCOPE_AND_CONTRACT.md) and [`../apps/dashboard/design.md`](../apps/dashboard/design.md).
 
 ## Explicit limitations and non-claims
 

@@ -5,8 +5,8 @@ import type { AttendanceEntry, ClassItem, ImageSubmission, Report, Session, Stud
 
 const localDateTime = (date: Date) => new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16)
 const displayTime = (value?: string | null) => value ? new Date(value).toLocaleString() : '—'
-const statusLabel = (value?: string | null) => (value || 'pending').replaceAll('_', ' ').toLowerCase()
-const statusTone = (value?: string | null) => (value || 'pending').toLowerCase().replaceAll('_', '-')
+const statusLabel = (value?: string | null) => value && value !== 'unknown' ? value.replaceAll('_', ' ').toLowerCase() : 'status unavailable'
+const statusTone = (value?: string | null) => !value || value === 'unknown' ? 'unavailable' : value.toLowerCase().replaceAll('_', '-')
 
 function Message({ children, error = false }: { children: string; error?: boolean }) {
   return <div className={error ? 'flow-message error' : 'flow-message'} role={error ? 'alert' : 'status'}>{children}</div>
@@ -94,14 +94,24 @@ function ProfessorSessionWorkspace({ session: initialSession, onBack }: { sessio
   const [submissions, setSubmissions] = useState<ImageSubmission[]>([])
   const [report, setReport] = useState<Report | null>(null)
   const [busy, setBusy] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
+  const [loaded, setLoaded] = useState(false)
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
+  const [search, setSearch] = useState('')
+  const [submissionFilter, setSubmissionFilter] = useState('all')
+  const [rosterFilter, setRosterFilter] = useState('all')
+  const [reasonAction, setReasonAction] = useState<{ kind: 'review'; item: ImageSubmission; decision: 'approve' | 'reject' } | { kind: 'attendance'; row: AttendanceEntry; status: AttendanceEntry['status'] } | null>(null)
+  const [reason, setReason] = useState('')
 
   const load = useCallback(async () => {
+    setRefreshing(true); setError('')
     try {
       const [detail, items] = await Promise.all([api.getRoster(initialSession.id), api.listSubmissions(initialSession.id)])
-      setSession(detail); setSubmissions(items)
+      setSession(detail); setSubmissions(items); setLoaded(true); setLastUpdated(new Date())
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not refresh this session.') }
+    finally { setRefreshing(false) }
   }, [initialSession.id])
   useEffect(() => { void load(); const timer = window.setInterval(() => void load(), 15000); return () => window.clearInterval(timer) }, [load])
 
@@ -111,20 +121,27 @@ function ProfessorSessionWorkspace({ session: initialSession, onBack }: { sessio
     catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not update the session window.') }
     finally { setBusy(false) }
   }
-  async function review(item: ImageSubmission, decision: 'approve' | 'reject') {
-    const reason = window.prompt(`${decision === 'approve' ? 'Reason for approving' : 'Reason for rejecting'} this submission (required):`, '')
-    if (reason === null || !reason.trim()) return
-    setBusy(true); setError(''); setMessage('')
-    try { await api.reviewSubmission(session.id, item.id, decision, reason.trim()); await load(); setMessage(`Submission ${decision === 'approve' ? 'approved' : 'rejected'} and audited.`) }
-    catch (reasonError) { setError(reasonError instanceof Error ? reasonError.message : 'Could not save the review.') }
-    finally { setBusy(false) }
+  function openReasonForm(action: NonNullable<typeof reasonAction>) {
+    setReasonAction(action); setReason(''); setError(''); setMessage('')
   }
-  async function manualMark(row: AttendanceEntry, status: AttendanceEntry['status']) {
-    const note = window.prompt(`Reason for marking ${row.student_name} ${status} (required):`, '')
-    if (note === null || !note.trim()) return
-    setBusy(true); setError('')
-    try { await api.patchAttendance(session.id, row.student_id, status, note.trim()); await load() }
-    catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not save the attendance decision.') }
+  function closeReasonForm() { setReasonAction(null); setReason('') }
+  async function submitReason(event: FormEvent) {
+    event.preventDefault()
+    const note = reason.trim()
+    if (!note || !reasonAction) return
+    setBusy(true); setError(''); setMessage('')
+    try {
+      if (reasonAction.kind === 'review') {
+        const { item, decision } = reasonAction
+        await api.reviewSubmission(session.id, item.id, decision, note)
+        closeReasonForm(); await load(); setMessage(`Submission ${decision === 'approve' ? 'approved' : 'rejected'}.`)
+      } else {
+        const { row, status } = reasonAction
+        await api.patchAttendance(session.id, row.student_id, status, note)
+        closeReasonForm(); await load(); setMessage(`Attendance updated for ${row.student_name}.`)
+      }
+    }
+    catch (reasonError) { setError(reasonError instanceof Error ? reasonError.message : 'Could not save this decision.') }
     finally { setBusy(false) }
   }
   async function finalize() {
@@ -147,31 +164,59 @@ function ProfessorSessionWorkspace({ session: initialSession, onBack }: { sessio
 
   const roster = session.attendance || []
   const summary = report?.summary
+  const query = search.trim().toLocaleLowerCase()
+  const matches = (values: Array<string | null | undefined>) => !query || values.some(value => value?.toLocaleLowerCase().includes(query))
+  const reviewOutcome = (item: ImageSubmission) => {
+    const decision = item.review_decision?.toLowerCase()
+    return decision?.includes('approv') ? 'approved' : decision?.includes('reject') ? 'rejected' : ''
+  }
+  const requiresProfessorReview = (item: ImageSubmission) => !item.review_decision && ['NEEDS_REVIEW', 'REJECTED'].includes(item.status)
+  const submissionStatuses = Array.from(new Set(submissions.map(item => item.status).filter(Boolean)))
+  const visibleSubmissions = submissions.filter(item => {
+    const fitsStatus = submissionFilter === 'all' ||
+      (submissionFilter === 'awaiting' && requiresProfessorReview(item)) ||
+      (submissionFilter === 'approved' && reviewOutcome(item) === 'approved') ||
+      (submissionFilter === 'rejected' && reviewOutcome(item) === 'rejected') ||
+      (submissionFilter.startsWith('status:') && item.status === submissionFilter.slice(7))
+    return fitsStatus && matches([item.student_name, item.student_email, item.student_id, item.explanation, item.status, item.review_decision])
+  })
+  const visibleRoster = roster.filter(row => (rosterFilter === 'all' || row.status === rosterFilter) && matches([row.student_name, row.student_email, row.registration_id, row.student_id, row.status, row.verification_status]))
+  const awaitingReview = submissions.filter(requiresProfessorReview).length
+  const approvedReviews = submissions.filter(item => reviewOutcome(item) === 'approved').length
+  const rejectedReviews = submissions.filter(item => reviewOutcome(item) === 'rejected').length
+  const countOrUnknown = (count: number) => loaded ? String(count) : 'Unknown'
   return <main className="attendance-flow">
     <button className="text-button" onClick={onBack}>← All sessions</button>
     <header className="flow-heading"><div><p className="eyebrow">Professor review</p><h1>{session.title || session.class_name || 'Attendance session'}</h1><p>{session.class_name} · Opens {displayTime(session.opens_at)} · Deadline {displayTime(session.deadline_at)}</p></div><span className={`flow-status ${statusTone(session.status)}`}>{statusLabel(session.status)}</span></header>
+    <div className="flow-refresh-bar"><span>{lastUpdated ? `Last updated ${lastUpdated.toLocaleTimeString()}` : loaded ? 'Session data loaded' : 'Session data not loaded yet'}</span><button className="secondary-button" type="button" onClick={() => void load()} disabled={refreshing}>{refreshing ? 'Refreshing…' : 'Refresh session'}</button></div>
     {error && <Message error>{error}</Message>}{message && <Message>{message}</Message>}
-    <section className="flow-panel flow-actions"><div><strong>Window control</strong><p>{session.status === 'scheduled' ? 'The session is scheduled; students cannot submit until it opens.' : session.status === 'open' ? 'Students may submit until you close the window or the deadline passes.' : session.status === 'closed' ? 'Submissions are closed. Review any remaining cases before finalizing.' : 'This session is finalized and read-only.'}</p></div>
+    <section className="flow-panel"><div className="flow-section-heading"><h2>Session snapshot</h2><span>{loaded ? 'Counts from this session’s loaded roster and submissions' : 'Counts remain unknown until session data loads'}</span></div><div className="flow-summary-grid"><Summary label="Rostered" value={countOrUnknown(roster.length)} /><Summary label="Submissions" value={countOrUnknown(submissions.length)} /><Summary label="Awaiting professor review" value={countOrUnknown(awaitingReview)} /><Summary label="Manually approved" value={countOrUnknown(approvedReviews)} /><Summary label="Manually rejected" value={countOrUnknown(rejectedReviews)} /><Summary label="Present on roster" value={countOrUnknown(roster.filter(row => row.status === 'present').length)} /><Summary label="Absent on roster" value={countOrUnknown(roster.filter(row => row.status === 'absent').length)} /><Summary label="Pending on roster" value={countOrUnknown(roster.filter(row => row.status === 'pending').length)} /><Summary label="Status unavailable" value={countOrUnknown(roster.filter(row => row.status === 'unknown').length)} /></div><p className="flow-hint">Review counts include only unreviewed NEEDS_REVIEW and REJECTED submissions. Roster counts use each loaded attendance status. These are session-only counts, not identity or audit metrics.</p></section>
+    <section className="flow-panel flow-actions"><div><strong>Window control</strong><p>{session.status === 'scheduled' ? 'The session is scheduled; students cannot submit until it opens.' : session.status === 'open' ? 'Students may submit until you close the window or the deadline passes.' : session.status === 'closed' ? 'Submissions are closed. Review any remaining cases before finalizing.' : session.status === 'finalized' ? 'This session is finalized and read-only.' : 'Session status is unavailable. Refresh before taking an action.'}</p></div>
       {session.status === 'scheduled' && <button className="primary-button" disabled={busy} onClick={() => void changeWindow('open')}>Open now</button>}
       {session.status === 'open' && <button className="secondary-button" disabled={busy} onClick={() => void changeWindow('close')}>Close window</button>}
       {session.status === 'closed' && <button className="primary-button" disabled={busy} onClick={() => void finalize()}>Finalize attendance</button>}
       {session.status === 'finalized' && <button className="secondary-button" onClick={() => void loadReport()}>Load final report</button>}
       {session.status === 'closed' && <button className="secondary-button" onClick={() => void loadReport()}>Preview report</button>}
     </section>
-    <section className="flow-panel"><div className="flow-section-heading"><h2>Student submissions</h2><span>{submissions.length} submitted</span></div>
-      {!submissions.length && <p>No student has submitted a classroom image yet.</p>}
-      <div className="flow-submissions">{submissions.map(item => <article className="flow-submission" key={item.id}>
+    <section className="flow-panel"><div className="flow-section-heading"><h2>Session review inbox</h2><span>{loaded ? `${visibleSubmissions.length} of ${submissions.length} submissions shown` : 'Submission data not loaded'}</span></div>
+      <div className="flow-inbox-controls"><label>Search this session<input type="search" value={search} onChange={event => setSearch(event.target.value)} placeholder="Name, email, student ID, or text" /></label><label>Submission status<select value={submissionFilter} onChange={event => setSubmissionFilter(event.target.value)}><option value="all">All submissions</option><option value="awaiting">Awaiting professor decision</option><option value="approved">Approved by professor</option><option value="rejected">Rejected by professor</option>{submissionStatuses.map(status => <option value={`status:${status}`} key={status}>Submission status: {statusLabel(status)}</option>)}</select></label></div>
+      {loaded && !submissions.length && <p>No student has submitted a classroom image yet.</p>}
+      {loaded && submissions.length > 0 && !visibleSubmissions.length && <p>No submissions match the search and status filter.</p>}
+      <div className="flow-submissions">{visibleSubmissions.map(item => <article className="flow-submission" key={item.id}>
         <div className="flow-submission-head"><div><h3>{item.student_name}</h3><small>{item.student_email || item.student_id} · {displayTime(item.submitted_at)} · attempt {item.attempt_number}</small></div><span className={`flow-status ${statusTone(item.review_decision ? `MANUALLY_${item.review_decision}` : item.status)}`}>{item.review_decision ? `Manual ${statusLabel(item.review_decision)}` : statusLabel(item.status)}</span></div>
         <div className="flow-submission-body">{item.image_url ? <a href={item.image_url} target="_blank" rel="noreferrer"><img src={item.image_url} alt={`Classroom image submitted by ${item.student_name}`} /></a> : <div className="flow-image-missing">Private image preview unavailable</div>}<div><p>{item.explanation}</p><p className="flow-hint">People detected: {item.detected_people ?? 'unknown'} · Nearby people: {item.nearby_people ?? 'unknown'} · Person in configured region: {item.stage_person_detected === null || item.stage_person_detected === undefined ? 'unknown' : item.stage_person_detected ? 'yes' : 'no'}</p>{item.review_reason && <p><strong>Professor note:</strong> {item.review_reason}</p>}
-          {!item.review_decision && session.status !== 'finalized' && <div className="flow-row-actions"><button className="primary-button" disabled={busy} onClick={() => void review(item, 'approve')}>Approve present</button><button className="secondary-button" disabled={busy} onClick={() => void review(item, 'reject')}>Reject submission</button></div>}
+          {!item.review_decision && requiresProfessorReview(item) && session.status !== 'finalized' && <div className="flow-row-actions"><button className="primary-button" disabled={busy} onClick={() => openReasonForm({ kind: 'review', item, decision: 'approve' })}>Approve present</button><button className="secondary-button" disabled={busy} onClick={() => openReasonForm({ kind: 'review', item, decision: 'reject' })}>Reject submission</button></div>}
+          {!item.review_decision && item.status === 'VERIFIED' && <p className="flow-hint">Configured scene criteria passed automatically; use the roster controls below if you need to correct attendance.</p>}
+          {reasonAction?.kind === 'review' && reasonAction.item.id === item.id && <form className="flow-reason-form" onSubmit={event => void submitReason(event)}><h4 id={`review-reason-heading-${item.id}`}>{reasonAction.decision === 'approve' ? 'Reason for approving' : 'Reason for rejecting'} this submission</h4><label htmlFor={`review-reason-${item.id}`}>Required reason</label><textarea id={`review-reason-${item.id}`} aria-labelledby={`review-reason-heading-${item.id}`} value={reason} onChange={event => setReason(event.target.value)} rows={3} required maxLength={1000} autoFocus /><div className="flow-row-actions"><button className="primary-button" type="submit" disabled={busy || !reason.trim()}>{busy ? 'Saving…' : 'Save review'}</button><button className="secondary-button" type="button" onClick={closeReasonForm} disabled={busy}>Cancel</button></div></form>}
         </div></div>
       </article>)}</div>
     </section>
-    <section className="flow-panel"><div className="flow-section-heading"><h2>Attendance roster</h2><span>{roster.length} enrolled</span></div><div className="flow-roster">
-      {roster.map(row => <div className="flow-roster-row" key={row.student_id}><div><strong>{row.student_name}</strong><small>{row.registration_id || row.student_email || row.student_id} · {row.verification_status ? statusLabel(row.verification_status) : 'no image submission'}</small></div><span className={`flow-status ${statusTone(row.status)}`}>{statusLabel(row.status)}</span>{session.status !== 'finalized' && <div className="flow-row-actions"><button className="secondary-button small" disabled={busy} onClick={() => void manualMark(row, 'present')}>Mark present</button><button className="secondary-button small" disabled={busy} onClick={() => void manualMark(row, 'absent')}>Mark absent</button></div>}</div>)}
-      {!roster.length && <p>Roster will appear when the session detail is loaded.</p>}
+    <section className="flow-panel"><div className="flow-section-heading"><h2>Attendance roster</h2><span>{loaded ? `${visibleRoster.length} of ${roster.length} rostered students shown` : 'Roster data not loaded'}</span></div><div className="flow-inbox-controls"><label>Roster status<select value={rosterFilter} onChange={event => setRosterFilter(event.target.value)}><option value="all">All roster statuses</option><option value="present">Present</option><option value="absent">Absent</option><option value="pending">Pending</option><option value="unknown">Status unavailable</option></select></label></div><div className="flow-roster">
+      {visibleRoster.map(row => <div className="flow-roster-row" key={row.student_id}><div><strong>{row.student_name}</strong><small>{row.registration_id || row.student_email || row.student_id} · {row.verification_status ? statusLabel(row.verification_status) : 'no image submission'}</small></div><span className={`flow-status ${statusTone(row.status)}`}>{statusLabel(row.status)}</span>{session.status !== 'finalized' && <div className="flow-row-actions"><button className="secondary-button small" disabled={busy} onClick={() => openReasonForm({ kind: 'attendance', row, status: 'present' })}>Mark present</button><button className="secondary-button small" disabled={busy} onClick={() => openReasonForm({ kind: 'attendance', row, status: 'absent' })}>Mark absent</button></div>}{reasonAction?.kind === 'attendance' && reasonAction.row.student_id === row.student_id && <form className="flow-reason-form flow-reason-form-wide" onSubmit={event => void submitReason(event)}><h4 id={`attendance-reason-heading-${row.student_id}`}>Reason for marking {row.student_name} {reasonAction.status}</h4><label htmlFor={`attendance-reason-${row.student_id}`}>Required correction reason</label><textarea id={`attendance-reason-${row.student_id}`} aria-labelledby={`attendance-reason-heading-${row.student_id}`} value={reason} onChange={event => setReason(event.target.value)} rows={3} required maxLength={1000} autoFocus /><div className="flow-row-actions"><button className="primary-button" type="submit" disabled={busy || !reason.trim()}>{busy ? 'Saving…' : 'Save attendance correction'}</button><button className="secondary-button" type="button" onClick={closeReasonForm} disabled={busy}>Cancel</button></div></form>}</div>)}
+      {loaded && !roster.length && <p>No roster entries were returned for this session.</p>}
+      {loaded && roster.length > 0 && !visibleRoster.length && <p>No roster entries match the search and status filter.</p>}
     </div></section>
-    {report && <section className="flow-panel"><div className="flow-section-heading"><h2>Final attendance summary</h2><button className="secondary-button" onClick={downloadCsv}>Download CSV</button></div><div className="flow-summary-grid"><Summary label="Enrolled" value={summary?.total_enrolled ?? report.rows.length} /><Summary label="Auto-verified present" value={summary?.automatically_verified_present ?? 0} /><Summary label="Manually approved present" value={summary?.manually_approved_present ?? 0} /><Summary label="Rejected submissions" value={summary?.rejected_submissions ?? 0} /><Summary label="Awaiting review" value={summary?.awaiting_review ?? 0} /><Summary label="Did not submit" value={summary?.did_not_submit ?? 0} /><Summary label="Final absent" value={summary?.final_absent ?? 0} /></div></section>}
+    {report && <section className="flow-panel"><div className="flow-section-heading"><h2>Session attendance report</h2><button className="secondary-button" onClick={downloadCsv}>Download CSV</button></div><p className="flow-hint">Summary is limited to rows and summary fields returned by this session’s report.</p><div className="flow-summary-grid"><Summary label="Enrolled" value={summary?.total_enrolled ?? report.rows.length} /><Summary label="Present in report" value={report.rows.filter(row => row.status === 'present').length} /><Summary label="Absent in report" value={report.rows.filter(row => row.status === 'absent').length} /><Summary label="Pending in report" value={report.rows.filter(row => row.status === 'pending').length} /><Summary label="Auto-verified present" value={summary?.automatically_verified_present ?? '—'} /><Summary label="Manually approved present" value={summary?.manually_approved_present ?? '—'} /><Summary label="Rejected submissions" value={summary?.rejected_submissions ?? '—'} /><Summary label="Awaiting review" value={summary?.awaiting_review ?? '—'} /><Summary label="Did not submit" value={summary?.did_not_submit ?? '—'} /><Summary label="Final absent" value={summary?.final_absent ?? report.rows.filter(row => row.status === 'absent').length} /></div></section>}
   </main>
 }
 

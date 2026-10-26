@@ -9,7 +9,9 @@ function list(value: unknown): unknown[] { return Array.isArray(value) ? value :
 function text(value: unknown, fallback = ''): string { return value === null || value === undefined ? fallback : String(value) }
 function id(value: unknown): string { return text(value) }
 function number(value: unknown, fallback = 0): number { return typeof value === 'number' ? value : Number(value ?? fallback) || fallback }
-function status(value: unknown): AttendanceEntry['status'] { return value === 'present' || value === 'absent' || value === 'pending' ? value : 'pending' }
+function status(value: unknown): AttendanceEntry['status'] { return value === 'present' || value === 'absent' || value === 'pending' ? value : 'unknown' }
+function optionalNumber(value: unknown): number | undefined { const parsed = typeof value === 'number' ? value : typeof value === 'string' && value.trim() ? Number(value) : NaN; return Number.isFinite(parsed) ? parsed : undefined }
+function nullableNumber(value: unknown): number | null { return value === null || value === undefined ? null : optionalNumber(value) ?? null }
 function normalizeUser(value: unknown): User {
   const raw = record(value)
   return { id: id(raw.id), name: text(raw.name, 'User'), email: text(raw.email), role: raw.role === 'teacher' ? 'teacher' : 'student', registration_id: raw.registration_id === undefined ? undefined : text(raw.registration_id) }
@@ -42,7 +44,7 @@ function normalizeSession(value: unknown): Session {
     started_at: createdAt,
     created_at: createdAt,
     finalized_at: raw.finalized_at === null || raw.finalized_at === undefined ? null : text(raw.finalized_at),
-    status: ['scheduled', 'open', 'closed', 'finalized'].includes(text(raw.status)) ? text(raw.status) as SessionStatus : 'open',
+    status: ['scheduled', 'open', 'closed', 'finalized'].includes(text(raw.status)) ? text(raw.status) as SessionStatus : undefined,
     title: text(raw.title, 'Attendance session'),
     professor_name: raw.professor_name === undefined ? undefined : text(raw.professor_name),
     opens_at: raw.opens_at === undefined || raw.opens_at === null ? undefined : text(raw.opens_at),
@@ -60,7 +62,7 @@ function normalizeSession(value: unknown): Session {
 }
 function normalizeClass(value: unknown): ClassItem {
   const raw = record(value)
-  return { id: id(raw.id ?? raw.class_id), name: text(raw.name ?? raw.title, 'Class'), code: raw.code === undefined ? undefined : text(raw.code), schedule: raw.schedule === undefined ? undefined : text(raw.schedule), room: raw.room === undefined ? undefined : text(raw.room), student_count: raw.student_count === undefined ? undefined : number(raw.student_count) }
+  return { id: id(raw.id ?? raw.class_id), name: text(raw.name ?? raw.title, 'Class'), code: raw.code === undefined ? undefined : text(raw.code), schedule: raw.schedule === undefined ? undefined : text(raw.schedule), room: raw.room === undefined ? undefined : text(raw.room), student_count: optionalNumber(raw.student_count) }
 }
 function normalizeStudentAttendance(value: unknown): StudentAttendance {
   const raw = record(value)
@@ -149,7 +151,7 @@ export async function finalize(sessionId: string) { return request(`/sessions/${
 export async function reports(sessionId: string): Promise<Report> {
   const raw = record(await request<unknown>(`/reports/sessions/${encodeURIComponent(sessionId)}`))
   const summary = record(raw.summary)
-  return { session: normalizeSession(raw.session), rows: list(raw.rows).map(normalizeReportRow), summary: Object.keys(summary).length ? { total_enrolled: number(summary.total_enrolled), automatically_verified_present: number(summary.automatically_verified_present), manually_approved_present: number(summary.manually_approved_present), rejected_submissions: number(summary.rejected_submissions), awaiting_review: number(summary.awaiting_review), did_not_submit: number(summary.did_not_submit), final_absent: number(summary.final_absent) } : undefined, csv: text(raw.csv), pdf_html: text(raw.pdf_html ?? raw.pdf) }
+  return { session: normalizeSession(raw.session), rows: list(raw.rows).map(normalizeReportRow), summary: Object.keys(summary).length ? { total_enrolled: nullableNumber(summary.total_enrolled), automatically_verified_present: nullableNumber(summary.automatically_verified_present), manually_approved_present: nullableNumber(summary.manually_approved_present), rejected_submissions: nullableNumber(summary.rejected_submissions), awaiting_review: nullableNumber(summary.awaiting_review), did_not_submit: nullableNumber(summary.did_not_submit), final_absent: nullableNumber(summary.final_absent) } : undefined, csv: text(raw.csv), pdf_html: text(raw.pdf_html ?? raw.pdf) }
 }
 export async function audit(sessionId: string): Promise<AuditItem[]> {
   return list(await request<unknown>(`/audit?session_id=${encodeURIComponent(sessionId)}`)).map(normalizeAudit)

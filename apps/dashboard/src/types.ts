@@ -1,5 +1,5 @@
 export type Role = 'teacher' | 'student'
-export type AttendanceStatus = 'present' | 'absent' | 'pending'
+export type AttendanceStatus = 'present' | 'absent' | 'pending' | 'unknown'
 
 export interface User { id: string; name: string; email: string; role: Role; registration_id?: string }
 export interface ClassItem { id: string; name: string; code?: string; schedule?: string; room?: string; student_count?: number }
@@ -14,7 +14,7 @@ export interface ImageSubmission { id: string; session_id: string; student_id: s
 export interface Notification { id: string; title: string; body: string; created_at: string; read_at?: string | null; read: boolean }
 export interface AuditItem { id: string; session_id: string; action: string; timestamp: string; note?: string | null; metadata?: Record<string, unknown>; actor_name?: string; created_at?: string; details?: string }
 export interface ReportRow { student_code?: string; name: string; email: string; status: AttendanceStatus; verification_status?: string; review_decision?: string | null; submission_time?: string | null; note?: string | null; updated_at?: string }
-export interface ReportSummary { total_enrolled: number; automatically_verified_present: number; manually_approved_present: number; rejected_submissions: number; awaiting_review: number; did_not_submit: number; final_absent: number }
+export interface ReportSummary { total_enrolled: number | null; automatically_verified_present: number | null; manually_approved_present: number | null; rejected_submissions: number | null; awaiting_review: number | null; did_not_submit: number | null; final_absent: number | null }
 export interface Report { session: Session; rows: ReportRow[]; summary?: ReportSummary; csv: string; pdf_html: string }
 
 export const demoTeacher: User = { id: 'teacher-1', name: 'Dr. Mira Chen', email: 'teacher@demo.edu', role: 'teacher' }

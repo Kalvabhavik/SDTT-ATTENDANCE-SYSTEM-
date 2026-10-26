@@ -6,13 +6,14 @@ Validation run: 2026-10-26, in the Manus Sandbox clone of `pragna1004/SDTT-ATTEN
 
 - Backend Python compilation: `python -m py_compile app/main.py app/vision.py tests/test_api.py tests/test_vision.py` — passed.
 - Backend tests: `python -m pytest -q` in an isolated test virtual environment — **15 passed**. Tests cover timed-session transitions, role/JWT contract helpers, disabled legacy capture, private-image retention behavior, image quality outcomes, fail-closed detector errors, scene evidence, and removal of embedded EXIF from stored copies. The vision tests inject a deterministic detector; they do not download Ultralytics weights or call Supabase.
-- Dashboard: `npm run build` in `apps/dashboard/` — TypeScript check and Vite production bundle passed.
+- Dashboard, including the Attendrix teacher overview/session review improvements: `npm run build` in `apps/dashboard/` — TypeScript check and Vite production bundle passed. `git diff --check` passed.
 
 ## Checks not available or not performed
 
 - Flutter/Dart validation was not run: neither `flutter` nor `dart` is installed in the current sandbox. Mobile source changes therefore still need `flutter analyze`, `flutter test`, and a web build in a Flutter-enabled environment.
 - No Supabase project credentials were available. Schema execution, Supabase Auth, RLS, private Storage upload/signed URLs, realtime network behavior, and full frontend-to-backend E2E flows have not been tested against a live service.
 - No YOLO weight download/inference benchmark was performed. The model is loaded lazily in production and detector behavior in unit tests is injected.
+- No browser-driven accessibility, responsive, or end-to-end interaction suite is configured or was run for the updated dashboard; validation here confirms type-checking and production bundling only.
 - No Android/iOS device camera, native build, public deployment, accuracy/fairness benchmark, or production-security review is claimed.
 
 ## Reproducible commands
