@@ -1047,6 +1047,252 @@
 
 ---
 
+## Category I — Identity Verification and Anti-Proxy Integrity (Task 05)
+
+### TC-ID-001: Correct Live Enrolled Student (Matching Identity)
+- **Category:** Category I — Identity Integrity
+- **Objective:** Verify authentic live enrolled student with valid dynamic challenges is marked present.
+- **Preconditions:** Student enrolled with reference face template; lecture session is open.
+- **Inputs & Setup:** Authentic live face matching enrolled template, matching challenge sequence (turn & blink).
+- **Execution Steps:**
+  1. POST `/api/sessions/{session_id}/verify-attendance` with matching face and challenge token.
+- **Expected Result:** HTTP 200 OK, `status: "present"`, `face_match: True`, `liveness_passed: True`, `session_valid: True`.
+- **Actual Result:** HTTP 200 OK, `status: "present"`, `face_match: True`, `face_confidence: 0.999`.
+- **Pass/Fail Criteria:** Pass if marked present with matching identity.
+- **Status:** PASS
+- **Evidence:** `proof/logs/identity_integrity_test_log.json`, `proof/screenshots/05_identity_integrity/01_identity_matching_decision_matrix.png`
+- **Defect Reference:** N/A
+
+---
+
+### TC-ID-002: Correct Student With Poor Quality Capture
+- **Category:** Category I — Identity Integrity
+- **Objective:** Verify that poor quality captures (heavily blurred or underexposed) are rejected before matching.
+- **Preconditions:** Student enrolled; session is open.
+- **Inputs & Setup:** Face image with Gaussian blur ($\sigma=25$) causing Laplacian variance $< 45.0$.
+- **Execution Steps:**
+  1. POST `/api/sessions/{session_id}/verify-attendance` with blurred face capture.
+- **Expected Result:** HTTP 400 Bad Request with `X-Error-Code: IMAGE_BLURRY` or `IMAGE_QUALITY_BLURRY`.
+- **Actual Result:** HTTP 400 Bad Request, `X-Error-Code: IMAGE_BLURRY`, detail: "Capture is too blurry".
+- **Pass/Fail Criteria:** Pass if low-quality capture is rejected before biometric matching.
+- **Status:** PASS
+- **Evidence:** `proof/logs/identity_integrity_test_log.json`
+- **Defect Reference:** SEC-006
+
+---
+
+### TC-ID-003: Live But Non-Matching Person (Impostor Detection)
+- **Category:** Category I — Identity Integrity
+- **Objective:** Verify live person passes liveness challenges but is marked absent on biometric identity mismatch.
+- **Preconditions:** Enrolled template orthogonal to live candidate ($sim < 0.35$).
+- **Inputs & Setup:** Live face 2 performing head turns and blinks against registered face 1.
+- **Execution Steps:**
+  1. Complete active challenges with face 2.
+  2. POST `/api/sessions/{session_id}/verify-attendance`.
+- **Expected Result:** HTTP 200 OK, `status: "absent"`, `face_match: False`, `liveness_passed: True`.
+- **Actual Result:** HTTP 200 OK, `status: "absent"`, `face_match: False`, `liveness_passed: True`, `face_confidence: 0.048`.
+- **Pass/Fail Criteria:** Pass if live impostor is marked absent despite authentic liveness.
+- **Status:** PASS
+- **Evidence:** `proof/logs/identity_integrity_test_log.json`, `proof/screenshots/05_identity_integrity/01_identity_matching_decision_matrix.png`
+- **Defect Reference:** SEC-001
+
+---
+
+### TC-ID-004: Missing Enrollment Reference
+- **Category:** Category I — Identity Integrity
+- **Objective:** Verify student without registered template is rejected with clean HTTP 400.
+- **Preconditions:** Student authenticated but no record in `face_templates`.
+- **Inputs & Setup:** Live capture submitted without enrollment.
+- **Execution Steps:**
+  1. POST `/api/sessions/{session_id}/verify-attendance`.
+- **Expected Result:** HTTP 400 Bad Request with `X-Error-Code: MISSING_ENROLLMENT_DATA`.
+- **Actual Result:** HTTP 400 Bad Request, `X-Error-Code: MISSING_ENROLLMENT_DATA`, detail: "Biometrics not enrolled".
+- **Pass/Fail Criteria:** Pass if missing enrollment is rejected before running pipeline.
+- **Status:** PASS
+- **Evidence:** `proof/logs/identity_integrity_test_log.json`, `proof/screenshots/05_identity_integrity/03_enrollment_integrity_rejection_flow.png`
+- **Defect Reference:** SEC-014
+
+---
+
+### TC-ID-005: Invalid or Malformed Enrollment Data
+- **Category:** Category I — Identity Integrity
+- **Objective:** Verify corrupted Fernet ciphertext in `face_templates` fails closed cleanly with HTTP 400.
+- **Preconditions:** Tampered / corrupted ciphertext string stored in `face_templates`.
+- **Inputs & Setup:** Verification request against corrupted template.
+- **Execution Steps:**
+  1. POST `/api/sessions/{session_id}/verify-attendance`.
+- **Expected Result:** HTTP 400 Bad Request with `X-Error-Code: INVALID_ENROLLMENT_DATA`.
+- **Actual Result:** HTTP 400 Bad Request, `X-Error-Code: INVALID_ENROLLMENT_DATA`, detail: "Malformed or corrupted biometric enrollment data".
+- **Pass/Fail Criteria:** Pass if decryption error fails closed with 400 without crashing server.
+- **Status:** PASS
+- **Evidence:** `proof/logs/identity_integrity_test_log.json`, `proof/screenshots/05_identity_integrity/03_enrollment_integrity_rejection_flow.png`
+- **Defect Reference:** SEC-014
+
+---
+
+### TC-ID-006: Incompatible or Expired Enrollment Data
+- **Category:** Category I — Identity Integrity
+- **Objective:** Verify incompatible model version or expired template timestamps are rejected.
+- **Preconditions:** Template with `model_version = "unsupported-legacy-model-v0"` or `expires_at` in past.
+- **Inputs & Setup:** Verification attempts against incompatible and expired templates.
+- **Execution Steps:**
+  1. Submit against incompatible model -> Verify HTTP 400 `INVALID_ENROLLMENT_DATA`.
+  2. Submit against expired template -> Verify HTTP 400 `EXPIRED_ENROLLMENT_DATA`.
+- **Expected Result:** HTTP 400 with specific error code headers.
+- **Actual Result:** Both subcases rejected with HTTP 400 and appropriate error codes.
+- **Pass/Fail Criteria:** Pass if incompatible model and expired data are blocked cleanly.
+- **Status:** PASS
+- **Evidence:** `proof/logs/identity_integrity_test_log.json`, `proof/screenshots/05_identity_integrity/03_enrollment_integrity_rejection_flow.png`
+- **Defect Reference:** SEC-014
+
+---
+
+### TC-ID-007: Ambiguous or Low-Confidence Match
+- **Category:** Category I — Identity Integrity
+- **Objective:** Verify borderline similarity scores ($0.35 \le sim < 0.45$) are held in pending review and NEVER auto-accepted.
+- **Preconditions:** Enrolled template synthetic vector crafted to yield $sim = 0.40$.
+- **Inputs & Setup:** Live face verification with similarity 0.40 in ambiguous window.
+- **Execution Steps:**
+  1. POST `/api/sessions/{session_id}/verify-attendance`.
+- **Expected Result:** HTTP 200 OK, `status: "pending"`, `face_match: False`, audit action `attendance.ambiguous_match`.
+- **Actual Result:** HTTP 200 OK, `status: "pending"`, `face_match: False`, note: "Ambiguous biometric match".
+- **Pass/Fail Criteria:** Pass if uncertain result is routed to review queue instead of present.
+- **Status:** PASS
+- **Evidence:** `proof/logs/identity_integrity_test_log.json`, `proof/screenshots/05_identity_integrity/01_identity_matching_decision_matrix.png`
+- **Defect Reference:** SEC-006
+
+---
+
+### TC-ID-008: Expired or Closed Lecture Session
+- **Category:** Category I — Identity Integrity
+- **Objective:** Verify attendance cannot be recorded against closed or expired lecture sessions.
+- **Preconditions:** Session status set to `closed`.
+- **Inputs & Setup:** Verification request submitted against closed session.
+- **Execution Steps:**
+  1. POST `/api/sessions/{session_id}/verify-attendance`.
+- **Expected Result:** HTTP 400 Bad Request, detail: "This attendance session is not open."
+- **Actual Result:** HTTP 400 Bad Request, detail: "This attendance session is not open."
+- **Pass/Fail Criteria:** Pass if closed session blocks submission.
+- **Status:** PASS
+- **Evidence:** `proof/logs/identity_integrity_test_log.json`
+- **Defect Reference:** N/A
+
+---
+
+### TC-ID-009: Replayed Capture Defense
+- **Category:** Category I — Identity Integrity
+- **Objective:** Verify previously submitted capture frame bytes cannot be reused in another session.
+- **Preconditions:** Legitimate initial check-in completed.
+- **Inputs & Setup:** Identical SHA-256 byte payload submitted to fresh session.
+- **Execution Steps:**
+  1. POST identical bytes to second session.
+- **Expected Result:** HTTP 400 Bad Request with `X-Error-Code: REPLAY_ATTACK_DETECTED`.
+- **Actual Result:** HTTP 400 Bad Request, `X-Error-Code: REPLAY_ATTACK_DETECTED`.
+- **Pass/Fail Criteria:** Pass if byte deduplication blocks replayed images.
+- **Status:** PASS
+- **Evidence:** `proof/logs/identity_integrity_test_log.json`
+- **Defect Reference:** SEC-003
+
+---
+
+### TC-ID-010: Reused Challenge Token
+- **Category:** Category I — Identity Integrity
+- **Objective:** Verify consumed challenge token cannot be reused across requests.
+- **Preconditions:** Challenge token consumed on first attendance verification.
+- **Inputs & Setup:** Re-submitting consumed token with fresh face frame.
+- **Execution Steps:**
+  1. POST `/api/sessions/{session_id}/verify-attendance` with consumed token.
+- **Expected Result:** HTTP 400 Bad Request, detail: "Challenge token has already been used."
+- **Actual Result:** HTTP 400 Bad Request, detail: "Challenge token has already been used. Tokens are strictly single-use."
+- **Pass/Fail Criteria:** Pass if nonce consumption blocks reuse.
+- **Status:** PASS
+- **Evidence:** `proof/logs/identity_integrity_test_log.json`
+- **Defect Reference:** SEC-004
+
+---
+
+### TC-ID-011: Duplicate Attendance Submission
+- **Category:** Category I — Identity Integrity
+- **Objective:** Verify sequential repeat check-in attempts are rejected by 1-attempt policy.
+- **Preconditions:** First attendance attempt recorded in database.
+- **Inputs & Setup:** Repeat submission by same student on same session.
+- **Execution Steps:**
+  1. Send second verification request.
+- **Expected Result:** HTTP 400 Bad Request with `X-Error-Code: ATTEMPT_LIMIT_REACHED`.
+- **Actual Result:** HTTP 400 Bad Request, `X-Error-Code: ATTEMPT_LIMIT_REACHED`.
+- **Pass/Fail Criteria:** Pass if duplicate check-in is rejected.
+- **Status:** PASS
+- **Evidence:** `proof/logs/identity_integrity_test_log.json`
+- **Defect Reference:** N/A
+
+---
+
+### TC-ID-012: Simultaneous Concurrent Check-In Requests (Race Condition)
+- **Category:** Category I — Identity Integrity
+- **Objective:** Verify that concurrent requests serialize atomically via in-memory mutex, resulting in exactly 1 attendance record.
+- **Preconditions:** Enrolled student; active open session.
+- **Inputs & Setup:** 5 parallel threads submitting verification requests at $T=0\text{ms}$.
+- **Execution Steps:**
+  1. Dispatch 5 simultaneous requests via `concurrent.futures.ThreadPoolExecutor`.
+  2. Verify response codes and database record count.
+- **Expected Result:** Exactly 1 request succeeds (HTTP 200); remaining 4 requests blocked with HTTP 400 `ATTEMPT_LIMIT_REACHED`. Exactly 1 row in `attendance` table.
+- **Actual Result:** Exactly 1 success (200), 4 blocked (400 `ATTEMPT_LIMIT_REACHED`), exactly 1 DB row.
+- **Pass/Fail Criteria:** Pass if race condition is eliminated and zero duplicate rows exist.
+- **Status:** PASS
+- **Evidence:** `proof/logs/identity_integrity_test_log.json`, `proof/screenshots/05_identity_integrity/02_concurrency_race_condition_timeline.png`
+- **Defect Reference:** SEC-012
+
+---
+
+### TC-ID-013: Database Transaction Failure (Fail Closed)
+- **Category:** Category I — Identity Integrity
+- **Objective:** Verify that database write/persistence exceptions fail closed without phantom attendance.
+- **Preconditions:** Enrolled student, active open session.
+- **Inputs & Setup:** Database `insert`/`update` mocked to raise transaction failure exception.
+- **Execution Steps:**
+  1. POST `/api/sessions/{session_id}/verify-attendance` during DB outage.
+- **Expected Result:** HTTP 500/503 with `X-Error-Code: DATABASE_TRANSACTION_FAILED`, zero attendance records created.
+- **Actual Result:** HTTP 500, `X-Error-Code: DATABASE_TRANSACTION_FAILED`, zero phantom records.
+- **Pass/Fail Criteria:** Pass if database transaction error fails closed cleanly.
+- **Status:** PASS
+- **Evidence:** `proof/logs/identity_integrity_test_log.json`
+- **Defect Reference:** SEC-015
+
+---
+
+### TC-ID-014: Attempt to Submit Attendance for Another User (IDOR Defense)
+- **Category:** Category I — Identity Integrity
+- **Objective:** Verify that client cannot submit attendance for another student via form or query fields.
+- **Preconditions:** Attacker authenticated as Student A. Victim is Student B.
+- **Inputs & Setup:** Attacker passes `student_id: victim_uuid` in form body.
+- **Execution Steps:**
+  1. POST `/api/sessions/{session_id}/verify-attendance` with mismatched student ID.
+- **Expected Result:** HTTP 403 Forbidden with `X-Error-Code: IDOR_ATTEMPT_BLOCKED`.
+- **Actual Result:** HTTP 403 Forbidden, `X-Error-Code: IDOR_ATTEMPT_BLOCKED`, detail: "Unauthorized: Cannot submit attendance for another student".
+- **Pass/Fail Criteria:** Pass if IDOR attempt is blocked with 403.
+- **Status:** PASS
+- **Evidence:** `proof/logs/identity_integrity_test_log.json`, `proof/screenshots/05_identity_integrity/04_anti_idor_and_log_privacy_architecture.png`
+- **Defect Reference:** SEC-013
+
+---
+
+### TC-ID-015: Biometric Log Sanitization & Privacy Compliance
+- **Category:** Category I — Identity Integrity
+- **Objective:** Verify that raw embeddings (128/512 float arrays), facial landmarks, and raw image buffers are NEVER leaked in application logs or audit records.
+- **Preconditions:** Debug logging enabled (`caplog.at_level(DEBUG)`).
+- **Inputs & Setup:** Execute full enrollment and live verification flow under log capture.
+- **Execution Steps:**
+  1. Execute enrollment and live verification.
+  2. Inspect captured log records for `array([`, `dtype=float`, and landmark tuples.
+- **Expected Result:** Zero floating point vector dumps or landmark tuples present in ordinary application logs.
+- **Actual Result:** Passed: complete absence of float array vectors, raw landmarks, and image buffers in logs.
+- **Pass/Fail Criteria:** Pass if no biometric data appears in log output.
+- **Status:** PASS
+- **Evidence:** `proof/logs/identity_integrity_test_log.json`, `proof/screenshots/05_identity_integrity/04_anti_idor_and_log_privacy_architecture.png`
+- **Defect Reference:** SEC-015
+
+---
+
 ## Test Execution Summary Matrix
 
 | Category | Planned Tests | Passed | Failed | Blocked | Not Run | Pass Rate |
@@ -1059,5 +1305,6 @@
 | Category F: Performance & Latency | 1 | 1 | 0 | 0 | 0 | 100% |
 | Category G: Accuracy & Limits | 1 | 1 | 0 | 0 | 0 | 100% |
 | Category H: Adversarial Evaluation & PAD | 11 | 11 | 0 | 0 | 0 | 100% |
-| **TOTAL** | **37** | **37** | **0** | **0** | **0** | **100%** |
+| Category I: Identity Verification & Anti-Proxy | 15 | 15 | 0 | 0 | 0 | 100% |
+| **TOTAL** | **52** | **52** | **0** | **0** | **0** | **100%** |
 

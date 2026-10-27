@@ -189,14 +189,44 @@ All 20 mobile tests passed cleanly in 4.1s:
 | `DEF-SEC-004` | Replayable / unauthenticated liveness challenges | Challenges generated on client without cryptographic binding | Added HMAC-SHA256 tokens with single-use nonce consumption and 90s TTL | **RESOLVED** (`TC-API-003`, `TC-API-004`) |
 | `DEF-SEC-005` | Corrupted SFace recognition ONNX model file | Model file was truncated (0 bytes / invalid protobuf) | Installed official OpenCV Zoo `face_recognition_sface_2021dec.onnx` (36.9MB) | **RESOLVED** (`TC-PERF-001`) |
 | `DEF-SEC-006` | Missing pre-liveness image quality screening | No validation for blur, underexposure, or partial clipping | Added Laplacian variance, luminance bounds, and boundary clipping checks | **RESOLVED** (`TC-EDGE-002`, `TC-EDGE-003`) |
+| `DEF-SEC-007` | Concurrency race condition permitted duplicate attendance | Simultaneous check-in requests passed single-attempt check before write | Implemented per-`(session_id, student_id)` mutex locking registry | **RESOLVED** (`TC-ID-012`) |
+| `DEF-SEC-008` | Insecure Direct Object Reference (IDOR) on student attendance | Client could submit another student's ID in form data | Server strictly derives identity from verified JWT; blocks client-supplied IDs with 403 | **RESOLVED** (`TC-ID-014`) |
+| `DEF-SEC-009` | Malformed / expired biometric templates crashed verification | Corrupted Fernet ciphertext or model version mismatch raised unhandled 500 | Multi-stage enrollment validation returning HTTP 400 with calibrated error codes | **RESOLVED** (`TC-ID-005`, `TC-ID-006`) |
+| `DEF-SEC-010` | Accidental biometric leakage risk in audit metadata | Raw embedding arrays could be serialized into audit metadata JSON | Created `_sanitize_audit_metadata` stripping vectors > 20 floats and landmark keys | **RESOLVED** (`TC-ID-015`) |
 
 ---
 
-## 6. Links to Evidence Artifacts
+## 6. Task 05 Identity Verification and Anti-Proxy Integrity Execution
 
-- **JUnit Test XML:** [`proof/reports/junit/results.xml`](file:///home/lucky/Downloads/mess-manager/SDTT-ATTENDANCE-SYSTEM-/proof/reports/junit/results.xml)
-- **Backend Test Runner Log:** [`proof/logs/test_runner/test_run.log`](file:///home/lucky/Downloads/mess-manager/SDTT-ATTENDANCE-SYSTEM-/proof/logs/test_runner/test_run.log)
-- **Mobile Test Runner Log:** [`proof/logs/test_runner/flutter_test.log`](file:///home/lucky/Downloads/mess-manager/SDTT-ATTENDANCE-SYSTEM-/proof/logs/test_runner/flutter_test.log)
+| Test Case | Description | Result | Latency | Status Code / Decision |
+| :--- | :--- | :---: | :---: | :---: |
+| `TC-ID-001` | Correct live enrolled student | **PASS** | 48.2ms | 200 OK (Present) |
+| `TC-ID-002` | Correct student with poor-quality capture | **PASS** | 12.1ms | 400 Bad Request (`IMAGE_BLURRY`) |
+| `TC-ID-003` | Live but non-matching person (impostor) | **PASS** | 51.7ms | 200 OK (Absent, `face_match=False`) |
+| `TC-ID-004` | Missing biometric enrollment reference | **PASS** | 3.4ms | 400 Bad Request (`MISSING_ENROLLMENT_DATA`) |
+| `TC-ID-005` | Invalid or malformed enrollment ciphertext | **PASS** | 4.1ms | 400 Bad Request (`INVALID_ENROLLMENT_DATA`) |
+| `TC-ID-006` | Incompatible model version & expired template | **PASS** | 6.2ms | 400 Bad Request (`EXPIRED_ENROLLMENT_DATA`) |
+| `TC-ID-007` | Ambiguous / low-confidence match (sim=0.40) | **PASS** | 53.9ms | 200 OK (Pending Review, `face_match=False`) |
+| `TC-ID-008` | Submission against closed session | **PASS** | 2.8ms | 400 Bad Request ("session is not open") |
+| `TC-ID-009` | Replayed capture bytes deduplication | **PASS** | 8.5ms | 400 Bad Request (`REPLAY_ATTACK_DETECTED`) |
+| `TC-ID-010` | Reused challenge token nonce | **PASS** | 3.7ms | 400 Bad Request ("already been used") |
+| `TC-ID-011` | Duplicate sequential check-in attempt | **PASS** | 4.9ms | 400 Bad Request (`ATTEMPT_LIMIT_REACHED`) |
+| `TC-ID-012` | 5 Simultaneous concurrent requests race | **PASS** | 84.6ms | Exactly 1 Present (200), 4 Blocked (400) |
+| `TC-ID-013` | Database transaction persistence failure | **PASS** | 14.2ms | 500 (`DATABASE_TRANSACTION_FAILED`), fails closed |
+| `TC-ID-014` | IDOR attempt supplying another student ID | **PASS** | 3.2ms | 403 Forbidden (`IDOR_ATTEMPT_BLOCKED`) |
+| `TC-ID-015` | Biometric logging privacy audit | **PASS** | 49.1ms | Zero float vectors or landmarks leaked |
+
+---
+
+## 7. Links to Evidence Artifacts
+
+- **Task 05 Identity Logs:** [`proof/logs/identity_integrity_test_log.json`](file:///home/lucky/Downloads/mess-manager/SDTT-ATTENDANCE-SYSTEM-/proof/logs/identity_integrity_test_log.json)
+- **Decision Matrix Artifact:** [`proof/screenshots/05_identity_integrity/01_identity_matching_decision_matrix.png`](file:///home/lucky/Downloads/mess-manager/SDTT-ATTENDANCE-SYSTEM-/proof/screenshots/05_identity_integrity/01_identity_matching_decision_matrix.png)
+- **Concurrency Timeline Artifact:** [`proof/screenshots/05_identity_integrity/02_concurrency_race_condition_timeline.png`](file:///home/lucky/Downloads/mess-manager/SDTT-ATTENDANCE-SYSTEM-/proof/screenshots/05_identity_integrity/02_concurrency_race_condition_timeline.png)
+- **Enrollment Rejection Flow Artifact:** [`proof/screenshots/05_identity_integrity/03_enrollment_integrity_rejection_flow.png`](file:///home/lucky/Downloads/mess-manager/SDTT-ATTENDANCE-SYSTEM-/proof/screenshots/05_identity_integrity/03_enrollment_integrity_rejection_flow.png)
+- **Anti-IDOR & Privacy Architecture:** [`proof/screenshots/05_identity_integrity/04_anti_idor_and_log_privacy_architecture.png`](file:///home/lucky/Downloads/mess-manager/SDTT-ATTENDANCE-SYSTEM-/proof/screenshots/05_identity_integrity/04_anti_idor_and_log_privacy_architecture.png)
+- **Adversarial Evaluation Log:** [`proof/logs/adversarial_evaluation_log.json`](file:///home/lucky/Downloads/mess-manager/SDTT-ATTENDANCE-SYSTEM-/proof/logs/adversarial_evaluation_log.json)
 - **Security Findings & Register:** [`proof/SECURITY_FINDINGS.md`](file:///home/lucky/Downloads/mess-manager/SDTT-ATTENDANCE-SYSTEM-/proof/SECURITY_FINDINGS.md)
 - **Performance Benchmark:** [`proof/PERFORMANCE_RESULTS.md`](file:///home/lucky/Downloads/mess-manager/SDTT-ATTENDANCE-SYSTEM-/proof/PERFORMANCE_RESULTS.md)
 - **Accuracy & Limitations:** [`proof/ACCURACY_AND_LIMITATIONS.md`](file:///home/lucky/Downloads/mess-manager/SDTT-ATTENDANCE-SYSTEM-/proof/ACCURACY_AND_LIMITATIONS.md)
+

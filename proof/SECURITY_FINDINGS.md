@@ -20,6 +20,10 @@
 | `SEC-009` | Static Inter-Frame Multi-Frame Challenge Replay | **HIGH** | `backend/app/face_engine.py` | **RESOLVED** | `TC-ADV-005` |
 | `SEC-010` | Model Runtime Exception / Timeout Fail-Open Risk | **HIGH** | `backend/app/main.py` | **RESOLVED** | `TC-ADV-011` |
 | `SEC-011` | Digital Screen Replay & Print Halftone Presentation Attacks | **HIGH** | `backend/app/face_engine.py` | **RESOLVED** | `TC-ADV-003`, `TC-ADV-004` |
+| `SEC-012` | High-Concurrency Duplicate Attendance Race Condition | **HIGH** | `backend/app/main.py` | **RESOLVED** | `TC-ID-012` |
+| `SEC-013` | Insecure Direct Object Reference (IDOR) on Student Check-in | **HIGH** | `backend/app/main.py` | **RESOLVED** | `TC-ID-014` |
+| `SEC-014` | Unhandled 500 Crash on Corrupted / Incompatible Enrollment Biometrics | **MEDIUM** | `backend/app/main.py` | **RESOLVED** | `TC-ID-005`, `TC-ID-006` |
+| `SEC-015` | Biometric Leakage and Database Fail-Open Vulnerability | **MEDIUM** | `backend/app/main.py` | **RESOLVED** | `TC-ID-013`, `TC-ID-015` |
 
 ---
 
@@ -199,4 +203,64 @@
   - Planar glare detected via saturated specular reflection ratio ($> 0.08$).
 - **Remediation:** Enhanced `detect_presentation_attack` with 2D FFT spectral analysis, HSV/YCrCb chrominance gamut analysis, and specular glare detection.
 - **Retest Result:** **RESOLVED** — Verified via `TC-ADV-003` and `TC-ADV-004`.
+
+---
+
+### SEC-012: High-Concurrency Duplicate Attendance Race Condition
+- **Finding ID:** `SEC-012`
+- **Severity:** **HIGH** (CVSS 7.4: AV:N/AC:H/PR:L/UI:N/S:U/C:N/I:H/A:N, CWE-362)
+- **Rationale:** If multiple check-in requests for the same student and session arrived simultaneously, both could read the `attendance` table before either wrote, bypassing the strict 1-attempt policy.
+- **Affected Component:** `backend/app/main.py` (`verify_student_live_attendance`).
+- **Reproduction Steps:**
+  1. Dispatch 5 simultaneous threads submitting distinct valid frame captures for identical `(session_id, student_id)` at $T=0\text{ms}$.
+- **Expected Behaviour:** Exactly 1 request succeeds; 4 requests are blocked; exactly 1 row persists in `attendance`.
+- **Actual Behaviour (Pre-Fix):** Multiple concurrent requests passed verification and overwrote or created multiple check-in attempts.
+- **Remediation:** Implemented per-`(session_id, student_id)` mutex locking registry (`_get_attendance_lock`). File bytes are read asynchronously before acquiring the mutex, and all verification and database read/write actions execute inside `with att_lock:`. Subsequent requests detect `attempted=True` and reject immediately with HTTP 400 `ATTEMPT_LIMIT_REACHED`.
+- **Retest Result:** **RESOLVED** — Verified via `TC-ID-012`.
+
+---
+
+### SEC-013: Insecure Direct Object Reference (IDOR) on Student Check-in
+- **Finding ID:** `SEC-013`
+- **Severity:** **HIGH** (CVSS 7.5: AV:N/AC:L/PR:L/UI:N/S:U/C:N/I:H/A:N, CWE-639)
+- **Rationale:** An attacker could attempt to submit attendance on behalf of another student by passing `student_id` or `user_id` form parameters, or by reusing a challenge token issued for another student.
+- **Affected Component:** `backend/app/main.py` (`verify_student_live_attendance`).
+- **Reproduction Steps:**
+  1. Authenticate as Student A.
+  2. Send `POST /api/sessions/{session_id}/verify-attendance` with `student_id: student_b_uuid`.
+- **Expected Behaviour:** Request blocked with HTTP 403 Forbidden `IDOR_ATTEMPT_BLOCKED`.
+- **Actual Behaviour (Pre-Fix):** Client-supplied student IDs were either silently disregarded or could permit IDOR impersonation.
+- **Remediation:** Explicitly inspect incoming form parameters `student_id` and `user_id`. If supplied and not equal to `user["id"]` from the cryptographically verified JWT, raise HTTP 403 `IDOR_ATTEMPT_BLOCKED` and audit `security.idor_attempt_blocked`. Also verify `token_payload["sub"] == user["id"]`.
+- **Retest Result:** **RESOLVED** — Verified via `TC-ID-014`.
+
+---
+
+### SEC-014: Unhandled 500 Crash on Corrupted / Incompatible Enrollment Biometrics
+- **Finding ID:** `SEC-014`
+- **Severity:** **MEDIUM** (CVSS 5.3: AV:N/AC:L/PR:L/UI:N/S:U/C:N/I:N/A:L, CWE-209 / CWE-755)
+- **Rationale:** Corrupted Fernet ciphertext, invalid expiration timestamps, or model version incompatibilities (such as dimension mismatches between 512-dim ArcFace and 128-dim SFace) caused unhandled exceptions and internal server errors.
+- **Affected Component:** `backend/app/main.py` (`verify_student_live_attendance`).
+- **Reproduction Steps:**
+  1. Insert corrupted ciphertext or incompatible model version (`unsupported-v0`) into `face_templates`.
+  2. Submit attendance verification.
+- **Expected Behaviour:** Fails closed with clean HTTP 400 and explicit error headers (`INVALID_ENROLLMENT_DATA` or `EXPIRED_ENROLLMENT_DATA`).
+- **Actual Behaviour (Pre-Fix):** Server crashed with 500 Internal Server Error or unhandled `InvalidToken`.
+- **Remediation:** Added comprehensive pre-inference enrollment template validation: checks record existence, validates `expires_at`, checks `model_version` against supported whitelist, catches decryption failures, and verifies vector dimensions before computing cosine similarity.
+- **Retest Result:** **RESOLVED** — Verified via `TC-ID-004`, `TC-ID-005`, and `TC-ID-006`.
+
+---
+
+### SEC-015: Biometric Leakage and Database Fail-Open Vulnerability
+- **Finding ID:** `SEC-015`
+- **Severity:** **MEDIUM** (CVSS 5.3: AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N, CWE-532 / CWE-200)
+- **Rationale:** Raw floating point vectors (128/512-dim embeddings), facial landmark tuples, or raw image buffers could potentially be written into ordinary application logs or audit metadata JSON. Furthermore, an unhandled database transaction failure could leave attendance status uncertain.
+- **Affected Component:** `backend/app/main.py` (`_audit`, `verify_student_live_attendance`).
+- **Reproduction Steps:**
+  1. Audit application log statements during enrollment and verification.
+  2. Simulate database transaction failure during `db.table("attendance").insert/update`.
+- **Expected Behaviour:** Zero raw biometric vectors logged; database error fails closed with HTTP 500/503 and zero phantom records.
+- **Actual Behaviour (Pre-Fix):** Audit metadata was not explicitly filtered for large float arrays; DB transaction failure crashed without structured fail-closed handling.
+- **Remediation:** Implemented `_sanitize_audit_metadata` to automatically strip arrays > 20 floats and sensitive biometric keys. Wrapped database persistence in try-except block that audits `attendance.transaction_failed` and returns HTTP 500 `DATABASE_TRANSACTION_FAILED`. Verified log sanitization with automated log inspection test.
+- **Retest Result:** **RESOLVED** — Verified via `TC-ID-013` and `TC-ID-015`.
+
 
