@@ -143,6 +143,210 @@
 
 ---
 
+### TC-EDGE-005: Empty Payload Rejection (EMPTY_IMAGE)
+- **Category:** Category B — Face and Image Quality Edge Cases
+- **Objective:** Verify 0-byte image upload is immediately rejected with HTTP 400 and `X-Error-Code: EMPTY_IMAGE`.
+- **Preconditions:** Backend running.
+- **Inputs & Setup:** 0-byte file payload submitted to `/api/auth/enroll`.
+- **Execution Steps:**
+  1. POST 0-byte multipart `photo` to `/api/auth/enroll`.
+  2. Inspect response code, error payload, and `X-Error-Code` header.
+- **Expected Result:** HTTP 400, header `X-Error-Code: EMPTY_IMAGE`.
+- **Actual Result:** HTTP 400, `X-Error-Code: EMPTY_IMAGE`.
+- **Pass/Fail Criteria:** Pass if 0-byte upload is rejected before model inference.
+- **Status:** PASS
+- **Evidence:** `backend/tests/test_camera_reliability.py` (test_empty_image_upload_rejected)
+
+---
+
+### TC-EDGE-006: Corrupted Payload Rejection (CORRUPTED_IMAGE)
+- **Category:** Category B — Face and Image Quality Edge Cases
+- **Objective:** Verify corrupted binary payloads with valid extensions fail payload validation.
+- **Preconditions:** Backend running.
+- **Inputs & Setup:** 512 bytes of random unparseable bytes with filename `corrupt.jpg`.
+- **Execution Steps:**
+  1. POST corrupted file to `/api/auth/enroll`.
+  2. Inspect response code and `X-Error-Code` header.
+- **Expected Result:** HTTP 400, header `X-Error-Code: CORRUPTED_IMAGE`.
+- **Actual Result:** HTTP 400, `X-Error-Code: CORRUPTED_IMAGE`.
+- **Pass/Fail Criteria:** Pass if corrupted image decoding fails safely.
+- **Status:** PASS
+- **Evidence:** `backend/tests/test_camera_reliability.py` (test_corrupted_image_upload_rejected)
+
+---
+
+### TC-EDGE-007: Unsupported Image Format Rejection (UNSUPPORTED_FORMAT)
+- **Category:** Category B — Face and Image Quality Edge Cases
+- **Objective:** Verify non-standard image formats (e.g. GIF, PDF) fail magic byte verification.
+- **Preconditions:** Backend running.
+- **Inputs & Setup:** GIF payload (`GIF89a...`) submitted as profile selfie.
+- **Execution Steps:**
+  1. POST GIF file to `/api/auth/enroll`.
+  2. Inspect response code and `X-Error-Code` header.
+- **Expected Result:** HTTP 400, header `X-Error-Code: UNSUPPORTED_FORMAT`.
+- **Actual Result:** HTTP 400, `X-Error-Code: UNSUPPORTED_FORMAT`.
+- **Pass/Fail Criteria:** Pass if unsupported formats are rejected.
+- **Status:** PASS
+- **Evidence:** `backend/tests/test_camera_reliability.py` (test_unsupported_image_format_rejected)
+
+---
+
+### TC-EDGE-008: Oversized Upload Rejection (IMAGE_TOO_LARGE)
+- **Category:** Category B — Face and Image Quality Edge Cases
+- **Objective:** Verify image payloads exceeding 10MB threshold are blocked.
+- **Preconditions:** Backend running.
+- **Inputs & Setup:** 11MB byte payload.
+- **Execution Steps:**
+  1. Run `validate_image_payload` with 11MB byte array.
+- **Expected Result:** `code == "IMAGE_TOO_LARGE"`, `valid == False`.
+- **Actual Result:** Validation returns `IMAGE_TOO_LARGE`.
+- **Pass/Fail Criteria:** Pass if payload over 10MB is rejected.
+- **Status:** PASS
+- **Evidence:** `backend/tests/test_camera_reliability.py` (test_oversized_upload_rejected)
+
+---
+
+### TC-EDGE-009: No Face Detected in Enrollment or Attendance (NO_FACE_DETECTED)
+- **Category:** Category B — Face and Image Quality Edge Cases
+- **Objective:** Verify frame with no human face detected returns `NO_FACE_DETECTED` with descriptive reticle guidance.
+- **Preconditions:** Backend running, FakeFaceEngine with 0 preset detections.
+- **Inputs & Setup:** Synthetic image with 0 detected faces.
+- **Execution Steps:**
+  1. Submit enrollment request with 0 faces.
+  2. Submit verification request with 0 faces.
+- **Expected Result:** HTTP 400, header `X-Error-Code: NO_FACE_DETECTED`.
+- **Actual Result:** HTTP 400, `X-Error-Code: NO_FACE_DETECTED`.
+- **Pass/Fail Criteria:** Pass if no-face condition is clearly identified.
+- **Status:** PASS
+- **Evidence:** `backend/tests/test_camera_reliability.py` (test_no_face_detected_rejected)
+
+---
+
+### TC-EDGE-010: Multiple Faces Rejected (MULTIPLE_FACES)
+- **Category:** Category B — Face and Image Quality Edge Cases
+- **Objective:** Verify frame containing 2 or more faces is rejected for individual verification.
+- **Preconditions:** Backend running, FakeFaceEngine with 2 preset detections.
+- **Inputs & Setup:** Frame with 2 detected faces.
+- **Execution Steps:**
+  1. POST dual-face image to `/api/auth/enroll`.
+  2. Inspect response and `X-Error-Code` header.
+- **Expected Result:** HTTP 400, header `X-Error-Code: MULTIPLE_FACES`.
+- **Actual Result:** HTTP 400, `X-Error-Code: MULTIPLE_FACES`.
+- **Pass/Fail Criteria:** Pass if multiple faces are rejected for solo check-in.
+- **Status:** PASS
+- **Evidence:** `backend/tests/test_camera_reliability.py` (test_multiple_faces_rejected)
+
+---
+
+### TC-EDGE-011: Face Too Small Ratio Rejection (FACE_TOO_SMALL)
+- **Category:** Category B — Face and Image Quality Edge Cases
+- **Objective:** Verify face occupying under 3.5% of total frame area is rejected with proximity guidance.
+- **Preconditions:** Backend running.
+- **Inputs & Setup:** 400x300 image (120,000 px), face detection 40x50 px (2,000 px = 1.67%).
+- **Execution Steps:**
+  1. Run `assess_image_quality` with small face bbox.
+- **Expected Result:** `passed == False`, `code == "FACE_TOO_SMALL"`.
+- **Actual Result:** Quality check fails with `FACE_TOO_SMALL`.
+- **Pass/Fail Criteria:** Pass if small face fails minimum 3.5% ratio.
+- **Status:** PASS
+- **Evidence:** `backend/tests/test_camera_reliability.py` (test_face_too_small_rejected)
+
+---
+
+### TC-EDGE-012: Face Partially Outside Frame (FACE_OUT_OF_BOUNDS)
+- **Category:** Category B — Face and Image Quality Edge Cases
+- **Objective:** Verify face clipping frame boundary (margin < 12px) is rejected with centering advice.
+- **Preconditions:** Backend running.
+- **Inputs & Setup:** 400x300 image, face detection starting at x=2, y=5.
+- **Execution Steps:**
+  1. Run `assess_image_quality` with boundary clipping bbox.
+- **Expected Result:** `passed == False`, `code == "FACE_OUT_OF_BOUNDS"`.
+- **Actual Result:** Quality check fails with `FACE_OUT_OF_BOUNDS`.
+- **Pass/Fail Criteria:** Pass if clipped face is rejected.
+- **Status:** PASS
+- **Evidence:** `backend/tests/test_camera_reliability.py` (test_face_partially_outside_frame_rejected)
+
+---
+
+### TC-EDGE-013: Blur Detection Threshold (IMAGE_BLURRY)
+- **Category:** Category B — Face and Image Quality Edge Cases
+- **Objective:** Verify frame with Laplacian variance < 35.0 is rejected with stability guidance.
+- **Preconditions:** Backend running.
+- **Inputs & Setup:** Synthetic blurred frame with Laplacian variance ~0.15.
+- **Execution Steps:**
+  1. POST blurred frame to `/api/auth/enroll`.
+  2. Inspect response and `X-Error-Code` header.
+- **Expected Result:** HTTP 400, header `X-Error-Code: IMAGE_BLURRY`.
+- **Actual Result:** HTTP 400, `X-Error-Code: IMAGE_BLURRY`.
+- **Pass/Fail Criteria:** Pass if blurry image is rejected.
+- **Status:** PASS
+- **Evidence:** `backend/tests/test_camera_reliability.py` (test_blurry_image_rejected)
+
+---
+
+### TC-EDGE-014: Poor Lighting Rejection (POOR_LIGHTING)
+- **Category:** Category B — Face and Image Quality Edge Cases
+- **Objective:** Verify underexposed dark frame (mean luminance < 35.0) is rejected.
+- **Preconditions:** Backend running.
+- **Inputs & Setup:** Dark frame with mean luminance ~15.
+- **Execution Steps:**
+  1. POST dark frame to `/api/auth/enroll`.
+  2. Inspect response and `X-Error-Code` header.
+- **Expected Result:** HTTP 400, header `X-Error-Code: POOR_LIGHTING`.
+- **Actual Result:** HTTP 400, `X-Error-Code: POOR_LIGHTING`.
+- **Pass/Fail Criteria:** Pass if dark frame is rejected.
+- **Status:** PASS
+- **Evidence:** `backend/tests/test_camera_reliability.py` (test_poor_lighting_rejected)
+
+---
+
+### TC-EDGE-015: Excessive Exposure Rejection (EXCESSIVE_EXPOSURE)
+- **Category:** Category B — Face and Image Quality Edge Cases
+- **Objective:** Verify overexposed / washed out frame (mean luminance > 225.0) is rejected.
+- **Preconditions:** Backend running.
+- **Inputs & Setup:** Overexposed frame with mean luminance ~240.
+- **Execution Steps:**
+  1. POST washed out frame to `/api/auth/enroll`.
+  2. Inspect response and `X-Error-Code` header.
+- **Expected Result:** HTTP 400, header `X-Error-Code: EXCESSIVE_EXPOSURE`.
+- **Actual Result:** HTTP 400, `X-Error-Code: EXCESSIVE_EXPOSURE`.
+- **Pass/Fail Criteria:** Pass if washed out frame is rejected.
+- **Status:** PASS
+- **Evidence:** `backend/tests/test_camera_reliability.py` (test_excessive_exposure_rejected)
+
+---
+
+### TC-EDGE-016: Backlighting Detection Rejection (BACKLIGHTING_DETECTED)
+- **Category:** Category B — Face and Image Quality Edge Cases
+- **Objective:** Verify severe background backlight relative to dark face silhouette is detected and rejected.
+- **Preconditions:** Backend running.
+- **Inputs & Setup:** Frame with bright background (lum 240) and dark face region (lum 45).
+- **Execution Steps:**
+  1. Run `assess_image_quality` with backlit frame.
+- **Expected Result:** `passed == False`, `code == "BACKLIGHTING_DETECTED"`.
+- **Actual Result:** Quality check fails with `BACKLIGHTING_DETECTED`.
+- **Pass/Fail Criteria:** Pass if backlighting contrast ratio triggers rejection.
+- **Status:** PASS
+- **Evidence:** `backend/tests/test_camera_reliability.py` (test_backlighting_detected_rejected)
+
+---
+
+### TC-EDGE-017: Quality Failures Never Grant Attendance Success
+- **Category:** Category B — Face and Image Quality Edge Cases
+- **Objective:** Verify quality failures return HTTP 400 and NEVER insert a successful attendance checkin record.
+- **Preconditions:** Enrolled student, open session.
+- **Inputs & Setup:** Blurry face photo submitted to `/api/sessions/{session_id}/verify-attendance`.
+- **Execution Steps:**
+  1. Submit blurry image to attendance verification endpoint.
+  2. Query attendance records table for session.
+- **Expected Result:** HTTP 400, error code `IMAGE_BLURRY`, 0 attendance records inserted for student.
+- **Actual Result:** HTTP 400, attendance records remain 0.
+- **Pass/Fail Criteria:** Pass if unreadable or failed images never produce attendance present = true.
+- **Status:** PASS
+- **Evidence:** `backend/tests/test_camera_reliability.py` (test_failed_quality_never_marks_attendance_success)
+
+---
+
 ## Category C — Liveness and Spoofing
 
 ### TC-SPOOF-001: Static Printed Photo Bypass Rejection
@@ -432,6 +636,184 @@
 - **Pass/Fail Criteria:** Pass if rapid duplicate clicks are dropped.
 - **Status:** PASS
 - **Evidence:** `apps/mobile/test/ui_states_test.dart`
+- **Defect Reference:** N/A
+
+---
+
+### TC-MOB-009: Camera Permission Denied & Recovery State
+- **Category:** Category E — Mobile Application Tests
+- **Objective:** Verify mobile app displays high-contrast dark room HUD explaining camera requirement with retry button when permissions are denied or revoked.
+- **Preconditions:** App launched, camera permission denied by user or platform.
+- **Inputs & Setup:** `LiveFaceVerificationScreen(initialCameraPermissionDenied: true)`.
+- **Execution Steps:**
+  1. Mount `LiveFaceVerificationScreen` with denied permission state.
+  2. Verify UI displays warning icon, explanatory copy, and recovery button.
+  3. Capture retina mobile screenshot.
+- **Expected Result:** Title "Camera Permission Denied", icon `Icons.no_photography_rounded`, button "Grant Camera Access / Retry".
+- **Actual Result:** View correctly rendered with security-themed explanatory copy and recovery action.
+- **Pass/Fail Criteria:** Pass if permission denial is clearly explained and actionable.
+- **Status:** PASS
+- **Evidence:** `apps/mobile/test/camera_reliability_test.dart`, `proof/screenshots/03_camera_reliability/01_camera_permission_denied.png`
+- **Defect Reference:** N/A
+
+---
+
+### TC-MOB-010: Camera Hardware Unavailable & Driver Failure Feed
+- **Category:** Category E — Mobile Application Tests
+- **Objective:** Verify mobile app handles hardware initialization failure or empty camera device list gracefully.
+- **Preconditions:** Platform camera driver failure or camera bus in use.
+- **Inputs & Setup:** `LiveFaceVerificationScreen(initialCameraUnavailable: true)`.
+- **Execution Steps:**
+  1. Mount verification screen with hardware unavailable condition.
+  2. Verify amber diagnostic feed and re-initialization action.
+  3. Capture retina mobile screenshot.
+- **Expected Result:** Title "Camera Hardware Unavailable", icon `Icons.videocam_off_rounded`, button "Retry Camera Initialization".
+- **Actual Result:** Clean fallback feed rendered without crash or blank black screen.
+- **Pass/Fail Criteria:** Pass if hardware failure is caught and user is given retry action.
+- **Status:** PASS
+- **Evidence:** `apps/mobile/test/camera_reliability_test.dart`, `proof/screenshots/03_camera_reliability/02_camera_hardware_unavailable.png`
+- **Defect Reference:** N/A
+
+---
+
+### TC-MOB-011: Camera Stream Interrupted on Backgrounding
+- **Category:** Category E — Mobile Application Tests
+- **Objective:** Verify stream interruption during app lifecycle changes (phone call, notification swipe, backgrounding) is recovered safely.
+- **Preconditions:** Active capture session in progress.
+- **Inputs & Setup:** `LiveFaceVerificationScreen(initialCameraStreamInterrupted: true)`.
+- **Execution Steps:**
+  1. Mount verification screen in stream interrupted state.
+  2. Verify standby pause state and stream resumption button.
+  3. Capture retina mobile screenshot.
+- **Expected Result:** Title "Camera Stream Interrupted", icon `Icons.pause_circle_outline_rounded`, button "Resume Camera Stream".
+- **Actual Result:** Interrupted stream prompts user to resume safely without dangling hardware locks.
+- **Pass/Fail Criteria:** Pass if backgrounded state releases camera and prompts clean resume.
+- **Status:** PASS
+- **Evidence:** `apps/mobile/test/camera_reliability_test.dart`, `proof/screenshots/03_camera_reliability/03_camera_stream_interrupted.png`
+- **Defect Reference:** N/A
+
+---
+
+### TC-MOB-012: No Face Detected Guidance & Viewfinder Reticle
+- **Category:** Category E — Mobile Application Tests
+- **Objective:** Verify user receives actionable guidance and reticle realignment prompts when no face is found in viewfinder.
+- **Preconditions:** Attendance submission returned `X-Error-Code: NO_FACE_DETECTED`.
+- **Inputs & Setup:** Result step with error code `NO_FACE_DETECTED`.
+- **Execution Steps:**
+  1. Render Result HUD with `NO_FACE_DETECTED`.
+  2. Verify amber warning banner, error token, and centering remedy instructions.
+  3. Capture retina mobile screenshot.
+- **Expected Result:** Title "Image Quality Check Failed", error code `NO_FACE_DETECTED`, remedy text "Center your face inside the viewfinder reticle".
+- **Actual Result:** Exact quality remedy guidance displayed with retry button.
+- **Pass/Fail Criteria:** Pass if failure clearly distinguishes quality error from biometric mismatch.
+- **Status:** PASS
+- **Evidence:** `apps/mobile/test/camera_reliability_test.dart`, `proof/screenshots/03_camera_reliability/04_no_face_detected_alert.png`
+- **Defect Reference:** N/A
+
+---
+
+### TC-MOB-013: Multiple Faces Warning & Solo Verification Rule
+- **Category:** Category E — Mobile Application Tests
+- **Objective:** Verify user is informed that attendance verification requires a solo selfie when multiple faces are detected.
+- **Preconditions:** Attendance submission returned `X-Error-Code: MULTIPLE_FACES`.
+- **Inputs & Setup:** Result step with error code `MULTIPLE_FACES`.
+- **Execution Steps:**
+  1. Render Result HUD with `MULTIPLE_FACES`.
+  2. Verify rejection warning explains individual solo requirement.
+  3. Capture retina mobile screenshot.
+- **Expected Result:** Title "Image Quality Check Failed", error code `MULTIPLE_FACES`, remedy text "Only one individual student face is permitted".
+- **Actual Result:** Distinct solo requirement displayed with amber quality styling.
+- **Pass/Fail Criteria:** Pass if multiple face detection is rejected with clear remediation.
+- **Status:** PASS
+- **Evidence:** `apps/mobile/test/camera_reliability_test.dart`, `proof/screenshots/03_camera_reliability/05_multiple_faces_rejected.png`
+- **Defect Reference:** N/A
+
+---
+
+### TC-MOB-014: Face Too Small Proximity Guidance
+- **Category:** Category E — Mobile Application Tests
+- **Objective:** Verify small face captures prompt user to bring device closer to satisfy the 3.5% minimum frame area ratio.
+- **Preconditions:** Attendance submission returned `X-Error-Code: FACE_TOO_SMALL`.
+- **Inputs & Setup:** Result step with error code `FACE_TOO_SMALL`.
+- **Execution Steps:**
+  1. Render Result HUD with `FACE_TOO_SMALL`.
+  2. Verify distance advice and framing guidance.
+  3. Capture retina mobile screenshot.
+- **Expected Result:** Title "Image Quality Check Failed", error code `FACE_TOO_SMALL`, remedy text "Move phone closer until your face fills 40% to 60% of the screen".
+- **Actual Result:** Framing instructions guide student to move closer to camera.
+- **Pass/Fail Criteria:** Pass if proximity remedy is presented.
+- **Status:** PASS
+- **Evidence:** `apps/mobile/test/camera_reliability_test.dart`, `proof/screenshots/03_camera_reliability/06_face_too_small_guidance.png`
+- **Defect Reference:** N/A
+
+---
+
+### TC-MOB-015: Blur and Poor Lighting Remedy Action
+- **Category:** Category E — Mobile Application Tests
+- **Objective:** Verify motion blur and low illumination prompt user to stabilize device and face room lighting.
+- **Preconditions:** Attendance submission returned `X-Error-Code: IMAGE_BLURRY`.
+- **Inputs & Setup:** Result step with error code `IMAGE_BLURRY`.
+- **Execution Steps:**
+  1. Render Result HUD with `IMAGE_BLURRY`.
+  2. Verify stability instructions ("Hold your phone steady with both hands").
+  3. Capture retina mobile screenshot.
+- **Expected Result:** Title "Image Quality Check Failed", error code `IMAGE_BLURRY`, stability advice.
+- **Actual Result:** Stability remedy displayed with retry button.
+- **Pass/Fail Criteria:** Pass if blur failure directs user to stabilize device.
+- **Status:** PASS
+- **Evidence:** `apps/mobile/test/camera_reliability_test.dart`, `proof/screenshots/03_camera_reliability/07_poor_lighting_and_blur_guidance.png`
+- **Defect Reference:** N/A
+
+---
+
+### TC-MOB-016: Network Timeout, Disconnect & Retry Submission
+- **Category:** Category E — Mobile Application Tests
+- **Objective:** Verify network timeouts and transmission interruptions display dedicated sky-blue diagnostic HUD with instant retry action.
+- **Preconditions:** Network timeout or socket drop during verification request.
+- **Inputs & Setup:** Result step with error code `TIMEOUT`.
+- **Execution Steps:**
+  1. Render Result HUD with `TIMEOUT`.
+  2. Verify network disconnect header and retry submission action.
+  3. Capture retina mobile screenshot.
+- **Expected Result:** Title "Network Timeout / Disconnected", icon `Icons.wifi_off_rounded`, button "Retry Verification Attempt".
+- **Actual Result:** Network resilience card rendered with retry action.
+- **Pass/Fail Criteria:** Pass if network timeout is distinguished from biometric rejection.
+- **Status:** PASS
+- **Evidence:** `apps/mobile/test/camera_reliability_test.dart`, `proof/screenshots/03_camera_reliability/08_network_timeout_and_retry.png`
+- **Defect Reference:** N/A
+
+---
+
+### TC-MOB-017: Rapid Double-Tap Idempotency & Duplicate Submission Lock
+- **Category:** Category E — Mobile Application Tests
+- **Objective:** Verify repeated rapid taps on submission buttons are debounced and duplicate submissions are rejected under the 1-attempt policy.
+- **Preconditions:** Session checkin already recorded.
+- **Inputs & Setup:** Error message containing "Attendance checkin already recorded for this session. Strictly 1 attempt allowed."
+- **Execution Steps:**
+  1. Render Result HUD with duplicate checkin error.
+  2. Verify "Attendance Already Recorded" view and 1-attempt policy lock.
+- **Expected Result:** Title "Attendance Already Recorded", icon `Icons.fact_check_rounded`, footer "1-Attempt Policy • Attempt Recorded & Finalized".
+- **Actual Result:** Duplicate attempt cleanly locked out with explanation.
+- **Pass/Fail Criteria:** Pass if duplicate checkin is identified and idempotently blocked.
+- **Status:** PASS
+- **Evidence:** `apps/mobile/test/camera_reliability_test.dart`
+- **Defect Reference:** N/A
+
+---
+
+### TC-MOB-018: Quality Failure Strict Present=False Navigation Result
+- **Category:** Category E — Mobile Application Tests
+- **Objective:** Verify closing or popping a verification screen after quality or network failure strictly returns `present = false` to caller.
+- **Preconditions:** Active verification flow failed due to blur (`IMAGE_BLURRY`).
+- **Inputs & Setup:** Push `LiveFaceVerificationScreen` with `initialErrorCode: IMAGE_BLURRY`.
+- **Execution Steps:**
+  1. Tap "Close" button on result HUD.
+  2. Inspect value popped back to parent Navigator route.
+- **Expected Result:** Navigator pop returns `false` (never `true` or undefined).
+- **Actual Result:** Returned `false`. Quality failure never grants attendance success.
+- **Pass/Fail Criteria:** Pass if failure outcome is strictly false.
+- **Status:** PASS
+- **Evidence:** `apps/mobile/test/camera_reliability_test.dart`
 - **Defect Reference:** N/A
 
 ---

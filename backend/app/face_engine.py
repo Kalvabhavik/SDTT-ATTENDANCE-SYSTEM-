@@ -837,7 +837,7 @@ class FakeFaceEngine(FaceEngine):
     """Deterministic face engine for unit and integration testing."""
 
     def __init__(self):
-        self.preset_detections: list[FaceDetection] = []
+        self.preset_detections: Optional[list[FaceDetection]] = None
         self.identity_map: dict[str, np.ndarray] = {}
         self.default_similarity = 0.85
 
@@ -862,7 +862,7 @@ class FakeFaceEngine(FaceEngine):
         return arr / (norm + 1e-7)
 
     def detect_faces(self, img_bgr: np.ndarray, allow_fallback: Optional[bool] = None) -> list[FaceDetection]:
-        if self.preset_detections:
+        if self.preset_detections is not None:
             return list(self.preset_detections)
         # Default mock detection if an image has pixels
         if img_bgr is not None and img_bgr.size > 0:

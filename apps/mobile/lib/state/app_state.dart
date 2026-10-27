@@ -27,6 +27,7 @@ class AppState extends ChangeNotifier {
 
   bool busy = false;
   String? error;
+  String? errorCode;
   String? liveMessage;
 
   User? get user => auth?.user;
@@ -227,6 +228,7 @@ class AppState extends ChangeNotifier {
       return res;
     } on ApiException catch (e) {
       error = e.message;
+      errorCode = e.errorCode;
       rethrow;
     } finally {
       busy = false;

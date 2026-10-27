@@ -75,8 +75,11 @@ from app.security import (
 from app.verification import (
     SweepFrame,
     VerificationPipeline,
+    assess_image_quality,
     compute_image_metrics,
     parse_image_frame,
+    validate_image_payload,
+    validate_single_face,
 )
 
 logger = logging.getLogger("attendrix")
@@ -588,44 +591,32 @@ async def enroll_reference_selfie(
         )
 
     image_bytes = await photo.read()
-    if len(image_bytes) > MAX_CAPTURE_BYTES:
-        raise HTTPException(status_code=413, detail="Photo file size exceeds maximum limit.")
-
-    img = parse_image_frame(image_bytes)
-    if img is None:
-        raise HTTPException(status_code=400, detail="Invalid image file.")
+    img, err_code, err_msg = validate_image_payload(image_bytes, max_bytes=10485760)
+    if err_code is not None:
+        status_code = 413 if err_code == "IMAGE_TOO_LARGE" else (415 if err_code == "UNSUPPORTED_FORMAT" else 400)
+        raise HTTPException(
+            status_code=status_code,
+            detail=f"{err_msg} [{err_code}]",
+            headers={"X-Error-Code": err_code},
+        )
 
     engine = get_face_engine()
     faces = engine.detect_faces(img, allow_fallback=True)
 
-    if not faces:
+    face_ok, face_err, face_msg = validate_single_face(faces)
+    if not face_ok:
         raise HTTPException(
             status_code=400,
-            detail="No face detected. Please center your face in the front camera and try again.",
+            detail=f"{face_msg} [{face_err}]",
+            headers={"X-Error-Code": face_err},
         )
-    # Sort faces by area descending to isolate the foreground user
-    faces.sort(key=lambda f: f.bbox_w * f.bbox_h, reverse=True)
-    if len(faces) > 1:
-        area_primary = faces[0].bbox_w * faces[0].bbox_h
-        area_secondary = faces[1].bbox_w * faces[1].bbox_h
-        # Only reject if second face is also prominent (e.g. two people posing together)
-        if area_secondary > 0.40 * area_primary and area_secondary > (img.shape[0] * img.shape[1] * 0.08):
-            raise HTTPException(
-                status_code=400,
-                detail="Multiple faces detected. Please ensure only you are visible in your reference selfie.",
-            )
-        faces = [faces[0]]
 
-    lap_var, mean_lum = compute_image_metrics(img)
-    if lap_var < 3.0:
+    q_ok, q_err, q_msg, q_metrics = assess_image_quality(img, faces[0])
+    if not q_ok:
         raise HTTPException(
             status_code=400,
-            detail="Photo is too blurry. Please hold the phone steady in good lighting.",
-        )
-    if mean_lum < 4.0:
-        raise HTTPException(
-            status_code=400,
-            detail="Photo is too dark. Please take your reference photo in a well-lit area.",
+            detail=f"{q_msg} [{q_err}]",
+            headers={"X-Error-Code": q_err},
         )
 
     # Extract 512-dim embedding and encrypt it symmetrically
@@ -1903,18 +1894,21 @@ async def verify_student_live_attendance(
             raise HTTPException(
                 status_code=400,
                 detail="Strictly 1 attempt allowed. You have already completed your live attendance attempt for this session.",
+                headers={"X-Error-Code": "ATTEMPT_LIMIT_REACHED"},
             )
 
     # 4. Decode and analyze live face frame & check for replay attack
     face_bytes = await face_image.read()
-    if not face_bytes or len(face_bytes) == 0:
-        raise HTTPException(status_code=400, detail="Empty face image frame received.")
+    img_face, err_code, err_msg = validate_image_payload(face_bytes, max_bytes=10485760)
+    if err_code is not None:
+        status_code = 413 if err_code == "IMAGE_TOO_LARGE" else (415 if err_code == "UNSUPPORTED_FORMAT" else 400)
+        raise HTTPException(
+            status_code=status_code,
+            detail=f"{err_msg} [{err_code}]",
+            headers={"X-Error-Code": err_code},
+        )
 
     sha256_digest = hashlib.sha256(face_bytes).hexdigest()
-    img_face = parse_image_frame(face_bytes)
-    if img_face is None:
-        raise HTTPException(status_code=400, detail="Could not decode live face frame.")
-
     engine = get_face_engine()
     phash_val = engine.compute_phash(img_face)
 
@@ -1928,55 +1922,46 @@ async def verify_student_live_attendance(
         )
         raise HTTPException(
             status_code=400,
-            detail=f"Replay attack detected: {replay_reason}. Fresh camera capture is strictly required.",
+            detail=f"Replay attack detected: {replay_reason}. Fresh camera capture is strictly required. [REPLAY_ATTACK_DETECTED]",
+            headers={"X-Error-Code": "REPLAY_ATTACK_DETECTED"},
         )
 
-    # Face Detection: in testing allow_fallback=True for synthetic drawings unless STRICT_BIOMETRICS is set
+    # Face Detection
     allow_fb = (os.environ.get("ATTENDANCE_ENV") == "test" and os.environ.get("STRICT_BIOMETRICS") != "1")
     detected_faces = engine.detect_faces(img_face, allow_fallback=allow_fb)
-    if not detected_faces:
+    face_ok, face_err, face_msg = validate_single_face(detected_faces)
+    if not face_ok:
         _audit(
             session_id=session_id,
             actor_id=user["id"],
-            action="attendance.no_face_detected",
-            note=f"Student {user.get('name', 'Student')} verification attempt failed: No face detected in camera frame.",
+            action=f"attendance.{face_err.lower()}",
+            note=f"Student {user.get('name', 'Student')} verification attempt failed: {face_msg}",
         )
         raise HTTPException(
             status_code=400,
-            detail="No face detected in live scan. Please ensure your face is well-lit and centered.",
-        )
-
-    # Strict Single-Person Constraint: Multiple faces not allowed in single-student frontal capture
-    if len(detected_faces) > 1:
-        _audit(
-            session_id=session_id,
-            actor_id=user["id"],
-            action="attendance.multiple_faces_detected",
-            note=f"Student {user.get('name', 'Student')} verification failed: Multiple faces ({len(detected_faces)}) detected in single-student capture.",
-        )
-        raise HTTPException(
-            status_code=400,
-            detail=f"Multiple faces ({len(detected_faces)}) detected in camera frame. Only the enrolled student may appear in the verification scan.",
+            detail=f"{face_msg} [{face_err}]",
+            headers={"X-Error-Code": face_err},
         )
 
     primary_face = detected_faces[0]
 
     # 5. Image Quality Screening & Passive Presentation Attack Detection
-    if not allow_fb:
-        quality_res = engine.check_image_quality(img_face, primary_face)
-        if not quality_res["passed"]:
-            _audit(
-                session_id=session_id,
-                actor_id=user["id"],
-                action=f"attendance.quality_failed.{quality_res['error_code'].lower()}",
-                note=f"Image quality check failed: {quality_res['message']}",
-                metadata=quality_res.get("metrics"),
-            )
-            raise HTTPException(
-                status_code=400,
-                detail=quality_res["message"],
-            )
+    q_ok, q_err, q_msg, q_metrics = assess_image_quality(img_face, primary_face)
+    if not q_ok:
+        _audit(
+            session_id=session_id,
+            actor_id=user["id"],
+            action=f"attendance.quality_failed.{q_err.lower()}",
+            note=f"Image quality check failed: {q_msg}",
+            metadata=q_metrics,
+        )
+        raise HTTPException(
+            status_code=400,
+            detail=f"{q_msg} [{q_err}]",
+            headers={"X-Error-Code": q_err},
+        )
 
+    if not allow_fb:
         pa_res = engine.detect_presentation_attack(img_face, primary_face)
         if pa_res.get("is_spoof"):
             _audit(

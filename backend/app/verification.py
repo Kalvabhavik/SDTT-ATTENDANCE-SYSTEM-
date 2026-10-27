@@ -107,6 +107,166 @@ def compute_image_metrics(img_bgr: np.ndarray) -> tuple[float, float]:
     return round(lap_var, 2), round(mean_lum, 2)
 
 
+def validate_image_payload(
+    image_bytes: bytes,
+    max_bytes: int = 10485760,  # 10MB
+    min_width: int = 120,
+    min_height: int = 120,
+) -> tuple[Optional[np.ndarray], Optional[str], Optional[str]]:
+    """Validate image payload size, magic header bytes, decoding, and resolution.
+    
+    Returns:
+        (img_bgr, error_code, error_message)
+        If valid: (img_bgr, None, None)
+        If invalid: (None, error_code, error_message)
+    """
+    if image_bytes is None or len(image_bytes) == 0:
+        return None, "EMPTY_IMAGE", "Uploaded image file is empty (0 bytes)."
+
+    if len(image_bytes) > max_bytes:
+        mb = max_bytes // (1024 * 1024)
+        return None, "IMAGE_TOO_LARGE", f"Uploaded image exceeds maximum allowed size ({mb}MB)."
+
+    # Format verification: Check file magic signature bytes
+    is_jpeg = image_bytes.startswith(b"\xff\xd8\xff")
+    is_png = image_bytes.startswith(b"\x89PNG\r\n\x1a\n")
+    is_webp = len(image_bytes) >= 12 and image_bytes.startswith(b"RIFF") and image_bytes[8:12] == b"WEBP"
+
+    if not (is_jpeg or is_png or is_webp):
+        detected = "unknown"
+        if image_bytes.startswith(b"GIF8"):
+            detected = "GIF"
+        elif image_bytes.startswith(b"%PDF"):
+            detected = "PDF"
+        elif image_bytes.startswith(b"<html") or image_bytes.startswith(b"<!DOC"):
+            detected = "HTML"
+        return None, "UNSUPPORTED_FORMAT", f"Unsupported image format (detected: {detected}). Only JPEG, PNG, and WebP are accepted."
+
+    # Decode image
+    img = parse_image_frame(image_bytes)
+    if img is None or img.size == 0:
+        return None, "CORRUPTED_IMAGE", "Image file data is corrupted or cannot be decoded."
+
+    h, w = img.shape[:2]
+    if w < min_width or h < min_height:
+        return None, "IMAGE_TOO_SMALL", f"Image resolution too low ({w}x{h}); minimum {min_width}x{min_height} required."
+
+    return img, None, None
+
+
+def assess_image_quality(
+    img_bgr: np.ndarray,
+    face: Optional[FaceDetection] = None,
+    min_blur_var: float = 35.0,
+    min_luminance: float = 35.0,
+    max_luminance: float = 225.0,
+) -> tuple[bool, Optional[str], Optional[str], dict[str, Any]]:
+    """Assess image blur, poor lighting, excessive exposure, backlighting, and face geometry.
+    
+    Returns:
+        (passed, error_code, error_message, metrics)
+    """
+    if img_bgr is None or img_bgr.size == 0:
+        return False, "EMPTY_IMAGE", "Empty image frame received.", {}
+
+    h, w = img_bgr.shape[:2]
+    gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY) if len(img_bgr.shape) == 3 else img_bgr
+    lap_var = float(cv2.Laplacian(gray, cv2.CV_64F).var())
+    mean_lum = float(np.mean(gray))
+    std_lum = float(np.std(gray))
+
+    metrics: dict[str, Any] = {
+        "laplacian_var": round(lap_var, 1),
+        "mean_luminance": round(mean_lum, 1),
+        "contrast_std": round(std_lum, 1),
+    }
+
+    # 1. Poor Lighting (Underexposure)
+    if mean_lum < min_luminance:
+        return (
+            False,
+            "POOR_LIGHTING",
+            f"Photo is too dark (brightness {mean_lum:.1f} < {min_luminance:.1f}). Please take your photo in a well-lit area.",
+            metrics,
+        )
+
+    # 2. Excessive Exposure (Overexposure / glare)
+    if mean_lum > max_luminance:
+        return (
+            False,
+            "EXCESSIVE_EXPOSURE",
+            f"Photo is overexposed or has glare (brightness {mean_lum:.1f} > {max_luminance:.1f}). Avoid pointing directly at light sources.",
+            metrics,
+        )
+
+    # 3. Blur Check
+    if lap_var < min_blur_var:
+        return (
+            False,
+            "IMAGE_BLURRY",
+            f"Photo is too blurry (sharpness score {lap_var:.1f} < {min_blur_var:.1f}). Please hold the phone steady in good lighting.",
+            metrics,
+        )
+
+    # 4. Backlighting and Face Geometry Checks
+    if face is not None:
+        bx, by, bw, bh = face.bbox_x, face.bbox_y, face.bbox_w, face.bbox_h
+        bx, by = max(0, bx), max(0, by)
+        bw, bh = min(w - bx, bw), min(h - by, bh)
+
+        if bw > 10 and bh > 10:
+            face_roi = gray[by:by + bh, bx:bx + bw]
+            face_lum = float(np.mean(face_roi))
+            mask = np.ones((h, w), dtype=bool)
+            mask[by:by + bh, bx:bx + bw] = False
+            bg_lum = float(np.mean(gray[mask])) if np.any(mask) else mean_lum
+            metrics["face_luminance"] = round(face_lum, 1)
+            metrics["bg_luminance"] = round(bg_lum, 1)
+
+            # Severe backlighting: bright background and dark face
+            if bg_lum > 120.0 and face_lum < 65.0 and (bg_lum / max(face_lum, 1.0)) > 2.0:
+                return (
+                    False,
+                    "BACKLIGHTING_DETECTED",
+                    f"Severe backlighting detected (background is {bg_lum/max(face_lum, 1.0):.1f}x brighter than face). Position the light source in front of you.",
+                    metrics,
+                )
+
+        # 5. Face size ratio
+        area_ratio = (bw * bh) / float(w * h)
+        metrics["face_area_ratio"] = round(area_ratio, 3)
+        if area_ratio < 0.035 or face.ipd_px < 20.0:
+            return (
+                False,
+                "FACE_TOO_SMALL",
+                f"Face is too small in the camera frame ({area_ratio*100:.1f}%). Move closer to the camera.",
+                metrics,
+            )
+
+        # 6. Face bounds (Clipped)
+        margin = 4
+        if bx < margin or by < margin or (bx + bw) > (w - margin) or (by + bh) > (h - margin):
+            return (
+                False,
+                "FACE_OUT_OF_BOUNDS",
+                "Face is partially outside the camera frame. Center your face in the oval guide.",
+                metrics,
+            )
+
+    return True, None, "Image quality verified.", metrics
+
+
+def validate_single_face(
+    detected_faces: list[FaceDetection],
+) -> tuple[bool, Optional[str], Optional[str]]:
+    """Verify that exactly one face is detected for single-student verification."""
+    if not detected_faces:
+        return False, "NO_FACE_DETECTED", "No face detected. Please center your face in the front camera and try again."
+    if len(detected_faces) > 1:
+        return False, "MULTIPLE_FACES", f"Multiple faces ({len(detected_faces)}) detected. Please ensure only you are visible in the camera frame."
+    return True, None, None
+
+
 def hamming_distance(h1: str, h2: str) -> int:
     """Hamming distance between two hex string hashes."""
     try:

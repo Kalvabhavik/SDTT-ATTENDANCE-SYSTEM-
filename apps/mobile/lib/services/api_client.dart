@@ -8,9 +8,10 @@ import '../config/app_config.dart';
 import '../models/models.dart';
 
 class ApiException implements Exception {
-  ApiException(this.message, {this.statusCode});
+  ApiException(this.message, {this.statusCode, this.errorCode});
   final String message;
   final int? statusCode;
+  final String? errorCode;
   @override
   String toString() => message;
 }
@@ -113,9 +114,11 @@ class ApiClient {
       if (response.statusCode < 200 || response.statusCode >= 300) {
         final message =
             decoded is Map ? (decoded['detail'] ?? decoded['message']) : null;
+        final errorCode = response.headers['x-error-code'];
         throw ApiException(
             message?.toString() ?? 'Request failed (${response.statusCode}).',
-            statusCode: response.statusCode);
+            statusCode: response.statusCode,
+            errorCode: errorCode);
       }
       return decoded;
     });
@@ -174,8 +177,9 @@ class ApiClient {
       }
       if (streamed.statusCode != 200) {
         final msg = decoded is Map ? (decoded['detail'] ?? decoded['message']) : null;
+        final errorCode = streamed.headers['x-error-code'];
         throw ApiException(msg?.toString() ?? 'Enrollment failed (${streamed.statusCode}).',
-            statusCode: streamed.statusCode);
+            statusCode: streamed.statusCode, errorCode: errorCode);
       }
       return Map<String, dynamic>.from(decoded as Map);
     });
@@ -389,7 +393,8 @@ class ApiClient {
       final body = resp.body.isNotEmpty ? jsonDecode(resp.body) : {};
       if (resp.statusCode >= 400) {
         final detail = body is Map ? body['detail'] : resp.body;
-        throw ApiException(detail?.toString() ?? 'Verification failed', statusCode: resp.statusCode);
+        final errorCode = resp.headers['x-error-code'];
+        throw ApiException(detail?.toString() ?? 'Verification failed', statusCode: resp.statusCode, errorCode: errorCode);
       }
       return AttendanceVerifyResult.fromJson(Map<String, dynamic>.from(body as Map));
     });

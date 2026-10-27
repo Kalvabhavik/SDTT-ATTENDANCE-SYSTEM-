@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import '../services/api_client.dart';
 import '../state/app_state.dart';
 import '../widgets/app_widgets.dart';
 
@@ -40,7 +41,12 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
         setState(() => capturedFile = photo);
       }
     } catch (e) {
-      setState(() => enrollmentError = 'Camera access error: $e');
+      final str = e.toString().toLowerCase();
+      if (str.contains('permission') || str.contains('denied')) {
+        setState(() => enrollmentError = 'Camera access was denied. Please grant camera permission in system settings to take a reference selfie.');
+      } else {
+        setState(() => enrollmentError = 'Camera access error: $e');
+      }
     }
   }
 
@@ -73,6 +79,8 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
         );
         widget.onCompleted?.call();
       }
+    } on ApiException catch (e) {
+      setState(() => enrollmentError = e.message);
     } catch (e) {
       setState(() => enrollmentError = e.toString());
     } finally {

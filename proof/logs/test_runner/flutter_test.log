@@ -1,5 +1,22 @@
-00:00 +0: loading /home/lucky/Downloads/mess-manager/SDTT-ATTENDANCE-SYSTEM-/apps/mobile/test/widget_test.dart
-00:00 +0: app renders role selection screen with Student and Lecturer options
-00:00 +1: User model maps DB teacher role to display Lecturer
-00:00 +2: AttendanceSession parses duration, server_time, and headline counts
-00:00 +3: All tests passed!
+00:00 +0: loading /home/lucky/Downloads/mess-manager/SDTT-ATTENDANCE-SYSTEM-/apps/mobile/test/camera_reliability_test.dart
+00:00 +0: /home/lucky/Downloads/mess-manager/SDTT-ATTENDANCE-SYSTEM-/apps/mobile/test/camera_reliability_test.dart: Camera & Capture Reliability Tests TC-MOB-009: Camera Permission Denied State
+00:00 +1: /home/lucky/Downloads/mess-manager/SDTT-ATTENDANCE-SYSTEM-/apps/mobile/test/camera_reliability_test.dart: Camera & Capture Reliability Tests TC-MOB-009: Camera Permission Denied State
+00:00 +2: /home/lucky/Downloads/mess-manager/SDTT-ATTENDANCE-SYSTEM-/apps/mobile/test/camera_reliability_test.dart: Camera & Capture Reliability Tests TC-MOB-009: Camera Permission Denied State
+00:00 +3: /home/lucky/Downloads/mess-manager/SDTT-ATTENDANCE-SYSTEM-/apps/mobile/test/widget_test.dart: app renders role selection screen with Student and Lecturer options
+00:00 +4: /home/lucky/Downloads/mess-manager/SDTT-ATTENDANCE-SYSTEM-/apps/mobile/test/ui_states_test.dart: UI State Widgets Tests RejectionStateView displays failure reason and invokes retry
+00:00 +5: /home/lucky/Downloads/mess-manager/SDTT-ATTENDANCE-SYSTEM-/apps/mobile/test/ui_states_test.dart: UI State Widgets Tests RejectionStateView displays failure reason and invokes retry
+00:00 +6: /home/lucky/Downloads/mess-manager/SDTT-ATTENDANCE-SYSTEM-/apps/mobile/test/ui_states_test.dart: UI State Widgets Tests RejectionStateView displays failure reason and invokes retry
+00:00 +7: /home/lucky/Downloads/mess-manager/SDTT-ATTENDANCE-SYSTEM-/apps/mobile/test/camera_reliability_test.dart: Camera & Capture Reliability Tests TC-MOB-010: Camera Hardware Unavailable State
+00:00 +8: /home/lucky/Downloads/mess-manager/SDTT-ATTENDANCE-SYSTEM-/apps/mobile/test/camera_reliability_test.dart: Camera & Capture Reliability Tests TC-MOB-010: Camera Hardware Unavailable State
+00:00 +9: /home/lucky/Downloads/mess-manager/SDTT-ATTENDANCE-SYSTEM-/apps/mobile/test/ui_states_test.dart: UI State Widgets Tests EmptyState renders title, subtitle, and executes action
+00:00 +10: /home/lucky/Downloads/mess-manager/SDTT-ATTENDANCE-SYSTEM-/apps/mobile/test/camera_reliability_test.dart: Camera & Capture Reliability Tests TC-MOB-011: Camera Stream Interrupted State
+00:00 +11: /home/lucky/Downloads/mess-manager/SDTT-ATTENDANCE-SYSTEM-/apps/mobile/test/camera_reliability_test.dart: Camera & Capture Reliability Tests TC-MOB-011: Camera Stream Interrupted State
+00:00 +12: /home/lucky/Downloads/mess-manager/SDTT-ATTENDANCE-SYSTEM-/apps/mobile/test/ui_states_test.dart: UI State Widgets Tests AppDebouncedButton prevents rapid duplicate click executions
+00:00 +13: /home/lucky/Downloads/mess-manager/SDTT-ATTENDANCE-SYSTEM-/apps/mobile/test/camera_reliability_test.dart: Camera & Capture Reliability Tests TC-MOB-012: No Face Detected Alert and Guidance
+00:00 +14: /home/lucky/Downloads/mess-manager/SDTT-ATTENDANCE-SYSTEM-/apps/mobile/test/camera_reliability_test.dart: Camera & Capture Reliability Tests TC-MOB-013: Multiple Faces Rejected State
+00:00 +15: /home/lucky/Downloads/mess-manager/SDTT-ATTENDANCE-SYSTEM-/apps/mobile/test/camera_reliability_test.dart: Camera & Capture Reliability Tests TC-MOB-014: Face Too Small Guidance
+00:00 +16: /home/lucky/Downloads/mess-manager/SDTT-ATTENDANCE-SYSTEM-/apps/mobile/test/camera_reliability_test.dart: Camera & Capture Reliability Tests TC-MOB-015: Poor Lighting and Blur Guidance
+00:00 +17: /home/lucky/Downloads/mess-manager/SDTT-ATTENDANCE-SYSTEM-/apps/mobile/test/camera_reliability_test.dart: Camera & Capture Reliability Tests TC-MOB-016: Network Timeout and Retry Submission
+00:01 +18: /home/lucky/Downloads/mess-manager/SDTT-ATTENDANCE-SYSTEM-/apps/mobile/test/camera_reliability_test.dart: Camera & Capture Reliability Tests Duplicate submission prevented by 1-attempt policy
+00:01 +19: /home/lucky/Downloads/mess-manager/SDTT-ATTENDANCE-SYSTEM-/apps/mobile/test/camera_reliability_test.dart: Camera & Capture Reliability Tests Quality failure never returns attendance present = true
+00:01 +20: All tests passed!

@@ -30,6 +30,10 @@ class AppColors {
   static const amberBg = Color(0xFFFFFBEB);
   static const amberBorder = Color(0xFFFDE68A);
 
+  static const sky = Color(0xFF0284C7); // Sky 600 info / network
+  static const skyBg = Color(0xFFF0F9FF);
+  static const skyBorder = Color(0xFFBAE6FD);
+
   // Surfaces & Backgrounds
   static const background = Color(0xFFF8FAFC); // Clean neutral slate canvas
   static const card = Color(0xFFFFFFFF); // Pure white card

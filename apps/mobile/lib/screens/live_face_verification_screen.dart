@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:math' as math;
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
@@ -6,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:sensors_plus/sensors_plus.dart';
 import '../models/models.dart';
+import '../services/api_client.dart';
 import '../state/app_state.dart';
 import '../widgets/app_widgets.dart';
 
@@ -29,10 +31,24 @@ class LiveFaceVerificationScreen extends StatefulWidget {
     super.key,
     required this.state,
     required this.session,
+    this.initialCameraPermissionDenied = false,
+    this.initialCameraUnavailable = false,
+    this.initialCameraStreamInterrupted = false,
+    this.initialStep,
+    this.initialResult,
+    this.initialErrorCode,
+    this.initialErrorMessage,
   });
 
   final AppState state;
   final AttendanceSession session;
+  final bool initialCameraPermissionDenied;
+  final bool initialCameraUnavailable;
+  final bool initialCameraStreamInterrupted;
+  final VerificationStep? initialStep;
+  final AttendanceVerifyResult? initialResult;
+  final String? initialErrorCode;
+  final String? initialErrorMessage;
 
   @override
   State<LiveFaceVerificationScreen> createState() =>
@@ -47,6 +63,9 @@ class _LiveFaceVerificationScreenState
   int _selectedCameraIndex = 0;
   bool _isCameraInitialized = false;
   bool _cameraPermissionError = false;
+  bool _cameraPermissionDenied = false;
+  bool _cameraUnavailable = false;
+  bool _cameraStreamInterrupted = false;
 
   VerificationStep _currentStep = VerificationStep.liveFace;
   LivenessStage _livenessStage = LivenessStage.center;
@@ -64,7 +83,32 @@ class _LiveFaceVerificationScreenState
   bool _livenessPassed = false;    // Genuine backend verification result ONLY
   bool _isProcessing = false;
   String? _errorMessage;
+  String? _errorCode;
   AttendanceVerifyResult? _result;
+
+  bool get _isQualityFailure {
+    if (_errorCode == null) return false;
+    final code = _errorCode!.toUpperCase();
+    return code == 'IMAGE_BLURRY' ||
+        code == 'POOR_LIGHTING' ||
+        code == 'EXCESSIVE_EXPOSURE' ||
+        code == 'BACKLIGHTING_DETECTED' ||
+        code == 'NO_FACE_DETECTED' ||
+        code == 'MULTIPLE_FACES' ||
+        code == 'FACE_TOO_SMALL' ||
+        code == 'FACE_OUT_OF_BOUNDS' ||
+        code == 'UNSUPPORTED_FORMAT' ||
+        code == 'CORRUPTED_IMAGE' ||
+        code == 'EMPTY_IMAGE' ||
+        code == 'IMAGE_TOO_LARGE' ||
+        code == 'IMAGE_TOO_SMALL';
+  }
+
+  bool get _isNetworkError {
+    if (_errorCode == null) return false;
+    final code = _errorCode!.toUpperCase();
+    return code == 'TIMEOUT' || code == 'NETWORK_DISCONNECT';
+  }
 
   Timer? _countdownTimer;
   int _secondsLeft = 3;
@@ -94,9 +138,40 @@ class _LiveFaceVerificationScreenState
     _scannerAnim = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1800),
-    )..repeat(reverse: true);
+    );
 
-    _initCamera();
+    if (widget.initialCameraPermissionDenied) {
+      _cameraPermissionDenied = true;
+      _cameraPermissionError = true;
+    }
+    if (widget.initialCameraUnavailable) {
+      _cameraUnavailable = true;
+      _cameraPermissionError = true;
+    }
+    if (widget.initialCameraStreamInterrupted) {
+      _cameraStreamInterrupted = true;
+      _cameraPermissionError = true;
+    }
+    if (widget.initialStep != null) {
+      _currentStep = widget.initialStep!;
+    }
+    if (widget.initialResult != null) {
+      _result = widget.initialResult;
+      _livenessPassed = _result!.livenessPassed && _result!.isPresent;
+    }
+    if (widget.initialErrorCode != null) {
+      _errorCode = widget.initialErrorCode;
+    }
+    if (widget.initialErrorMessage != null) {
+      _errorMessage = widget.initialErrorMessage;
+    }
+
+    if (!widget.initialCameraPermissionDenied &&
+        !widget.initialCameraUnavailable &&
+        !widget.initialCameraStreamInterrupted &&
+        widget.initialStep != VerificationStep.result) {
+      _initCamera();
+    }
   }
 
   void _startAutoScanCountdown() {
@@ -119,10 +194,19 @@ class _LiveFaceVerificationScreenState
   }
 
   Future<void> _initCamera() async {
+    setState(() {
+      _cameraPermissionError = false;
+      _cameraPermissionDenied = false;
+      _cameraUnavailable = false;
+      _cameraStreamInterrupted = false;
+    });
     try {
-      _cameras = await availableCameras();
+      _cameras = await availableCameras().timeout(const Duration(seconds: 2));
       if (_cameras.isEmpty) {
-        setState(() => _cameraPermissionError = true);
+        setState(() {
+          _cameraUnavailable = true;
+          _cameraPermissionError = true;
+        });
         return;
       }
 
@@ -134,9 +218,41 @@ class _LiveFaceVerificationScreenState
       _selectedCameraIndex = frontIndex;
 
       await _setupCameraController(_cameras[_selectedCameraIndex]);
+    } on TimeoutException {
+      debugPrint('Camera init timed out');
+      if (mounted) {
+        setState(() {
+          _cameraUnavailable = true;
+          _cameraPermissionError = true;
+        });
+      }
+    } on CameraException catch (e) {
+      debugPrint('Camera init CameraException: ${e.code} ${e.description}');
+      if (mounted) {
+        setState(() {
+          _cameraPermissionError = true;
+          if (e.code == 'CameraAccessDenied' ||
+              e.code == 'CameraAccessDeniedWithoutPrompt' ||
+              e.code == 'CameraAccessRestricted') {
+            _cameraPermissionDenied = true;
+          } else {
+            _cameraUnavailable = true;
+          }
+        });
+      }
     } catch (e) {
       debugPrint('Camera init error: $e');
-      if (mounted) setState(() => _cameraPermissionError = true);
+      if (mounted) {
+        final errStr = e.toString().toLowerCase();
+        setState(() {
+          _cameraPermissionError = true;
+          if (errStr.contains('permission') || errStr.contains('denied')) {
+            _cameraPermissionDenied = true;
+          } else {
+            _cameraUnavailable = true;
+          }
+        });
+      }
     }
   }
 
@@ -165,10 +281,26 @@ class _LiveFaceVerificationScreenState
         _cameraController = controller;
         _isCameraInitialized = true;
         _cameraPermissionError = false;
+        _cameraPermissionDenied = false;
+        _cameraUnavailable = false;
+        _cameraStreamInterrupted = false;
       });
 
       if (_currentStep == VerificationStep.liveFace && !_livenessPassed) {
         _startAutoScanCountdown();
+      }
+    } on CameraException catch (e) {
+      debugPrint('Controller CameraException: ${e.code} ${e.description}');
+      if (mounted) {
+        setState(() {
+          _isCameraInitialized = false;
+          _cameraPermissionError = true;
+          if (e.code == 'CameraAccessDenied' || e.code == 'CameraAccessDeniedWithoutPrompt') {
+            _cameraPermissionDenied = true;
+          } else {
+            _cameraUnavailable = true;
+          }
+        });
       }
     } catch (e) {
       debugPrint('Controller init error: $e');
@@ -176,6 +308,7 @@ class _LiveFaceVerificationScreenState
         setState(() {
           _isCameraInitialized = false;
           _cameraPermissionError = true;
+          _cameraUnavailable = true;
         });
       }
     }
@@ -189,21 +322,29 @@ class _LiveFaceVerificationScreenState
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState appState) {
-    final cameraController = _cameraController;
-    if (cameraController == null || !cameraController.value.isInitialized) {
-      return;
-    }
     if (appState == AppLifecycleState.inactive || appState == AppLifecycleState.paused) {
-      _cameraController?.dispose();
-      _cameraController = null;
-      if (mounted) {
-        setState(() => _isCameraInitialized = false);
+      _countdownTimer?.cancel();
+      if (_isSweeping) {
+        _cancelPanoramaSweep();
+      }
+      final cameraController = _cameraController;
+      if (cameraController != null && cameraController.value.isInitialized) {
+        _cameraController?.dispose();
+        _cameraController = null;
+        if (mounted) {
+          setState(() {
+            _isCameraInitialized = false;
+            _cameraStreamInterrupted = true;
+          });
+        }
       }
     } else if (appState == AppLifecycleState.resumed) {
-      if (_cameras.isNotEmpty) {
-        _setupCameraController(_cameras[_selectedCameraIndex]);
-      } else {
-        _initCamera();
+      if (!_cameraPermissionDenied && !_cameraUnavailable && _cameraStreamInterrupted) {
+        if (_cameras.isNotEmpty) {
+          _setupCameraController(_cameras[_selectedCameraIndex]);
+        } else {
+          _initCamera();
+        }
       }
     }
   }
@@ -527,6 +668,13 @@ class _LiveFaceVerificationScreenState
   // ─────────────────────────────────────────────────────────────────────────
   Future<void> _submitDualVerification() async {
     if (_facePhoto == null) return;
+    if (_isProcessing) return;
+
+    setState(() {
+      _isProcessing = true;
+      _errorMessage = null;
+      _errorCode = null;
+    });
 
     try {
       final faceBytes = await _facePhoto!.readAsBytes();
@@ -565,6 +713,34 @@ class _LiveFaceVerificationScreenState
           _livenessPassed = res.livenessPassed && res.isPresent;
           _currentStep = VerificationStep.result;
           _isProcessing = false;
+          _errorCode = null;
+        });
+      }
+    } on TimeoutException {
+      if (mounted) {
+        setState(() {
+          _isProcessing = false;
+          _errorCode = 'TIMEOUT';
+          _errorMessage = 'Biometric transmission timed out. Latency threshold exceeded.';
+          _currentStep = VerificationStep.result;
+        });
+      }
+    } on SocketException {
+      if (mounted) {
+        setState(() {
+          _isProcessing = false;
+          _errorCode = 'NETWORK_DISCONNECT';
+          _errorMessage = 'Network disconnected. Unable to reach Attendrix server. Verify Wi-Fi or cellular data.';
+          _currentStep = VerificationStep.result;
+        });
+      }
+    } on ApiException catch (e) {
+      if (mounted) {
+        setState(() {
+          _isProcessing = false;
+          _errorCode = e.errorCode;
+          _errorMessage = e.message;
+          _currentStep = VerificationStep.result;
         });
       }
     } catch (e) {
@@ -572,6 +748,7 @@ class _LiveFaceVerificationScreenState
         setState(() {
           _isProcessing = false;
           _errorMessage = widget.state.error ?? e.toString();
+          _errorCode = widget.state.errorCode;
           _currentStep = VerificationStep.result;
         });
       }
@@ -599,18 +776,23 @@ class _LiveFaceVerificationScreenState
             ),
 
             // Center Reticle / HUD (Specific to current step)
-            if (_currentStep == VerificationStep.liveFace)
-              _buildFaceScanningHUD()
-            else if (_currentStep == VerificationStep.classroomRoom)
-              _buildClassroomRoomHUD()
-            else if (_currentStep == VerificationStep.verifying)
-              _buildVerifyingHUD()
-            else if (_currentStep == VerificationStep.result)
-              _buildResultHUD(),
+            if (_currentStep == VerificationStep.result)
+              _buildResultHUD()
+            else if (!_cameraPermissionDenied && !_cameraUnavailable && !_cameraStreamInterrupted) ...[
+              if (_currentStep == VerificationStep.liveFace)
+                _buildFaceScanningHUD()
+              else if (_currentStep == VerificationStep.classroomRoom)
+                _buildClassroomRoomHUD()
+              else if (_currentStep == VerificationStep.verifying)
+                _buildVerifyingHUD()
+            ],
 
             // Bottom action bar
             if (_currentStep != VerificationStep.verifying &&
-                _currentStep != VerificationStep.result)
+                _currentStep != VerificationStep.result &&
+                !_cameraPermissionDenied &&
+                !_cameraUnavailable &&
+                !_cameraStreamInterrupted)
               Positioned(
                 bottom: 24,
                 left: 20,
@@ -628,52 +810,14 @@ class _LiveFaceVerificationScreenState
   // ─────────────────────────────────────────────────────────────────────────
   Widget _buildCameraFeed() {
     if (_cameraPermissionError || !_isCameraInitialized || _cameraController == null) {
-      return Container(
-        color: const Color(0xFF0F172A),
-        child: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(
-                  Icons.videocam_off_rounded,
-                  size: 64,
-                  color: AppColors.slate,
-                ),
-                const SizedBox(height: 16),
-                const Text(
-                  'Hardware Camera Standby',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w800,
-                    fontSize: 18,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  'Using high-resolution direct snapshot mode for live face and classroom verification.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: AppColors.slate,
-                    fontSize: 13,
-                  ),
-                ),
-                const SizedBox(height: 20),
-                OutlinedButton.icon(
-                  onPressed: _initCamera,
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.white,
-                    side: const BorderSide(color: Colors.white30),
-                  ),
-                  icon: const Icon(Icons.refresh_rounded),
-                  label: const Text('Retry Camera Feed'),
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
+      if (_cameraPermissionDenied) {
+        return _buildCameraPermissionDeniedFeed();
+      } else if (_cameraStreamInterrupted) {
+        return _buildCameraStreamInterruptedFeed();
+      } else if (_cameraUnavailable) {
+        return _buildCameraHardwareUnavailableFeed();
+      }
+      return _buildCameraStandbyFeed();
     }
 
     final size = MediaQuery.of(context).size;
@@ -692,6 +836,243 @@ class _LiveFaceVerificationScreenState
             height: previewH,
             child: CameraPreview(_cameraController!),
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCameraPermissionDeniedFeed() {
+    return Container(
+      color: const Color(0xFF0F172A),
+      padding: const EdgeInsets.symmetric(horizontal: 28),
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 76,
+              height: 76,
+              decoration: BoxDecoration(
+                color: AppColors.rose.withValues(alpha: 0.15),
+                shape: BoxShape.circle,
+                border: Border.all(color: AppColors.rose.withValues(alpha: 0.35)),
+              ),
+              child: const Icon(
+                Icons.no_photography_rounded,
+                size: 40,
+                color: AppColors.rose,
+              ),
+            ),
+            const SizedBox(height: 20),
+            const Text(
+              'Camera Permission Denied',
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w900,
+                fontSize: 19,
+              ),
+            ),
+            const SizedBox(height: 10),
+            const Text(
+              'Attendrix requires camera access to verify your live face and record your attendance. Your biometrics remain strictly confidential.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: AppColors.slate,
+                fontSize: 13,
+                height: 1.45,
+              ),
+            ),
+            const SizedBox(height: 24),
+            FilledButton.icon(
+              onPressed: _initCamera,
+              style: FilledButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              ),
+              icon: const Icon(Icons.security_rounded, size: 18),
+              label: const Text('Grant Camera Access / Retry'),
+            ),
+            const SizedBox(height: 10),
+            OutlinedButton(
+              onPressed: () => Navigator.of(context).pop(),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: Colors.white70,
+                side: const BorderSide(color: Colors.white24),
+              ),
+              child: const Text('Return to Home'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCameraHardwareUnavailableFeed() {
+    return Container(
+      color: const Color(0xFF0F172A),
+      padding: const EdgeInsets.symmetric(horizontal: 28),
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 76,
+              height: 76,
+              decoration: BoxDecoration(
+                color: AppColors.amber.withValues(alpha: 0.15),
+                shape: BoxShape.circle,
+                border: Border.all(color: AppColors.amber.withValues(alpha: 0.35)),
+              ),
+              child: const Icon(
+                Icons.videocam_off_rounded,
+                size: 40,
+                color: AppColors.amber,
+              ),
+            ),
+            const SizedBox(height: 20),
+            const Text(
+              'Camera Hardware Unavailable',
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w900,
+                fontSize: 19,
+              ),
+            ),
+            const SizedBox(height: 10),
+            const Text(
+              'The camera sensor could not be initialized or is occupied by another application. Please close background camera apps and retry.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: AppColors.slate,
+                fontSize: 13,
+                height: 1.45,
+              ),
+            ),
+            const SizedBox(height: 24),
+            FilledButton.icon(
+              onPressed: _initCamera,
+              style: FilledButton.styleFrom(
+                backgroundColor: AppColors.amber,
+                foregroundColor: Colors.black,
+                padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              ),
+              icon: const Icon(Icons.refresh_rounded, size: 18),
+              label: const Text('Retry Camera Initialization', style: TextStyle(fontWeight: FontWeight.w800)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCameraStreamInterruptedFeed() {
+    return Container(
+      color: const Color(0xFF0F172A),
+      padding: const EdgeInsets.symmetric(horizontal: 28),
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 76,
+              height: 76,
+              decoration: BoxDecoration(
+                color: AppColors.sky.withValues(alpha: 0.15),
+                shape: BoxShape.circle,
+                border: Border.all(color: AppColors.sky.withValues(alpha: 0.35)),
+              ),
+              child: const Icon(
+                Icons.pause_circle_outline_rounded,
+                size: 40,
+                color: AppColors.sky,
+              ),
+            ),
+            const SizedBox(height: 20),
+            const Text(
+              'Camera Stream Interrupted',
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w900,
+                fontSize: 19,
+              ),
+            ),
+            const SizedBox(height: 10),
+            const Text(
+              'The camera stream was paused when the app was backgrounded to preserve device hardware and battery.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: AppColors.slate,
+                fontSize: 13,
+                height: 1.45,
+              ),
+            ),
+            const SizedBox(height: 24),
+            FilledButton.icon(
+              onPressed: () {
+                if (_cameras.isNotEmpty) {
+                  _setupCameraController(_cameras[_selectedCameraIndex]);
+                } else {
+                  _initCamera();
+                }
+              },
+              style: FilledButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              ),
+              icon: const Icon(Icons.play_arrow_rounded, size: 20),
+              label: const Text('Resume Camera Stream'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCameraStandbyFeed() {
+    return Container(
+      color: const Color(0xFF0F172A),
+      padding: const EdgeInsets.all(24),
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(
+              Icons.camera_alt_outlined,
+              size: 56,
+              color: AppColors.slate,
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Camera Initializing',
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w800,
+                fontSize: 18,
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Establishing secure connection with camera sensor...',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: AppColors.slate,
+                fontSize: 13,
+              ),
+            ),
+            const SizedBox(height: 20),
+            OutlinedButton.icon(
+              onPressed: _initCamera,
+              style: OutlinedButton.styleFrom(
+                foregroundColor: Colors.white,
+                side: const BorderSide(color: Colors.white30),
+              ),
+              icon: const Icon(Icons.refresh_rounded),
+              label: const Text('Retry Camera Feed'),
+            ),
+          ],
         ),
       ),
     );
@@ -1493,22 +1874,48 @@ class _LiveFaceVerificationScreenState
     final isEmptyRoom = _result?.isEmptyRoom == true;
     final isPresent = _result?.isPresent == true && !isEmptyRoom;
     final isFlagged = _result?.isFlagged == true || isEmptyRoom;
+    final isQuality = _isQualityFailure;
+    final isNetwork = _isNetworkError;
+    final isDuplicate = _errorMessage != null &&
+        (_errorMessage!.toLowerCase().contains('already') ||
+         _errorMessage!.toLowerCase().contains('duplicate') ||
+         _errorMessage!.toLowerCase().contains('strictly 1'));
 
     final Color headerColor = isPresent
         ? AppColors.emerald
-        : (isEmptyRoom ? AppColors.rose : (isFlagged ? AppColors.amber : AppColors.rose));
+        : (isNetwork
+            ? AppColors.sky
+            : (isQuality || isDuplicate || isFlagged
+                ? AppColors.amber
+                : AppColors.rose));
 
     final IconData headerIcon = isPresent
         ? Icons.verified_user_rounded
-        : (isEmptyRoom ? Icons.meeting_room_outlined : (isFlagged ? Icons.warning_amber_rounded : Icons.gpp_bad_rounded));
+        : (isEmptyRoom
+            ? Icons.meeting_room_outlined
+            : (isNetwork
+                ? Icons.wifi_off_rounded
+                : (isQuality
+                    ? Icons.photo_camera_front_rounded
+                    : (isDuplicate
+                        ? Icons.fact_check_rounded
+                        : (isFlagged
+                            ? Icons.warning_amber_rounded
+                            : Icons.gpp_bad_rounded)))));
 
     final String title = isPresent
         ? 'Attendance Verified Present!'
         : (isEmptyRoom
             ? 'Empty Room Detected — Proxy Blocked'
-            : (isFlagged
-                ? 'Attendance Flagged for Review'
-                : 'Verification Failed'));
+            : (isNetwork
+                ? 'Network Timeout / Disconnected'
+                : (isQuality
+                    ? 'Image Quality Check Failed'
+                    : (isDuplicate
+                        ? 'Attendance Already Recorded'
+                        : (isFlagged
+                            ? 'Attendance Flagged for Review'
+                            : 'Verification Failed')))));
 
     return Center(
       child: SingleChildScrollView(
@@ -1562,7 +1969,50 @@ class _LiveFaceVerificationScreenState
                 height: 1.4,
               ),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 16),
+
+            if (isQuality && _errorCode != null) ...[
+              Container(
+                margin: const EdgeInsets.only(bottom: 18),
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: AppColors.amber.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: AppColors.amber.withValues(alpha: 0.4)),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Icon(Icons.tips_and_updates_outlined, color: AppColors.amber, size: 22),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Quality Guidance: [$_errorCode]',
+                            style: const TextStyle(
+                              color: AppColors.amber,
+                              fontWeight: FontWeight.w800,
+                              fontSize: 13,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            _qualityRemedyText(_errorCode!),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 12.5,
+                              height: 1.4,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
 
             // Detailed Metric Tiles
             if (_result != null) ...[
@@ -1683,6 +2133,24 @@ class _LiveFaceVerificationScreenState
               const SizedBox(height: 20),
             ],
 
+            if (isNetwork && _facePhoto != null) ...[
+              FilledButton.icon(
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppColors.sky,
+                  foregroundColor: Colors.black,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                ),
+                onPressed: _isProcessing ? null : _submitDualVerification,
+                icon: const Icon(Icons.refresh_rounded, size: 18),
+                label: const Text(
+                  'Retry Attendance Submission',
+                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14.5),
+                ),
+              ),
+              const SizedBox(height: 10),
+            ],
+
             // Done Button
             FilledButton(
               style: FilledButton.styleFrom(
@@ -1752,12 +2220,15 @@ class _LiveFaceVerificationScreenState
                 children: [
                   Icon(Icons.lock_clock_rounded, color: Colors.white70, size: 16),
                   SizedBox(width: 8),
-                  Text(
-                    '1-Attempt Policy • Attempt Recorded & Finalized',
-                    style: TextStyle(
-                      color: Colors.white70,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
+                  Flexible(
+                    child: Text(
+                      '1-Attempt Policy • Attempt Recorded & Finalized',
+                      style: TextStyle(
+                        color: Colors.white70,
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
                 ],
@@ -1768,6 +2239,35 @@ class _LiveFaceVerificationScreenState
       ),
     ),
   );
+}
+
+  String _qualityRemedyText(String code) {
+    switch (code.toUpperCase()) {
+      case 'IMAGE_BLURRY':
+        return 'Hold your phone steady with both hands. Avoid sudden movements or taps during photo capture.';
+      case 'POOR_LIGHTING':
+        return 'Insufficient light detected. Move towards overhead classroom lights or open a window.';
+      case 'EXCESSIVE_EXPOSURE':
+        return 'Overexposure or glare detected. Avoid pointing camera directly at projector lamps or bright sunlight.';
+      case 'BACKLIGHTING_DETECTED':
+        return 'Severe backlighting detected. Position the light source in front of you rather than behind your head.';
+      case 'NO_FACE_DETECTED':
+        return 'No face was recognized in the camera frame. Center your face inside the viewfinder reticle.';
+      case 'MULTIPLE_FACES':
+        return 'Multiple faces detected in frame. Only one individual student face is permitted during verification.';
+      case 'FACE_TOO_SMALL':
+        return 'Face is too far from camera. Move phone closer until your face fills 40% to 60% of the frame.';
+      case 'FACE_OUT_OF_BOUNDS':
+        return 'Facial features are partially outside the camera borders. Center your chin and forehead inside the frame.';
+      case 'UNSUPPORTED_FORMAT':
+        return 'The captured image format is unsupported. Please use the camera directly to capture JPEG or PNG photos.';
+      case 'CORRUPTED_IMAGE':
+        return 'Image data decoding failed. Retake photo with good camera stabilization.';
+      case 'EMPTY_IMAGE':
+        return 'Empty image payload received (0 bytes). Please retry taking your photo.';
+      default:
+        return 'Ensure your face is clearly visible, well lit, and centered within the camera viewfinder.';
+    }
   }
 
   // ─────────────────────────────────────────────────────────────────────────
