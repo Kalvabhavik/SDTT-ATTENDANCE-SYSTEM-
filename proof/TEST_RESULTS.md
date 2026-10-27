@@ -11,15 +11,15 @@
 All automated and integration test suites have been executed against the actual Attendrix repository without mocked bypasses. Defects identified during baseline execution were resolved, regression tests rerun, and verifiable proof preserved.
 
 ```
-Total Test Specifications Planned:  49
-Total Executed:                     49
-Total Passed:                       49
+Total Test Specifications Planned:  60
+Total Executed:                     60
+Total Passed:                       60
 Total Failed:                       0
 Total Blocked / Not Run:            0
 Overall Pass Rate:                  100%
 ```
 
-In addition to the primary test specifications in `TEST_CASES.md`, the full backend regression test suite comprises **49 automated test cases** across 8 test files (including 13 dedicated camera and image quality reliability tests), and the mobile Flutter test suite comprises **20 automated widget and camera edge tests**, all of which pass cleanly.
+In addition to the primary test specifications in `TEST_CASES.md`, the full backend regression test suite comprises **60 automated test cases** across 9 test files (including 11 dedicated adversarial presentation-attack defense tests and 13 camera/quality reliability tests), and the mobile Flutter test suite comprises **20 automated widget and camera edge tests**, all of which pass cleanly.
 
 ---
 
@@ -30,6 +30,9 @@ In addition to the primary test specifications in `TEST_CASES.md`, the full back
 # Full regression run generating JUnit XML and text runner log
 mkdir -p proof/reports/junit proof/logs/test_runner
 backend/.venv/bin/pytest backend/tests/ --junitxml=proof/reports/junit/results.xml -v | tee proof/logs/test_runner/test_run.log
+
+# Dedicated adversarial liveness evaluation suite
+backend/.venv/bin/pytest backend/tests/test_adversarial_liveness.py -v
 
 # Dedicated camera reliability and quality verification run
 backend/.venv/bin/pytest backend/tests/test_camera_reliability.py -v
@@ -57,7 +60,8 @@ backend/.venv/bin/pytest backend/tests/test_camera_reliability.py -v
 | **Category E: Mobile Application Tests** | 18 | 18 | 0 | 0 | 100% | `apps/mobile/test/camera_reliability_test.dart`, `proof/screenshots/03_camera_reliability/` |
 | **Category F: Performance & Latency** | 1 | 1 | 0 | 0 | 100% | `proof/PERFORMANCE_RESULTS.md` |
 | **Category G: Accuracy & Model Limits** | 1 | 1 | 0 | 0 | 100% | `proof/ACCURACY_AND_LIMITATIONS.md` |
-| **Total** | **49** | **49** | **0** | **0** | **100%** | |
+| **Category H: Adversarial Evaluation & PAD** | 11 | 11 | 0 | 0 | 100% | `proof/logs/adversarial_evaluation_log.json`, `proof/screenshots/04_liveness/` |
+| **Total** | **60** | **60** | **0** | **0** | **100%** | |
 
 ---
 
@@ -114,10 +118,41 @@ All 49 backend test cases passed cleanly in 4.29s:
 47. `test_optical_feasibility.py::test_synthetic_benchmark_execution` — **PASSED**
 48. `test_optical_feasibility.py::test_summarize_results_pipeline` — **PASSED**
 49. `test_panorama_verification.py::test_panorama_verification_runner` — **PASSED**
+50. `test_adversarial_liveness.py::test_adv_01_consenting_live_matching_participant` — **PASSED** (164.55ms)
+51. `test_adversarial_liveness.py::test_adv_02_live_non_matching_participant` — **PASSED** (73.67ms)
+52. `test_adversarial_liveness.py::test_adv_03_printed_photograph_attack` — **PASSED** (2.99ms)
+53. `test_adversarial_liveness.py::test_adv_04_photographs_displayed_on_screen` — **PASSED** (2.01ms)
+54. `test_adversarial_liveness.py::test_adv_05_prerecorded_video_replay` — **PASSED** (10.73ms)
+55. `test_adversarial_liveness.py::test_adv_06_previously_submitted_image_replay` — **PASSED** (75.82ms)
+56. `test_adversarial_liveness.py::test_adv_07_low_quality_captures` — **PASSED** (3.97ms)
+57. `test_adversarial_liveness.py::test_adv_08_multiple_faces` — **PASSED** (0.01ms)
+58. `test_adversarial_liveness.py::test_adv_09_expired_and_reused_challenges` — **PASSED** (0.32ms)
+59. `test_adversarial_liveness.py::test_adv_10_incorrect_active_challenge_response` — **PASSED** (22.49ms)
+60. `test_adversarial_liveness.py::test_adv_11_model_timeout_and_unavailable_model` — **PASSED** (60.81ms)
 
 ---
 
-## 5. Mobile Application Test Suite Breakdown
+## 5. Adversarial Presentation-Attack Evaluation Matrix (Task 04)
+
+Controlled adversarial evaluation across all 11 required presentation-attack categories using authorized test media:
+
+| Test ID | Attack Category | Model Version | Test Fixture | Decision | Confidence | Latency | Evidence Link |
+| :--- | :--- | :--- | :--- | :---: | :---: | :---: | :--- |
+| **ADV-01** | Consenting live participant | `yunet-sface-pad-v1` | Live student with matching reference + yaw & blink challenges | **PASSED_PRESENT** | 1.000 | 164.6ms | [`01_live_matching_challenge_flow.png`](file:///home/lucky/Downloads/mess-manager/SDTT-ATTENDANCE-SYSTEM-/proof/screenshots/04_liveness/01_live_matching_challenge_flow.png) |
+| **ADV-02** | Live non-matching participant | `yunet-sface-pad-v1` | Live participant with actions; face does not match enrolled template | **BLOCKED_MISMATCH** | 0.048 | 73.7ms | [`02_live_non_matching_participant.png`](file:///home/lucky/Downloads/mess-manager/SDTT-ATTENDANCE-SYSTEM-/proof/screenshots/04_liveness/02_live_non_matching_participant.png) |
+| **ADV-03** | Printed photographs | `yunet-sface-pad-v1` | Printed photo presentation with desaturated paper chrominance | **BLOCKED_PRINT_ATTACK** | 0.650 | 3.0ms | [`03_print_attack_chroma_analysis.png`](file:///home/lucky/Downloads/mess-manager/SDTT-ATTENDANCE-SYSTEM-/proof/screenshots/04_liveness/03_print_attack_chroma_analysis.png) |
+| **ADV-04** | Photographs displayed on screen | `yunet-sface-pad-v1` | Digital display screen (phone/monitor) with high-frequency raster pattern | **BLOCKED_SCREEN_REPLAY** | 1.000 | 2.0ms | [`04_screen_replay_moire_fft.png`](file:///home/lucky/Downloads/mess-manager/SDTT-ATTENDANCE-SYSTEM-/proof/screenshots/04_liveness/04_screen_replay_moire_fft.png) |
+| **ADV-05** | Prerecorded video replay | `yunet-sface-pad-v1` | Identical static frame replayed across challenge slots without movement | **BLOCKED_VIDEO_REPLAY** | N/A | 10.7ms | [`05_static_replay_frame_differencing.png`](file:///home/lucky/Downloads/mess-manager/SDTT-ATTENDANCE-SYSTEM-/proof/screenshots/04_liveness/05_static_replay_frame_differencing.png) |
+| **ADV-06** | Previously submitted image replay | `yunet-sface-pad-v1` | Replay of exact cryptographic SHA-256 and pHash image bytes | **BLOCKED_REPLAY_ATTACK** | N/A | 75.8ms | [`proof/logs/adversarial_evaluation_log.json`](file:///home/lucky/Downloads/mess-manager/SDTT-ATTENDANCE-SYSTEM-/proof/logs/adversarial_evaluation_log.json) |
+| **ADV-07** | Low-quality captures | `yunet-sface-pad-v1` | Synthesized blurry, underexposed, and tiny face crops | **BLOCKED_QUALITY_FAILED** | N/A | 4.0ms | [`proof/logs/adversarial_evaluation_log.json`](file:///home/lucky/Downloads/mess-manager/SDTT-ATTENDANCE-SYSTEM-/proof/logs/adversarial_evaluation_log.json) |
+| **ADV-08** | Multiple faces | `yunet-sface-pad-v1` | Frame containing two simultaneous human faces | **BLOCKED_MULTIPLE_FACES** | N/A | 0.01ms | [`proof/logs/adversarial_evaluation_log.json`](file:///home/lucky/Downloads/mess-manager/SDTT-ATTENDANCE-SYSTEM-/proof/logs/adversarial_evaluation_log.json) |
+| **ADV-09** | Expired and reused challenges | `yunet-sface-pad-v1` | Negative TTL token and double nonce consumption attempt | **BLOCKED_NONCE_REUSE** | N/A | 0.3ms | [`06_challenge_token_security_lifecycle.png`](file:///home/lucky/Downloads/mess-manager/SDTT-ATTENDANCE-SYSTEM-/proof/screenshots/04_liveness/06_challenge_token_security_lifecycle.png) |
+| **ADV-10** | Incorrect active challenges | `yunet-sface-pad-v1` | Client turned right (+25° yaw) when server demanded left turn | **BLOCKED_ACTION_MISMATCH** | N/A | 22.5ms | [`proof/logs/adversarial_evaluation_log.json`](file:///home/lucky/Downloads/mess-manager/SDTT-ATTENDANCE-SYSTEM-/proof/logs/adversarial_evaluation_log.json) |
+| **ADV-11** | Model timeout / unavailable | `yunet-sface-pad-v1` | Simulated OpenCV DNN engine runtime timeout; client bypass neutralized | **FAILED_CLOSED_503** | N/A | 60.8ms | [`07_model_fail_closed_architecture.png`](file:///home/lucky/Downloads/mess-manager/SDTT-ATTENDANCE-SYSTEM-/proof/screenshots/04_liveness/07_model_fail_closed_architecture.png) |
+
+---
+
+## 6. Mobile Application Test Suite Breakdown
 
 All 20 mobile tests passed cleanly in 4.1s:
 

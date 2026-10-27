@@ -16,6 +16,10 @@
 | `SEC-005` | Corrupted Face Embedding Model Causing Fallback Degradation | **HIGH** | `backend/app/models/face_recognition_sface.onnx` | **RESOLVED** | `TC-PERF-001` |
 | `SEC-006` | Lack of Image Quality Screening (Blur/Darkness) | **MEDIUM** | `backend/app/face_engine.py` | **RESOLVED** | `TC-EDGE-002`, `TC-EDGE-003` |
 | `SEC-007` | Student-Lecturer Endpoint Authorization Bypasses | **MEDIUM** | `backend/app/main.py` | **RESOLVED** | `TC-API-002` |
+| `SEC-008` | Client-Supplied Verification Bypass Vulnerability | **CRITICAL** | `backend/app/main.py` | **RESOLVED** | `TC-ADV-011` |
+| `SEC-009` | Static Inter-Frame Multi-Frame Challenge Replay | **HIGH** | `backend/app/face_engine.py` | **RESOLVED** | `TC-ADV-005` |
+| `SEC-010` | Model Runtime Exception / Timeout Fail-Open Risk | **HIGH** | `backend/app/main.py` | **RESOLVED** | `TC-ADV-011` |
+| `SEC-011` | Digital Screen Replay & Print Halftone Presentation Attacks | **HIGH** | `backend/app/face_engine.py` | **RESOLVED** | `TC-ADV-003`, `TC-ADV-004` |
 
 ---
 
@@ -116,3 +120,83 @@
   - Minimum face resolution $120 \times 120$
   - Boundary clipping check ($\ge 3$px margin)
 - **Retest Result:** **RESOLVED** — Verified via `TC-EDGE-002`, `TC-EDGE-003`, and `TC-EDGE-004`.
+
+---
+
+### SEC-007: Student-Lecturer Endpoint Authorization Bypasses
+- **Finding ID:** `SEC-007`
+- **Severity:** **MEDIUM** (CVSS 6.5: AV:N/AC:L/PR:L/UI:N/S:U/C:L/I:L/A:N)
+- **Rationale:** Students could invoke administrative teacher session APIs if authorization role checks were omitted.
+- **Affected Component:** `backend/app/main.py`.
+- **Reproduction Steps:**
+  1. Authenticate with student credentials.
+  2. Call `POST /api/sessions` or `POST /api/sessions/{id}/finalize`.
+- **Expected Behaviour:** HTTP 403 Forbidden.
+- **Actual Behaviour:** Enforced via `require_teacher` dependency guards.
+- **Remediation:** Added strict `require_teacher`, `require_student`, and `require_controller` RBAC guards.
+- **Retest Result:** **RESOLVED** — Verified via `TC-API-002`.
+
+---
+
+### SEC-008: Client-Supplied Verification Bypass Vulnerability
+- **Finding ID:** `SEC-008`
+- **Severity:** **CRITICAL** (CVSS 9.8: AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H)
+- **Rationale:** A malicious client or proxy tool could pass untrusted assertion parameters (`is_live=True`, `verified=True`, `confidence=1.0`) in the multipart form payload, attempting to bypass server-side computer vision inference.
+- **Affected Component:** `backend/app/main.py` (`verify_student_live_attendance`, `verify_student_liveness_only`).
+- **Reproduction Steps:**
+  1. Intercept verification request in mobile client or HTTP proxy.
+  2. Inject form fields: `is_live=true`, `verified=true`, `confidence=0.999`.
+  3. Observe server response.
+- **Expected Behaviour:** Server strictly ignores all client-supplied authorization flags and authoritatively performs server-side CV pipeline execution on raw submitted image bytes.
+- **Actual Behaviour (Post-Fix):** Server logs security warning: `"Client submitted bypass assertions... Disregarded per security policy: Only server-side CV inference authorizes attendance."` Real facial match and liveness inference executed.
+- **Remediation:** Explicitly accepted untrusted client assertion parameters in endpoint signatures and strictly excluded them from decision logic. Server response calculates `liveness_passed` and `face_match` strictly from OpenCV DNN inference.
+- **Retest Result:** **RESOLVED** — Verified via `TC-ADV-011`.
+
+---
+
+### SEC-009: Static Inter-Frame Multi-Frame Challenge Replay
+- **Finding ID:** `SEC-009`
+- **Severity:** **HIGH** (CVSS 7.5: AV:N/AC:L/PR:L/UI:N/S:U/C:N/I:H/A:N)
+- **Rationale:** While active challenge tokens required multi-frame submissions (`face_left`, `face_right`, `face_blink`), an attacker could submit the exact same static photo 4 times in one request and hope to bypass motion checks.
+- **Affected Component:** `backend/app/face_engine.py` (`verify_active_liveness`).
+- **Reproduction Steps:**
+  1. Obtain active challenge token demanding `turn_left`.
+  2. Send identical frontal photo in both `face_image` and `face_left`.
+- **Expected Behaviour:** Engine detects zero inter-frame motion and rejects the duplicate frame submission.
+- **Actual Behaviour (Pre-Fix):** If landmark estimation fell back, static duplicate frames were not explicitly compared.
+- **Remediation:** Implemented L1 inter-frame pixel difference analysis between challenge frames and the anchor frontal image. If mean absolute pixel difference $< 0.25$, the submission is immediately rejected with `STATIC_IMAGE_REPLAY_ACROSS_CHALLENGES`.
+- **Retest Result:** **RESOLVED** — Verified via `TC-ADV-005`.
+
+---
+
+### SEC-010: Model Runtime Exception / Timeout Fail-Open Risk
+- **Finding ID:** `SEC-010`
+- **Severity:** **HIGH** (CVSS 7.5: AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:H/A:N)
+- **Rationale:** If OpenCV DNN crashed, ran out of memory, or timed out during face detection or embedding extraction, an unhandled exception could cause undefined behavior or fail open if default statuses were improperly initialized.
+- **Affected Component:** `backend/app/main.py` (`verify_student_live_attendance`).
+- **Reproduction Steps:**
+  1. Simulate engine failure by raising `RuntimeError` in `detect_faces`.
+  2. Send verification request.
+- **Expected Behaviour:** Fails closed with HTTP 503 `MODEL_UNAVAILABLE`, zero attendance granted, audit log recorded.
+- **Actual Behaviour (Post-Fix):** Returns HTTP 503 `MODEL_UNAVAILABLE` with `X-Error-Code: MODEL_UNAVAILABLE` and logs `attendance.verification_error`.
+- **Remediation:** Wrapped the computer vision pipeline in a fail-closed `try...except` circuit that catches all model exceptions/timeouts and raises HTTP 503 without creating any attendance record or granting proxy access.
+- **Retest Result:** **RESOLVED** — Verified via `TC-ADV-011`.
+
+---
+
+### SEC-011: Digital Screen Replay & Print Halftone Presentation Attacks
+- **Finding ID:** `SEC-011`
+- **Severity:** **HIGH** (CVSS 7.2: AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:H/A:N)
+- **Rationale:** Single-frame face detection models do not differentiate between real human skin and high-resolution screen displays or paper printouts.
+- **Affected Component:** `backend/app/face_engine.py` (`detect_presentation_attack`).
+- **Reproduction Steps:**
+  1. Display face photo on iPad/monitor with periodic subpixel raster grid.
+  2. Present printed photograph with low saturation.
+- **Expected Behaviour:** Passive presentation attack detection flags screen moiré or print halftone.
+- **Actual Behaviour (Post-Fix):**
+  - Screen moiré detected via 2D FFT spectral peak-to-mean ratio (`SPMR > 1.85`).
+  - Print attack detected via HSV saturation mean ($< 8.0$) and YCrCb chrominance variance ($< 2.5$).
+  - Planar glare detected via saturated specular reflection ratio ($> 0.08$).
+- **Remediation:** Enhanced `detect_presentation_attack` with 2D FFT spectral analysis, HSV/YCrCb chrominance gamut analysis, and specular glare detection.
+- **Retest Result:** **RESOLVED** — Verified via `TC-ADV-003` and `TC-ADV-004`.
+

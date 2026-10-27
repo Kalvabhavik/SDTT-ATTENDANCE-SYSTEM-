@@ -244,6 +244,10 @@ class FaceEngine(abc.ABC):
         low_energy = float(np.mean(magnitude_spectrum[low_freq_mask]))
         freq_ratio = high_energy / (low_energy + 1e-6)
 
+        # Spectral Peak-to-Mean Ratio (SPMR) identifying isolated raster frequencies
+        high_freq_max = float(np.max(magnitude_spectrum[high_freq_mask]))
+        spmr = high_freq_max / (high_energy + 1e-6)
+
         # 2. Chrominance Variance in YCrCb (Screen / Print Halftone Gamut Compression)
         ycrcb = cv2.cvtColor(face_bgr, cv2.COLOR_BGR2YCrCb)
         _, cr, cb = cv2.split(ycrcb)
@@ -251,25 +255,46 @@ class FaceEngine(abc.ABC):
         cb_std = float(np.std(cb))
         chroma_std = (cr_std + cb_std) / 2.0
 
+        # 3. HSV Color Gamut & Specular Reflection (Planar Glare from Glass / Photo Paper)
+        hsv = cv2.cvtColor(face_bgr, cv2.COLOR_BGR2HSV)
+        sat_channel = hsv[:, :, 1]
+        val_channel = hsv[:, :, 2]
+        sat_mean = float(np.mean(sat_channel))
+
+        # Planar specular glare pixels (high brightness with desaturated hotspot)
+        glare_pixels = (val_channel > 252) & (sat_channel < 25)
+        glare_ratio = float(np.sum(glare_pixels)) / float(max(1, face_roi.size))
+
         is_spoof = False
         reasons = []
         spoof_score = 0.0
 
-        if chroma_std < 2.0:
+        # Heuristic 1: Low chrominance variance (Monochrome / Laser / Inkjet Print Attack)
+        if chroma_std < 2.5 or sat_mean < 8.0:
             is_spoof = True
             spoof_score += 0.65
-            reasons.append("Low chrominance variance indicative of grayscale or printed attack")
+            reasons.append("Low chrominance variance indicative of grayscale or printed attack [PRINT_ATTACK_DETECTED]")
 
-        if freq_ratio > 0.88 and high_energy > 115.0:
+        # Heuristic 2: Periodic subpixel spectral spikes (Digital Screen Moiré / Pixel Grid)
+        if (freq_ratio > 0.85 and high_energy > 100.0) or (spmr > 1.85 and high_energy > 90.0):
             is_spoof = True
             spoof_score += 0.70
-            reasons.append("High-frequency spectral spike indicative of digital screen moiré grid")
+            reasons.append("High-frequency spectral spike indicative of digital screen moiré grid [SCREEN_MOIRE_DETECTED]")
+
+        # Heuristic 3: Large planar specular glare (Screen Glass or Laminated Photo Reflection)
+        if glare_ratio > 0.08:
+            is_spoof = True
+            spoof_score += 0.60
+            reasons.append("Planar specular reflection indicative of display glass or laminated paper [PLANAR_GLARE_DETECTED]")
 
         return {
             "is_spoof": is_spoof,
             "spoof_score": min(1.0, spoof_score),
             "freq_ratio": round(freq_ratio, 3),
+            "spmr": round(spmr, 3),
             "chroma_std": round(chroma_std, 2),
+            "sat_mean": round(sat_mean, 2),
+            "glare_ratio": round(glare_ratio, 4),
             "reasons": reasons,
             "message": "; ".join(reasons) if reasons else "Passive presentation attack checks passed",
         }
@@ -448,21 +473,42 @@ class FaceEngine(abc.ABC):
                 "message": "Active liveness challenge required. A single static photo cannot verify live presence.",
             }
 
+        # Check for static photo bypass across challenge frames (duplicate frame replay)
+        for frame_label, frame in [("left", left_img), ("right", right_img), ("blink", blink_img)]:
+            if frame is not None and cv2 is not None:
+                h_f, w_f = frontal_img.shape[:2]
+                h_c, w_c = frame.shape[:2]
+                resized_c = cv2.resize(frame, (w_f, h_f)) if (h_f, w_f) != (h_c, w_c) else frame
+                diff = float(np.mean(np.abs(frontal_img.astype(np.float32) - resized_c.astype(np.float32))))
+                if diff < 0.25:
+                    return {
+                        "liveness_passed": False,
+                        "frontal_detected": True,
+                        "left_turn_detected": False,
+                        "right_turn_detected": False,
+                        "blink_detected": False,
+                        "reason": "STATIC_IMAGE_REPLAY_ACROSS_CHALLENGES",
+                        "checks": {"frontal": True, "left_turn": False, "right_turn": False, "blink": False},
+                        "message": f"Static photo bypass detected: {frame_label} challenge frame is identical to frontal scan.",
+                    }
+
         left_ok = False
         right_ok = False
         blink_ok = False
         left_yaw = 0.0
         right_yaw = 0.0
+        incorrect_challenge_notes: dict[str, str] = {}
 
         if left_img is not None:
             left_res = self.detect_head_pose_and_liveness(left_img, allow_fallback=allow_fallback)
             left_yaw = left_res["yaw_deg"]
             if left_res["face_detected"]:
-                # Check visual continuity with frontal frame
                 vis_cont = self.compute_visual_continuity(frontal_img, left_img)
                 yaw_deflection = left_res["yaw_deg"] - frontal_res["yaw_deg"]
                 if (left_res["direction"] == "left" or yaw_deflection < -4.0) and vis_cont >= 0.20:
                     left_ok = True
+                elif left_res["direction"] == "right" and yaw_deflection > 4.0:
+                    incorrect_challenge_notes["turn_left"] = "head turned right instead of left"
 
         if right_img is not None:
             right_res = self.detect_head_pose_and_liveness(right_img, allow_fallback=allow_fallback)
@@ -472,15 +518,18 @@ class FaceEngine(abc.ABC):
                 yaw_deflection = right_res["yaw_deg"] - frontal_res["yaw_deg"]
                 if (right_res["direction"] == "right" or yaw_deflection > 4.0) and vis_cont >= 0.20:
                     right_ok = True
+                elif right_res["direction"] == "left" and yaw_deflection < -4.0:
+                    incorrect_challenge_notes["turn_right"] = "head turned left instead of right"
 
         if blink_img is not None:
             blink_res = self.detect_head_pose_and_liveness(blink_img, allow_fallback=allow_fallback)
             if blink_res["face_detected"]:
                 vis_cont = self.compute_visual_continuity(frontal_img, blink_img)
                 open_diff = frontal_res["eye_openness"] - blink_res["eye_openness"]
-                # Must show meaningful eye closure drop or detected blink
                 if (blink_res["is_blink"] or open_diff >= 1.5 or open_diff > (frontal_res["eye_openness"] * 0.25)) and vis_cont >= 0.20:
                     blink_ok = True
+                elif not blink_res["is_blink"] and open_diff < 1.0:
+                    incorrect_challenge_notes["blink"] = "eyes remained open"
 
         # Validate that each expected challenge succeeded
         failed_challenges = []
@@ -489,17 +538,20 @@ class FaceEngine(abc.ABC):
                 if left_img is None:
                     failed_challenges.append("turn_left (frame missing)")
                 elif not left_ok:
-                    failed_challenges.append("turn_left (head turn not detected)")
+                    note = incorrect_challenge_notes.get("turn_left", "head turn not detected")
+                    failed_challenges.append(f"turn_left ({note})")
             elif req in ("turn_right", "right"):
                 if right_img is None:
                     failed_challenges.append("turn_right (frame missing)")
                 elif not right_ok:
-                    failed_challenges.append("turn_right (head turn not detected)")
+                    note = incorrect_challenge_notes.get("turn_right", "head turn not detected")
+                    failed_challenges.append(f"turn_right ({note})")
             elif req in ("blink", "eye_blink"):
                 if blink_img is None:
                     failed_challenges.append("blink (frame missing)")
                 elif not blink_ok:
-                    failed_challenges.append("blink (eye blink not detected)")
+                    note = incorrect_challenge_notes.get("blink", "eye blink not detected")
+                    failed_challenges.append(f"blink ({note})")
 
         challenges_passed = len(failed_challenges) == 0
 

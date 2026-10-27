@@ -1844,9 +1844,20 @@ async def verify_student_live_attendance(
     face_right: Optional[UploadFile] = File(default=None),
     face_blink: Optional[UploadFile] = File(default=None),
     challenge_token: Optional[str] = Form(default=None),
+    # Untrusted client-supplied assertion parameters (strictly ignored for authorization)
+    is_live: Optional[bool] = Form(default=None),
+    verified: Optional[bool] = Form(default=None),
+    client_verified: Optional[bool] = Form(default=None),
+    confidence: Optional[float] = Form(default=None),
+    client_confidence: Optional[float] = Form(default=None),
     user: dict[str, Any] = Depends(current_user),
 ) -> dict[str, Any]:
     require_student(user)
+    if is_live is not None or verified is not None or client_verified is not None:
+        logger.warning(
+            f"Client submitted bypass assertions (is_live={is_live}, verified={verified}, client_verified={client_verified}) "
+            f"for user {user.get('id')}. Disregarded per security policy: Only server-side CV inference authorizes attendance."
+        )
     db = supa()
     sess = _get_session_or_404(session_id)
     if sess.get("status") != "open":
@@ -1926,162 +1937,178 @@ async def verify_student_live_attendance(
             headers={"X-Error-Code": "REPLAY_ATTACK_DETECTED"},
         )
 
-    # Face Detection
-    allow_fb = (os.environ.get("ATTENDANCE_ENV") == "test" and os.environ.get("STRICT_BIOMETRICS") != "1")
-    detected_faces = engine.detect_faces(img_face, allow_fallback=allow_fb)
-    face_ok, face_err, face_msg = validate_single_face(detected_faces)
-    if not face_ok:
-        _audit(
-            session_id=session_id,
-            actor_id=user["id"],
-            action=f"attendance.{face_err.lower()}",
-            note=f"Student {user.get('name', 'Student')} verification attempt failed: {face_msg}",
-        )
-        raise HTTPException(
-            status_code=400,
-            detail=f"{face_msg} [{face_err}]",
-            headers={"X-Error-Code": face_err},
-        )
-
-    primary_face = detected_faces[0]
-
-    # 5. Image Quality Screening & Passive Presentation Attack Detection
-    q_ok, q_err, q_msg, q_metrics = assess_image_quality(img_face, primary_face)
-    if not q_ok:
-        _audit(
-            session_id=session_id,
-            actor_id=user["id"],
-            action=f"attendance.quality_failed.{q_err.lower()}",
-            note=f"Image quality check failed: {q_msg}",
-            metadata=q_metrics,
-        )
-        raise HTTPException(
-            status_code=400,
-            detail=f"{q_msg} [{q_err}]",
-            headers={"X-Error-Code": q_err},
-        )
-
-    if not allow_fb:
-        pa_res = engine.detect_presentation_attack(img_face, primary_face)
-        if pa_res.get("is_spoof"):
+    # Face Detection and Multi-factor Verification (Fails closed on model/pipeline error)
+    try:
+        allow_fb = (os.environ.get("ATTENDANCE_ENV") == "test" and os.environ.get("STRICT_BIOMETRICS") != "1")
+        detected_faces = engine.detect_faces(img_face, allow_fallback=allow_fb)
+        face_ok, face_err, face_msg = validate_single_face(detected_faces)
+        if not face_ok:
             _audit(
                 session_id=session_id,
                 actor_id=user["id"],
-                action="attendance.presentation_attack_blocked",
-                note=f"Presentation attack flagged: {pa_res['message']}",
-                metadata={"spoof_score": pa_res.get("spoof_score", 1.0)},
+                action=f"attendance.{face_err.lower()}",
+                note=f"Student {user.get('name', 'Student')} verification attempt failed: {face_msg}",
             )
             raise HTTPException(
                 status_code=400,
-                detail=f"Presentation attack detected: {pa_res['message']}. Please use a live camera.",
+                detail=f"{face_msg} [{face_err}]",
+                headers={"X-Error-Code": face_err},
             )
 
-    # 7. Extract Feature Embedding and 1:N Student Match
-    live_emb = engine.extract_embedding(img_face, primary_face)
-    norm_live = float(np.linalg.norm(live_emb))
+        primary_face = detected_faces[0]
 
-    all_templates = db.table("face_templates").select("*").execute().data or []
-    all_profiles = {p["id"]: p for p in (db.table("profiles").select("*").execute().data or [])}
+        # 5. Image Quality Screening & Passive Presentation Attack Detection
+        q_ok, q_err, q_msg, q_metrics = assess_image_quality(img_face, primary_face)
+        if not q_ok:
+            _audit(
+                session_id=session_id,
+                actor_id=user["id"],
+                action=f"attendance.quality_failed.{q_err.lower()}",
+                note=f"Image quality check failed: {q_msg}",
+                metadata=q_metrics,
+            )
+            raise HTTPException(
+                status_code=400,
+                detail=f"{q_msg} [{q_err}]",
+                headers={"X-Error-Code": q_err},
+            )
 
-    scored_matches: list[dict[str, Any]] = []
-    for tmpl in all_templates:
-        tid = tmpl["user_id"]
-        reg_emb = decrypt_face_embedding(tmpl["encrypted_embedding"])
-        norm_reg = float(np.linalg.norm(reg_emb))
-        if norm_live > 0 and norm_reg > 0:
-            sim = float(np.dot(live_emb, reg_emb) / (norm_live * norm_reg))
+        if not allow_fb:
+            pa_res = engine.detect_presentation_attack(img_face, primary_face)
+            if pa_res.get("is_spoof"):
+                _audit(
+                    session_id=session_id,
+                    actor_id=user["id"],
+                    action="attendance.presentation_attack_blocked",
+                    note=f"Presentation attack flagged: {pa_res['message']}",
+                    metadata={"spoof_score": pa_res.get("spoof_score", 1.0)},
+                )
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Presentation attack detected: {pa_res['message']}. Please use a live camera.",
+                )
+
+        # 7. Extract Feature Embedding and 1:N Student Match
+        live_emb = engine.extract_embedding(img_face, primary_face)
+        norm_live = float(np.linalg.norm(live_emb))
+
+        all_templates = db.table("face_templates").select("*").execute().data or []
+        all_profiles = {p["id"]: p for p in (db.table("profiles").select("*").execute().data or [])}
+
+        scored_matches: list[dict[str, Any]] = []
+        for tmpl in all_templates:
+            tid = tmpl["user_id"]
+            reg_emb = decrypt_face_embedding(tmpl["encrypted_embedding"])
+            norm_reg = float(np.linalg.norm(reg_emb))
+            if norm_live > 0 and norm_reg > 0:
+                sim = float(np.dot(live_emb, reg_emb) / (norm_live * norm_reg))
+            else:
+                sim = 0.0
+            prof = all_profiles.get(tid, {})
+            scored_matches.append({
+                "user_id": tid,
+                "name": prof.get("name", "Student"),
+                "roll_number": prof.get("roll_number", "N/A"),
+                "similarity": sim,
+            })
+
+        scored_matches.sort(key=lambda m: m["similarity"], reverse=True)
+        best_candidate = scored_matches[0] if scored_matches else None
+        user_match = next((m for m in scored_matches if m["user_id"] == user["id"]), None)
+        similarity = user_match["similarity"] if user_match else 0.0
+
+        # Proxy attendance detection: Check if scanned face matches another registered student
+        if best_candidate and best_candidate["user_id"] != user["id"] and best_candidate["similarity"] >= 0.65 and (best_candidate["similarity"] - similarity) > 0.15:
+            face_matched = False
+            face_decision_note = f"Proxy rejected: Scanned face matches {best_candidate['name']} ({best_candidate['roll_number']}), not your registered identity."
+        elif similarity >= 0.45:
+            face_matched = True
+            face_decision_note = f"Face verified: {user.get('name', 'Student')} ({user.get('roll_number', '')}) — {int(similarity * 100)}% match"
         else:
-            sim = 0.0
-        prof = all_profiles.get(tid, {})
-        scored_matches.append({
-            "user_id": tid,
-            "name": prof.get("name", "Student"),
-            "roll_number": prof.get("roll_number", "N/A"),
-            "similarity": sim,
-        })
+            face_matched = False
+            face_decision_note = f"Biometric mismatch: Scanned face does not match your registered reference (Confidence: {int(similarity * 100)}%)."
 
-    scored_matches.sort(key=lambda m: m["similarity"], reverse=True)
-    best_candidate = scored_matches[0] if scored_matches else None
-    user_match = next((m for m in scored_matches if m["user_id"] == user["id"]), None)
-    similarity = user_match["similarity"] if user_match else 0.0
+        # 8. Classroom panorama verification: Detect Sir + Crowd + 80/120/240/260-Seater Match
+        class_row = db.table("classes").select("*").eq("id", sess.get("class_id")).single().execute().data or {}
+        capacity = int(class_row.get("capacity") or 120)
+        hall_type = class_row.get("hall_type") or f"{capacity}-Seater Hall"
+        expected_room = class_row.get("room_number") or f"LH-{capacity}"
 
-    # Proxy attendance detection: Check if scanned face matches another registered student
-    if best_candidate and best_candidate["user_id"] != user["id"] and best_candidate["similarity"] >= 0.65 and (best_candidate["similarity"] - similarity) > 0.15:
-        face_matched = False
-        face_decision_note = f"Proxy rejected: Scanned face matches {best_candidate['name']} ({best_candidate['roll_number']}), not your registered identity."
-    elif similarity >= 0.45:
-        face_matched = True
-        face_decision_note = f"Face verified: {user.get('name', 'Student')} ({user.get('roll_number', '')}) — {int(similarity * 100)}% match"
-    else:
-        face_matched = False
-        face_decision_note = f"Biometric mismatch: Scanned face does not match your registered reference (Confidence: {int(similarity * 100)}%)."
-
-    # 8. Classroom panorama verification: Detect Sir + Crowd + 80/120/240/260-Seater Match
-    class_row = db.table("classes").select("*").eq("id", sess.get("class_id")).single().execute().data or {}
-    capacity = int(class_row.get("capacity") or 120)
-    hall_type = class_row.get("hall_type") or f"{capacity}-Seater Hall"
-    expected_room = class_row.get("room_number") or f"LH-{capacity}"
-
-    room_analysis = {
-        "room_matched": True,
-        "sir_detected": True,
-        "sir_name": "Lecturer",
-        "sir_confidence": 0.90,
-        "crowd_detected": True,
-        "crowd_count": 1,
-        "crowd_density_pct": 100.0,
-        "hall_capacity": capacity,
-        "hall_type": hall_type,
-        "room_number": expected_room,
-        "room_note": f"Classroom {expected_room} verified ({hall_type})",
-    }
-
-    if classroom_image is not None:
-        room_bytes = await classroom_image.read()
-        if len(room_bytes) > 0:
-            img_room = parse_image_frame(room_bytes)
-            if img_room is not None:
-                room_analysis = analyze_classroom_panorama(img_room, class_row, engine, db, session_row=sess)
-
-    # Decode optional active liveness challenge frames
-    img_left = None
-    if face_left is not None:
-        b_left = await face_left.read()
-        if len(b_left) > 0:
-            img_left = parse_image_frame(b_left)
-
-    img_right = None
-    if face_right is not None:
-        b_right = await face_right.read()
-        if len(b_right) > 0:
-            img_right = parse_image_frame(b_right)
-
-    img_blink = None
-    if face_blink is not None:
-        b_blink = await face_blink.read()
-        if len(b_blink) > 0:
-            img_blink = parse_image_frame(b_blink)
-
-    challenges_provided = (face_left is not None or face_right is not None or face_blink is not None or (challenge_token is not None and challenge_token.strip()))
-    if not challenges_provided and allow_fb:
-        liveness_res = {
-            "liveness_passed": True,
-            "frontal_detected": True,
-            "left_turn_detected": True,
-            "right_turn_detected": True,
-            "blink_detected": True,
-            "message": "Simulated test environment: Legacy single-frame submission allowed.",
+        room_analysis = {
+            "room_matched": True,
+            "sir_detected": True,
+            "sir_name": "Lecturer",
+            "sir_confidence": 0.90,
+            "crowd_detected": True,
+            "crowd_count": 1,
+            "crowd_density_pct": 100.0,
+            "hall_capacity": capacity,
+            "hall_type": hall_type,
+            "room_number": expected_room,
+            "room_note": f"Classroom {expected_room} verified ({hall_type})",
         }
-    else:
-        liveness_res = engine.verify_active_liveness(
-            frontal_img=img_face,
-            left_img=img_left,
-            right_img=img_right,
-            blink_img=img_blink,
-            expected_challenges=expected_challenges,
-            allow_fallback=allow_fb,
+
+        if classroom_image is not None:
+            room_bytes = await classroom_image.read()
+            if len(room_bytes) > 0:
+                img_room = parse_image_frame(room_bytes)
+                if img_room is not None:
+                    room_analysis = analyze_classroom_panorama(img_room, class_row, engine, db, session_row=sess)
+
+        # Decode optional active liveness challenge frames
+        img_left = None
+        if face_left is not None:
+            b_left = await face_left.read()
+            if len(b_left) > 0:
+                img_left = parse_image_frame(b_left)
+
+        img_right = None
+        if face_right is not None:
+            b_right = await face_right.read()
+            if len(b_right) > 0:
+                img_right = parse_image_frame(b_right)
+
+        img_blink = None
+        if face_blink is not None:
+            b_blink = await face_blink.read()
+            if len(b_blink) > 0:
+                img_blink = parse_image_frame(b_blink)
+
+        challenges_provided = (face_left is not None or face_right is not None or face_blink is not None or (challenge_token is not None and challenge_token.strip()))
+        if not challenges_provided and allow_fb:
+            liveness_res = {
+                "liveness_passed": True,
+                "frontal_detected": True,
+                "left_turn_detected": True,
+                "right_turn_detected": True,
+                "blink_detected": True,
+                "message": "Simulated test environment: Legacy single-frame submission allowed.",
+            }
+        else:
+            liveness_res = engine.verify_active_liveness(
+                frontal_img=img_face,
+                left_img=img_left,
+                right_img=img_right,
+                blink_img=img_blink,
+                expected_challenges=expected_challenges,
+                allow_fallback=allow_fb,
+            )
+        liveness_ok = liveness_res.get("liveness_passed", False)
+    except HTTPException:
+        raise
+    except Exception as cv_err:
+        logger.exception(f"Face verification pipeline failed closed: {cv_err}")
+        _audit(
+            session_id=session_id,
+            actor_id=user["id"],
+            action="attendance.verification_error",
+            note=f"Face verification pipeline failed closed due to model/runtime error: {str(cv_err)}",
         )
-    liveness_ok = liveness_res.get("liveness_passed", False)
+        raise HTTPException(
+            status_code=503,
+            detail=f"Face verification service error or model unavailable. [MODEL_UNAVAILABLE]: {str(cv_err)}",
+            headers={"X-Error-Code": "MODEL_UNAVAILABLE"},
+        )
 
     # 6. Final attendance decision & strict one-time recording
     now_iso = utc_now()
@@ -2162,6 +2189,9 @@ async def verify_student_live_attendance(
 
     return {
         "status": final_status,
+        "session_valid": True,
+        "image_quality_passed": q_ok,
+        "image_quality_metrics": q_metrics,
         "face_match": face_matched,
         "face_confidence": round(similarity, 3),
         "liveness_passed": liveness_ok,
@@ -2191,12 +2221,36 @@ async def verify_student_liveness_only(
     face_left: Optional[UploadFile] = File(default=None),
     face_right: Optional[UploadFile] = File(default=None),
     face_blink: Optional[UploadFile] = File(default=None),
+    challenge_token: Optional[str] = Form(default=None),
+    # Untrusted client assertion parameters (strictly ignored for authorization)
+    is_live: Optional[bool] = Form(default=None),
+    verified: Optional[bool] = Form(default=None),
+    client_verified: Optional[bool] = Form(default=None),
+    confidence: Optional[float] = Form(default=None),
+    client_confidence: Optional[float] = Form(default=None),
     user: dict[str, Any] = Depends(current_user),
 ) -> dict[str, Any]:
     require_student(user)
+    if is_live is not None or verified is not None or client_verified is not None:
+        logger.warning(
+            f"Client submitted bypass assertions to verify-liveness (is_live={is_live}, verified={verified}) "
+            f"for user {user.get('id')}. Disregarded per security policy."
+        )
     sess = _get_session_or_404(session_id)
     if sess.get("status") != "open":
         raise HTTPException(status_code=400, detail="This attendance session is not open.")
+
+    expected_challenges: Optional[list[str]] = None
+    if challenge_token is not None and challenge_token.strip():
+        token_payload = verify_liveness_challenge_token(challenge_token.strip())
+        if token_payload.get("session_id") != session_id:
+            raise HTTPException(status_code=400, detail="Challenge token was issued for a different session.")
+        if token_payload.get("sub") != user["id"]:
+            raise HTTPException(status_code=403, detail="Challenge token was issued for a different student.")
+        nonce = token_payload.get("nonce", "")
+        if not consume_challenge_nonce(nonce):
+            raise HTTPException(status_code=400, detail="Challenge token has already been used. Tokens are strictly single-use.")
+        expected_challenges = token_payload.get("challenges", [])
 
     frontal_bytes = await face_frontal.read()
     img_front = parse_image_frame(frontal_bytes)
@@ -2221,13 +2275,24 @@ async def verify_student_liveness_only(
         if len(b) > 0:
             img_blink = parse_image_frame(b)
 
-    engine = get_face_engine()
-    return engine.verify_active_liveness(
-        frontal_img=img_front,
-        left_img=img_left,
-        right_img=img_right,
-        blink_img=img_blink,
-    )
+    try:
+        engine = get_face_engine()
+        return engine.verify_active_liveness(
+            frontal_img=img_front,
+            left_img=img_left,
+            right_img=img_right,
+            blink_img=img_blink,
+            expected_challenges=expected_challenges,
+        )
+    except HTTPException:
+        raise
+    except Exception as cv_err:
+        logger.exception(f"Liveness verification failed closed: {cv_err}")
+        raise HTTPException(
+            status_code=503,
+            detail=f"Liveness verification service error or model unavailable. [MODEL_UNAVAILABLE]: {str(cv_err)}",
+            headers={"X-Error-Code": "MODEL_UNAVAILABLE"},
+        )
 
 
 # ── Routes: Controller Academic Management ───────────────────────────────────

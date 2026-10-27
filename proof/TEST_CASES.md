@@ -861,6 +861,192 @@
 
 ---
 
+## Category H — Adversarial Evaluation & Presentation-Attack Defense
+
+### TC-ADV-001: Consenting Live Participant Verification
+- **Category:** Category H — Adversarial Evaluation
+- **Objective:** Verify end-to-end attendance for a consenting live participant completing all randomized active challenges with biometric matching.
+- **Preconditions:** Enrolled reference template for Student A, active open session.
+- **Inputs & Setup:** Server-signed challenge token, live frontal capture, left turn (yaw deflection $\le -15^\circ$), right turn (yaw deflection $\ge +15^\circ$), eye blink capture (EAR $\le 0.12$).
+- **Execution Steps:**
+  1. Student requests challenge token via `POST /api/sessions/{session_id}/liveness-challenge`.
+  2. Student submits matching frontal and completed challenge frames to `POST /api/sessions/{session_id}/verify-attendance`.
+  3. Validate attendance status, liveness status, and biometric similarity.
+- **Expected Result:** HTTP 200, `status = "present"`, `liveness_passed = True`, `face_match = True`, confidence $\ge 0.45$.
+- **Actual Result:** HTTP 200, `status = "present"`, `liveness_passed = True`, `face_match = True`, confidence 1.0, latency 164.55ms.
+- **Pass/Fail Criteria:** Pass if both liveness and biometric match pass and status is marked present.
+- **Status:** PASS
+- **Evidence:** `proof/logs/adversarial_evaluation_log.json`, `proof/screenshots/04_liveness/01_live_matching_challenge_flow.png`
+- **Defect Reference:** N/A
+
+---
+
+### TC-ADV-002: Live Non-Matching Participant (Biometric Mismatch)
+- **Category:** Category H — Adversarial Evaluation
+- **Objective:** Verify that a live consenting participant who completes all liveness challenges but does not match the enrolled student reference is rejected. Proves liveness alone does not authorize attendance.
+- **Preconditions:** Enrolled reference template for Student A, active open session.
+- **Inputs & Setup:** Submitter is Person B (different live face performing valid yaw deflection and eye blinks).
+- **Execution Steps:**
+  1. Obtain challenge token for Student A.
+  2. Person B performs live head turns and blinks, submitting to `POST /api/sessions/{session_id}/verify-attendance`.
+  3. Inspect response decisions.
+- **Expected Result:** HTTP 200, `status = "absent"`, `liveness_passed = True`, `face_match = False`.
+- **Actual Result:** HTTP 200, `status = "absent"`, `liveness_passed = True`, `face_match = False`, similarity 0.048 (< 0.45 threshold), latency 73.67ms.
+- **Pass/Fail Criteria:** Pass if liveness is confirmed but attendance is rejected due to biometric mismatch.
+- **Status:** PASS
+- **Evidence:** `proof/logs/adversarial_evaluation_log.json`, `proof/screenshots/04_liveness/02_live_non_matching_participant.png`
+- **Defect Reference:** N/A
+
+---
+
+### TC-ADV-003: Printed Photograph Attack
+- **Category:** Category H — Adversarial Evaluation
+- **Objective:** Verify presentation attack detection flags printed photos via desaturated chrominance variance and halftone analysis.
+- **Preconditions:** RealFaceEngine initialized.
+- **Inputs & Setup:** High-contrast printed photograph capture with low HSV color saturation and YCrCb chrominance variance.
+- **Execution Steps:**
+  1. Submit printed capture to `detect_presentation_attack`.
+  2. Inspect spoof score and attack reasons.
+- **Expected Result:** `is_spoof = True`, `attack_type` contains `PRINT_ATTACK_DETECTED` or spoof score $> 0.45$.
+- **Actual Result:** `is_spoof = True`, reason: `Low chrominance variance indicative of grayscale or printed attack [PRINT_ATTACK_DETECTED]`, spoof score 0.65, latency 2.99ms.
+- **Pass/Fail Criteria:** Pass if print attack is flagged and blocked.
+- **Status:** PASS
+- **Evidence:** `proof/logs/adversarial_evaluation_log.json`, `proof/screenshots/04_liveness/03_print_attack_chroma_analysis.png`
+- **Defect Reference:** SEC-011
+
+---
+
+### TC-ADV-004: Photograph Displayed on Screen (Phone / Tablet / Monitor)
+- **Category:** Category H — Adversarial Evaluation
+- **Objective:** Verify digital screen playback attacks are detected via 2D FFT spectral peak-to-mean ratio (SPMR) and high-frequency raster moiré.
+- **Preconditions:** RealFaceEngine initialized.
+- **Inputs & Setup:** Capture displaying face on digital LCD/OLED screen with periodic pixel grid raster.
+- **Execution Steps:**
+  1. Pass image to `detect_presentation_attack`.
+  2. Compute 2D Fast Fourier Transform magnitude spectrum.
+- **Expected Result:** `is_spoof = True`, SPMR $> 1.85$ or high-frequency ratio $> 0.85$, attack classified as `SCREEN_MOIRE_DETECTED`.
+- **Actual Result:** `is_spoof = True`, `SCREEN_MOIRE_DETECTED` flagged, spoof score 1.0, latency 2.01ms.
+- **Pass/Fail Criteria:** Pass if digital screen raster frequency spikes trigger spoof detection.
+- **Status:** PASS
+- **Evidence:** `proof/logs/adversarial_evaluation_log.json`, `proof/screenshots/04_liveness/04_screen_replay_moire_fft.png`
+- **Defect Reference:** SEC-011
+
+---
+
+### TC-ADV-005: Prerecorded Video Replay Attack
+- **Category:** Category H — Adversarial Evaluation
+- **Objective:** Verify prerecorded video replay is defeated by server-side dynamic randomized challenge sequences and inter-frame static motion analysis.
+- **Preconditions:** Active challenge required by session.
+- **Inputs & Setup:** Identical static video frame replayed across challenge slots when server demanded `turn_left` and `turn_right`.
+- **Execution Steps:**
+  1. Call `engine.verify_active_liveness` with identical frames across challenge slots.
+- **Expected Result:** `liveness_passed = False`, `reason` is `STATIC_IMAGE_REPLAY_ACROSS_CHALLENGES` or `ACTION_MISMATCH`.
+- **Actual Result:** `liveness_passed = False`, reason: `STATIC_IMAGE_REPLAY_ACROSS_CHALLENGES`, latency 10.73ms.
+- **Pass/Fail Criteria:** Pass if zero-motion replay across challenge slots fails closed.
+- **Status:** PASS
+- **Evidence:** `proof/logs/adversarial_evaluation_log.json`, `proof/screenshots/04_liveness/05_static_replay_frame_differencing.png`
+- **Defect Reference:** SEC-009
+
+---
+
+### TC-ADV-006: Previously Submitted Image Replay Defense
+- **Category:** Category H — Adversarial Evaluation
+- **Objective:** Verify replay of previously submitted legitimate frames in subsequent sessions is blocked by SHA-256 byte deduplication and pHash perceptual collision.
+- **Preconditions:** Image previously processed in session 1.
+- **Inputs & Setup:** Submitting identical capture bytes in session 2.
+- **Execution Steps:**
+  1. Re-submit previously used image bytes to `POST /api/sessions/{session_id}/verify-attendance`.
+- **Expected Result:** HTTP 400 Bad Request with `X-Error-Code: REPLAY_ATTACK_DETECTED`.
+- **Actual Result:** HTTP 400 Bad Request, detail: `"Replay attack detected: Identical image capture has already been processed"`, latency 75.82ms.
+- **Pass/Fail Criteria:** Pass if repeat image submissions are blocked immediately.
+- **Status:** PASS
+- **Evidence:** `proof/logs/adversarial_evaluation_log.json`
+- **Defect Reference:** SEC-003
+
+---
+
+### TC-ADV-007: Low-Quality Capture Screening
+- **Category:** Category H — Adversarial Evaluation
+- **Objective:** Verify low-quality captures (severe blur, underexposure, or tiny face area) are rejected by image quality screening before recognition.
+- **Preconditions:** Quality thresholds configured.
+- **Inputs & Setup:** Artificially blurred (Laplacian variance $< 40$), underexposed (luminance $< 30$), and small face ($< 4\%$ frame area) captures.
+- **Execution Steps:**
+  1. Evaluate each quality edge case with `engine.check_image_quality`.
+- **Expected Result:** `passed = False`, error codes reflect failure reason (`IMAGE_QUALITY_BLURRY`, `IMAGE_QUALITY_UNDEREXPOSED`, `IMAGE_QUALITY_FACE_TOO_SMALL`).
+- **Actual Result:** All 3 quality edge cases rejected cleanly, latency 3.97ms.
+- **Pass/Fail Criteria:** Pass if degraded captures fail quality screening.
+- **Status:** PASS
+- **Evidence:** `proof/logs/adversarial_evaluation_log.json`
+- **Defect Reference:** SEC-006
+
+---
+
+### TC-ADV-008: Multiple Faces Detected
+- **Category:** Category H — Adversarial Evaluation
+- **Objective:** Verify captures with multiple faces in frame are rejected to prevent proctor intrusion or proxy collaboration.
+- **Preconditions:** Composite frame containing 2 human faces.
+- **Inputs & Setup:** Two detected face objects passed to `validate_single_face`.
+- **Execution Steps:**
+  1. Call `validate_single_face([face_1, face_2])`.
+- **Expected Result:** `face_ok = False`, `error_code = "MULTIPLE_FACES"`.
+- **Actual Result:** `face_ok = False`, `error_code = "MULTIPLE_FACES"`, detail: `"Multiple faces (2) detected. Please ensure only you are visible"`, latency 0.01ms.
+- **Pass/Fail Criteria:** Pass if multiple faces are rejected immediately.
+- **Status:** PASS
+- **Evidence:** `proof/logs/adversarial_evaluation_log.json`
+- **Defect Reference:** N/A
+
+---
+
+### TC-ADV-009: Expired and Reused Challenge Tokens
+- **Category:** Category H — Adversarial Evaluation
+- **Objective:** Verify challenge tokens expire after 90 seconds and nonces can only be consumed exactly once.
+- **Preconditions:** Challenge token issued with 90s TTL.
+- **Inputs & Setup:** Expired token (negative TTL) and token nonce submitted twice.
+- **Execution Steps:**
+  1. Verify expired token -> Check exception.
+  2. Consume active token nonce twice -> Check return values.
+- **Expected Result:** Expired token throws signature/expiration error; second nonce consumption returns `False`.
+- **Actual Result:** Expired token rejected; first nonce consumption returns `True`, second consumption returns `False`, latency 0.32ms.
+- **Pass/Fail Criteria:** Pass if token expiration and single-use nonces are strictly enforced.
+- **Status:** PASS
+- **Evidence:** `proof/logs/adversarial_evaluation_log.json`, `proof/screenshots/04_liveness/06_challenge_token_security_lifecycle.png`
+- **Defect Reference:** SEC-004
+
+---
+
+### TC-ADV-010: Incorrect Active-Challenge Responses
+- **Category:** Category H — Adversarial Evaluation
+- **Objective:** Verify client providing incorrect head direction (e.g. turned right when server asked for left) fails liveness.
+- **Preconditions:** Server challenge demands `turn_left` (yaw $\le -15^\circ$).
+- **Inputs & Setup:** Client submits frame with yaw $+25^\circ$ (turned right).
+- **Execution Steps:**
+  1. Call `verify_active_liveness` with conflicting turn direction.
+- **Expected Result:** `liveness_passed = False`, `left_turn_detected = False`.
+- **Actual Result:** `liveness_passed = False`, `left_turn_detected = False`, latency 22.49ms.
+- **Pass/Fail Criteria:** Pass if wrong action fails liveness check.
+- **Status:** PASS
+- **Evidence:** `proof/logs/adversarial_evaluation_log.json`
+- **Defect Reference:** N/A
+
+---
+
+### TC-ADV-011: Model Timeout and Unavailable Model (Fail Closed)
+- **Category:** Category H — Adversarial Evaluation
+- **Objective:** Verify that model inference failure/timeout fails closed with HTTP 503, and client-supplied bypass assertions (`is_live`, `verified`, `confidence`) cannot independently authorize attendance.
+- **Preconditions:** Enrolled student, active open session.
+- **Inputs & Setup:** Client passes `is_live=True`, `verified=True`, `confidence=0.999`. Engine `detect_faces` throws `RuntimeError`.
+- **Execution Steps:**
+  1. Send request with client bypass parameters -> Verify server executes CV and ignores client flags.
+  2. Simulate model runtime failure -> Verify HTTP 503 response.
+- **Expected Result:** Client assertion parameters do not bypass CV; model runtime exception returns HTTP 503 `MODEL_UNAVAILABLE`, zero attendance granted.
+- **Actual Result:** Client assertions disregarded; model runtime failure triggers HTTP 503 `MODEL_UNAVAILABLE` with audit log, latency 60.81ms.
+- **Pass/Fail Criteria:** Pass if system fails closed on model unavailability and neutralizes client-side bypass fields.
+- **Status:** PASS
+- **Evidence:** `proof/logs/adversarial_evaluation_log.json`, `proof/screenshots/04_liveness/07_model_fail_closed_architecture.png`
+- **Defect Reference:** SEC-008, SEC-010
+
+---
+
 ## Test Execution Summary Matrix
 
 | Category | Planned Tests | Passed | Failed | Blocked | Not Run | Pass Rate |
@@ -872,4 +1058,6 @@
 | Category E: Mobile Application | 8 | 8 | 0 | 0 | 0 | 100% |
 | Category F: Performance & Latency | 1 | 1 | 0 | 0 | 0 | 100% |
 | Category G: Accuracy & Limits | 1 | 1 | 0 | 0 | 0 | 100% |
-| **TOTAL** | **26** | **26** | **0** | **0** | **0** | **100%** |
+| Category H: Adversarial Evaluation & PAD | 11 | 11 | 0 | 0 | 0 | 100% |
+| **TOTAL** | **37** | **37** | **0** | **0** | **0** | **100%** |
+
