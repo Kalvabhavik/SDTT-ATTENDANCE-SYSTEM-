@@ -1,0 +1,5 @@
+00:00 +0: loading /home/lucky/Downloads/mess-manager/SDTT-ATTENDANCE-SYSTEM-/apps/mobile/test/widget_test.dart
+00:00 +0: app renders role selection screen with Student and Lecturer options
+00:00 +1: User model maps DB teacher role to display Lecturer
+00:00 +2: AttendanceSession parses duration, server_time, and headline counts
+00:00 +3: All tests passed!

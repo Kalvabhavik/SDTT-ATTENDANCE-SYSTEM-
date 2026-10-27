@@ -2,6 +2,8 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
+import { gsap } from "gsap";
+import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { soundManager } from "./SoundManager";
 import {
   Maximize2,
@@ -23,11 +25,15 @@ import {
   X,
 } from "lucide-react";
 
+if (typeof window !== "undefined") {
+  gsap.registerPlugin(ScrollTrigger);
+}
+
 interface LectureHallSceneProps {
   scrollProgress: number; // 0 to 1
   activeSection: string;
   isReducedMotion?: boolean;
-  selectedCohort?: 80 | 120 | 240;
+  selectedCohort?: 80 | 120 | 240 | 260;
   activeZone?: "all" | "zoneA" | "zoneB" | "zoneC";
 }
 
@@ -55,7 +61,7 @@ export default function LectureHallScene({
   scrollProgress,
   activeSection,
   isReducedMotion = false,
-  selectedCohort = 240,
+  selectedCohort = 260,
   activeZone = "all",
 }: LectureHallSceneProps) {
   const mountRef = useRef<HTMLDivElement>(null);
@@ -112,12 +118,12 @@ export default function LectureHallScene({
     activeSectionRef.current = activeSection;
   }, [scrollProgress, selectedCohort, activeZone, activeSection]);
 
-  // 240 student seats metadata definition
+  // 260 student seats metadata definition (13 rows x 20 seats)
   const seatsData = useRef<StudentSeatData[]>([]);
 
-  // Initialize 240 seats and student roster
+  // Initialize 260 seats and student roster
   if (seatsData.current.length === 0) {
-    const totalRows = 12;
+    const totalRows = 13;
     const seatsPerRow = 20;
     let idCounter = 1;
 
@@ -155,7 +161,8 @@ export default function LectureHallScene({
         r < 4 ? "zoneA" : r < 8 ? "zoneB" : "zoneC";
 
       // Realistic amphitheater alignment: Steps start from the board at stage level and increase in elevation towards the back
-      const rowElevation = 0.35 + r * 0.45;
+      // Row 13 (r=12) is the Grand Balcony Tier elevated higher
+      const rowElevation = 0.35 + r * 0.45 + (r === 12 ? 0.45 : 0);
       const rowZ = -3.2 + r * 1.55;
 
       for (let c = 0; c < seatsPerRow; c++) {
@@ -167,25 +174,29 @@ export default function LectureHallScene({
         const curveOffset = Math.pow((c - 9.5) * 0.09, 2) * 0.38;
         const z = rowZ + curveOffset;
 
-        // Reconciled target status: 218 verified, 12 pending, 10 unrecorded (vacant chairs)
+        // Reconciled target status: 236 verified, 14 pending, 10 unrecorded (vacant chairs)
         let targetStatus: "verified" | "pending" | "unrecorded" = "verified";
-        if (idCounter % 20 === 7) targetStatus = "pending";
-        else if (idCounter % 24 === 0) targetStatus = "unrecorded";
+        if (idCounter % 18 === 7) targetStatus = "pending";
+        else if (idCounter % 26 === 0) targetStatus = "unrecorded";
 
         // Natural attendance activation distribution tied to scroll progress
         let activationScroll = 0.08;
         if (idCounter === 28) {
           // Alex Chen (Seat #28, Row 2, Col 8) activates right when camera zooms in close!
-          activationScroll = 0.42;
+          activationScroll = 0.46;
         } else if (zone === "zoneA") {
           const localProgress = ((r * seatsPerRow + c) / 80);
-          activationScroll = 0.08 + localProgress * 0.44;
+          activationScroll = 0.08 + localProgress * 0.38;
         } else if (zone === "zoneB") {
           const localProgress = (((r - 4) * seatsPerRow + c) / 80);
-          activationScroll = 0.52 + localProgress * 0.20;
-        } else {
+          activationScroll = 0.48 + localProgress * 0.22;
+        } else if (r < 12) {
           const localProgress = (((r - 8) * seatsPerRow + c) / 80);
-          activationScroll = 0.72 + localProgress * 0.16;
+          activationScroll = 0.72 + localProgress * 0.14;
+        } else {
+          // Row 13: Grand Balcony Gallery
+          const localProgress = c / 20;
+          activationScroll = 0.86 + localProgress * 0.10;
         }
 
         const name = studentNames[(idCounter - 1) % studentNames.length];
@@ -236,14 +247,14 @@ export default function LectureHallScene({
       pos: [4.2, 1.8, -0.2],
       look: [-1.2, 1.6, -7.5],
       fov: 46,
-      name: "CAM 02 // LOW DESK ANGLE",
+      name: "CAM 02 // LOW DESK ANGLE [PROXY THREAT]",
     },
     {
       p: 0.32,
       pos: [-8.8, 3.6, 2.2],
       look: [1.5, 2.0, -4.5],
       fov: 46,
-      name: "CAM 03 // DIAGONAL FLANK",
+      name: "CAM 03 // DUAL-STREAM CONVERGENCE",
     },
     {
       p: 0.46,
@@ -251,14 +262,14 @@ export default function LectureHallScene({
       pos: [-1.90, 1.62, -0.92],
       look: [-1.44, 1.48, -2.6],
       fov: 38,
-      name: "CAM 04 // STUDENT MACRO POV [ACTIVE SCAN]",
+      name: "CAM 04 // STUDENT 180° SWEEP POV",
     },
     {
       p: 0.60,
       pos: [-7.5, 5.2, 6.8],
       look: [1.2, 2.2, -3.0],
       fov: 48,
-      name: "CAM 05 // COHORT 80 ELEVATED",
+      name: "CAM 05 // COHORT 80 SEMINAR TIER",
     },
     {
       p: 0.74,
@@ -269,10 +280,10 @@ export default function LectureHallScene({
     },
     {
       p: 0.86,
-      pos: [0, 8.8, 19.5],
-      look: [0, 2.8, -7.5],
-      fov: 54,
-      name: "CAM 07 // BALCONY PANORAMA 240",
+      pos: [0, 9.6, 21.5],
+      look: [0, 2.6, -7.5],
+      fov: 55,
+      name: "CAM 07 // GRAND AUDITORIUM (260 SEATS)",
     },
     {
       p: 0.95,
@@ -349,7 +360,7 @@ export default function LectureHallScene({
       ctxL.fillText("L = -log [ e^(s·cos(θ + m)) / Z ]", 25, 85);
       ctxL.fillText("s = 64.0 (hypersphere radius)", 25, 115);
       ctxL.fillText("m = 0.50 (additive angular margin)", 25, 140);
-      ctxL.fillText("Cosine threshold τ = 0.78", 25, 165);
+      ctxL.fillText("Cosine threshold τ = 0.65 (MobileFaceNet)", 25, 165);
 
       ctxL.strokeStyle = "#38bdf8";
       ctxL.lineWidth = 2.5;
@@ -366,10 +377,10 @@ export default function LectureHallScene({
 
       ctxL.fillStyle = "#94a3b8";
       ctxL.font = "12px monospace";
-      ctxL.fillText("Feature Embedding Space S²", 250, 240);
-      ctxL.fillText("FAR: 0.0001% @ FRR: 1.14%", 250, 270);
-      ctxL.fillText("Normalized L2 Euclidean Ball", 250, 300);
-      ctxL.fillText("Latency: 18.4ms / face (Orin Nano)", 250, 330);
+      ctxL.fillText("Feature Embedding Space S² (512-D)", 240, 240);
+      ctxL.fillText("FAR: 0.0001% @ FRR: 1.14%", 240, 270);
+      ctxL.fillText("Quality Gate: Var(Laplacian) ≥ 1.5", 240, 300);
+      ctxL.fillText("Ephemeral Zero-Knowledge Storage", 240, 330);
     }
 
     const ctxR = rightCanvas.getContext("2d");
@@ -384,43 +395,43 @@ export default function LectureHallScene({
 
       ctxR.fillStyle = "#6ee7b7";
       ctxR.font = "bold 20px monospace";
-      ctxR.fillText("EDGE GATEWAY TOPOLOGY", 25, 45);
+      ctxR.fillText("180° SWEEP & ANTI-PROXY ENGINE", 25, 45);
 
       ctxR.fillStyle = "#ffffff";
-      ctxR.font = "15px monospace";
-      ctxR.fillText("1. Dynamic Nonce Broadcast (TTL 15s)", 25, 85);
-      ctxR.fillText("2. Optical Screen Sync: 9K4-PX2", 25, 115);
-      ctxR.fillText("3. BLE RSSI Triangulation (Zone A/B/C)", 25, 140);
-      ctxR.fillText("4. SHA-256 HMAC Reconcile Pipeline", 25, 165);
+      ctxR.font = "14px monospace";
+      ctxR.fillText("1. Monotonic Gyro Sweep (Yaw ≥ 120°)", 25, 85);
+      ctxR.fillText("2. YuNet Real Face Detection (N ≥ 1)", 25, 115);
+      ctxR.fillText("3. Anti-Empty-Room Defense (0-Face Auto-Block)", 25, 140);
+      ctxR.fillText("4. Lecturer Stage Grounding (IPD ≥ 30px)", 25, 165);
 
       ctxR.strokeStyle = "#f59e0b";
       ctxR.lineWidth = 2;
-      ctxR.strokeRect(40, 220, 110, 55);
-      ctxR.strokeRect(200, 220, 110, 55);
-      ctxR.strokeRect(360, 220, 110, 55);
+      ctxR.strokeRect(35, 220, 115, 55);
+      ctxR.strokeRect(195, 220, 115, 55);
+      ctxR.strokeRect(355, 220, 115, 55);
 
       ctxR.fillStyle = "#ffffff";
       ctxR.font = "12px monospace";
-      ctxR.fillText("STUDENT", 65, 245);
-      ctxR.fillText("DEVICE", 68, 262);
+      ctxR.fillText("STUDENT", 62, 243);
+      ctxR.fillText("180° SWEEP", 53, 261);
 
-      ctxR.fillText("EDGE LECTERN", 212, 245);
-      ctxR.fillText("JETSON ORIN", 216, 262);
+      ctxR.fillText("CONTROLLER", 204, 243);
+      ctxR.fillText("VENUE LOCK", 208, 261);
 
-      ctxR.fillText("CENTRAL DB", 378, 245);
-      ctxR.fillText("AUDIT LOG", 382, 262);
+      ctxR.fillText("FASTAPI CORE", 362, 243);
+      ctxR.fillText("AUDIT LEDGER", 362, 261);
 
       ctxR.beginPath();
       ctxR.moveTo(150, 247);
-      ctxR.lineTo(200, 247);
+      ctxR.lineTo(195, 247);
       ctxR.moveTo(310, 247);
-      ctxR.lineTo(360, 247);
+      ctxR.lineTo(355, 247);
       ctxR.stroke();
 
       ctxR.fillStyle = "#38bdf8";
       ctxR.font = "13px monospace";
-      ctxR.fillText("Batch Ingestion: 240 seats / 4.8s total", 40, 325);
-      ctxR.fillText("Zero Proxy Bypass Guarantee", 40, 350);
+      ctxR.fillText("Audit Ingestion: 260 seats / 4.8s burst", 40, 325);
+      ctxR.fillText("Zero Proxy Bypass Guarantee (Active)", 40, 350);
     }
   };
 
@@ -450,60 +461,51 @@ export default function LectureHallScene({
     }
 
     ctx.fillStyle = "#0f172a";
-    ctx.font = "bold 38px 'Inter', sans-serif";
-    ctx.fillText("ATTENDRIX // LECTURE HALL A", 60, 75);
+    ctx.font = "bold 36px 'Inter', sans-serif";
+    ctx.fillText("ATTENDRIX // 260-SEAT GRAND AUDITORIUM", 60, 72);
 
     ctx.fillStyle = "#b45309";
-    ctx.font = "bold 20px monospace";
-    ctx.fillText("SESSION #8491 • CS-401 ADVANCED ALGORITHMS • LIVE RECONCILIATION", 60, 115);
+    ctx.font = "bold 18px monospace";
+    ctx.fillText("SESSION #8491 • CS-401 ADVANCED ALGORITHMS • VERIFICATION ACTIVE", 60, 110);
 
     ctx.fillStyle = "rgba(245, 158, 11, 0.08)";
     ctx.strokeStyle = "#d97706";
     ctx.lineWidth = 3;
     ctx.beginPath();
-    ctx.roundRect(60, 140, 520, 160, 14);
+    ctx.roundRect(60, 135, 520, 170, 14);
     ctx.fill();
     ctx.stroke();
 
     ctx.fillStyle = "#0f172a";
-    ctx.font = "bold 52px monospace";
-    ctx.fillText("CODE: 9K4-PX2", 90, 215);
+    ctx.font = "bold 40px monospace";
+    ctx.fillText("180° SWEEP ACTIVE", 90, 195);
 
-    const ttlSeconds = Math.max(1, 15 - Math.floor((timeRatio * 4) % 15));
     ctx.fillStyle = "#059669";
-    ctx.font = "bold 22px monospace";
-    ctx.fillText(`● DYNAMIC CLASSROOM TOKEN • TTL: ${ttlSeconds}s`, 90, 265);
+    ctx.font = "bold 17px monospace";
+    ctx.fillText("● MONOTONIC GYRO TRACKING: ΔYAW ≥ 120° [VALID]", 90, 235);
 
-    ctx.beginPath();
-    ctx.arc(520, 220, 28, 0, Math.PI * 2);
-    ctx.strokeStyle = "rgba(5, 150, 105, 0.2)";
-    ctx.lineWidth = 5;
-    ctx.stroke();
-
-    ctx.beginPath();
-    ctx.arc(520, 220, 28, -Math.PI / 2, -Math.PI / 2 + (ttlSeconds / 15) * Math.PI * 2);
-    ctx.strokeStyle = "#059669";
-    ctx.lineWidth = 5;
-    ctx.stroke();
+    ctx.fillStyle = "#d97706";
+    ctx.font = "bold 15px monospace";
+    ctx.fillText("● ANTI-EMPTY-ROOM DEFENSE: ARMED (0-FACE AUTO-BLOCK)", 90, 270);
 
     ctx.fillStyle = "rgba(241, 245, 249, 0.9)";
     ctx.strokeStyle = "#cbd5e1";
     ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.roundRect(610, 60, 360, 240, 14);
+    ctx.roundRect(610, 55, 360, 250, 14);
     ctx.fill();
     ctx.stroke();
 
     ctx.fillStyle = "#334155";
-    ctx.font = "bold 15px monospace";
-    ctx.fillText("LIVE SEATING TOPOLOGY MAP (240)", 630, 95);
+    ctx.font = "bold 14px monospace";
+    ctx.fillText("LIVE SEATING TOPOLOGY MAP (260 SEATS)", 625, 88);
 
-    const miniRows = 12;
+    const miniRows = 13;
     const miniCols = 20;
     const dotSpacingX = 15;
-    const dotSpacingY = 12;
-    const startX = 635;
-    const startY = 120;
+    const dotSpacingY = 11;
+    const startX = 630;
+    const startY = 110;
 
     let seatIdx = 0;
     for (let mr = 0; mr < miniRows; mr++) {
@@ -517,7 +519,7 @@ export default function LectureHallScene({
             ctx.fillStyle = "#cbd5e1";
           }
           ctx.beginPath();
-          ctx.arc(startX + mc * dotSpacingX, startY + mr * dotSpacingY, 3.2, 0, Math.PI * 2);
+          ctx.arc(startX + mc * dotSpacingX, startY + mr * dotSpacingY, 3.0, 0, Math.PI * 2);
           ctx.fill();
         }
         seatIdx++;
@@ -538,15 +540,15 @@ export default function LectureHallScene({
 
     ctx.fillStyle = "#64748b";
     ctx.font = "bold 20px monospace";
-    ctx.fillText("/ 240 ENROLLED", 180, 405);
+    ctx.fillText("/ 260 ENROLLED", 195, 405);
 
-    const percent = ((verifiedCount / 240) * 100).toFixed(1);
+    const percent = ((verifiedCount / 260) * 100).toFixed(1);
     ctx.fillStyle = "#059669";
     ctx.font = "bold 32px monospace";
-    ctx.fillText(`${percent}% VERIFIED`, 420, 405);
+    ctx.fillText(`${percent}% VERIFIED`, 440, 405);
 
     const barWidth = 840;
-    const fillWidth = (verifiedCount / 240) * barWidth;
+    const fillWidth = (verifiedCount / 260) * barWidth;
     ctx.fillStyle = "#e2e8f0";
     ctx.beginPath();
     ctx.roundRect(90, 430, barWidth, 16, 8);
@@ -561,7 +563,7 @@ export default function LectureHallScene({
     ctx.fillStyle = "#059669";
     ctx.fillText(`● ${verifiedCount} VERIFIED`, 680, 375);
 
-    const pendingCount = currentProgress > 0.4 ? 12 : 0;
+    const pendingCount = currentProgress > 0.4 ? 14 : 0;
     ctx.fillStyle = "#d97706";
     ctx.fillText(`● ${pendingCount} REVIEW`, 820, 375);
 
@@ -1317,7 +1319,9 @@ export default function LectureHallScene({
             ? seat.id <= 80
             : curCohort === 120
               ? seat.id <= 120
-              : true;
+              : curCohort === 240
+                ? seat.id <= 240
+                : true;
 
         const inZone = curZone === "all" || seat.zone === curZone;
         const isDimmed = !inCohort || !inZone;
@@ -1481,6 +1485,86 @@ export default function LectureHallScene({
       }
     };
 
+    // ==========================================
+    // GSAP SCROLLTRIGGER ENGINE (CINEMATIC BACKGROUND SCROLLING)
+    // ==========================================
+    let masterScrollTrigger: ScrollTrigger | null = null;
+    const sectionTriggers: ScrollTrigger[] = [];
+
+    if (typeof window !== "undefined") {
+      masterScrollTrigger = ScrollTrigger.create({
+        trigger: document.body,
+        start: "top top",
+        end: "bottom bottom",
+        scrub: 1.0,
+        onUpdate: (self) => {
+          scrollProgressRef.current = self.progress;
+        },
+      });
+
+      const sectionEffects = [
+        { id: "experience", lightColor: "#f59e0b", lightInt: 2.4 },
+        { id: "problem", lightColor: "#ef4444", lightInt: 3.2 }, // Red alert for empty room proxy!
+        { id: "concept", lightColor: "#f59e0b", lightInt: 2.6 },
+        { id: "workflow", lightColor: "#38bdf8", lightInt: 2.8 }, // Cyan scanning ray
+        { id: "verification", lightColor: "#10b981", lightInt: 3.2 }, // Emerald verified spotlight
+        { id: "scale", lightColor: "#f59e0b", lightInt: 2.6 },
+        { id: "cohort-120", lightColor: "#f59e0b", lightInt: 2.8 },
+        { id: "hall-240", lightColor: "#d97706", lightInt: 3.0 },
+        { id: "pipeline", lightColor: "#6366f1", lightInt: 2.8 },
+        { id: "dashboard", lightColor: "#10b981", lightInt: 2.7 },
+        { id: "architecture", lightColor: "#0284c7", lightInt: 2.8 },
+        { id: "experiments", lightColor: "#f59e0b", lightInt: 2.6 },
+        { id: "closing", lightColor: "#f59e0b", lightInt: 2.5 },
+      ];
+
+      sectionEffects.forEach((cfg) => {
+        const el = document.getElementById(cfg.id);
+        if (el) {
+          const st = ScrollTrigger.create({
+            trigger: el,
+            start: "top 60%",
+            end: "bottom 40%",
+            onEnter: () => {
+              activeSectionRef.current = cfg.id;
+              if (stageSpot) {
+                gsap.to(stageSpot.color, {
+                  r: new THREE.Color(cfg.lightColor).r,
+                  g: new THREE.Color(cfg.lightColor).g,
+                  b: new THREE.Color(cfg.lightColor).b,
+                  duration: 0.8,
+                  overwrite: "auto",
+                });
+                gsap.to(stageSpot, {
+                  intensity: cfg.lightInt,
+                  duration: 0.8,
+                  overwrite: "auto",
+                });
+              }
+            },
+            onEnterBack: () => {
+              activeSectionRef.current = cfg.id;
+              if (stageSpot) {
+                gsap.to(stageSpot.color, {
+                  r: new THREE.Color(cfg.lightColor).r,
+                  g: new THREE.Color(cfg.lightColor).g,
+                  b: new THREE.Color(cfg.lightColor).b,
+                  duration: 0.8,
+                  overwrite: "auto",
+                });
+                gsap.to(stageSpot, {
+                  intensity: cfg.lightInt,
+                  duration: 0.8,
+                  overwrite: "auto",
+                });
+              }
+            },
+          });
+          sectionTriggers.push(st);
+        }
+      });
+    }
+
     animate();
 
     return () => {
@@ -1488,6 +1572,8 @@ export default function LectureHallScene({
       window.removeEventListener("resize", handleResize);
       container.removeEventListener("click", handleClick);
       cancelAnimationFrame(animationFrameId);
+      if (masterScrollTrigger) masterScrollTrigger.kill();
+      sectionTriggers.forEach((st) => st.kill());
       renderer.dispose();
     };
   }, []); // Strictly runs ONCE on mount! NEVER re-created!
@@ -1588,7 +1674,7 @@ export default function LectureHallScene({
                 : "text-slate-800 hover:bg-slate-100"
             }`}
           >
-            Balcony 240
+            Balcony 260
           </button>
         </div>
 
@@ -1614,10 +1700,10 @@ export default function LectureHallScene({
           <div className="w-full flex items-center justify-between pb-3 border-b border-slate-200">
             <div>
               <span className="text-xs uppercase tracking-widest text-amber-800 font-mono font-bold">
-                Classroom Floor Plan & Topology Matrix
+                Classroom Floor Plan & Topology Matrix (260 Seats)
               </span>
               <p className="text-xs text-slate-700 font-medium">
-                Tiered 240-seat amphitheater seating topology (CS-401 Lecture Hall A)
+                Tiered 260-seat grand auditorium seating topology (CS-401 Lecture Hall A)
               </p>
             </div>
             <button
@@ -1630,10 +1716,10 @@ export default function LectureHallScene({
 
           <div className="w-full my-auto overflow-x-auto py-4 flex flex-col items-center">
             <div className="w-3/4 max-w-xl mx-auto mb-4 py-2 px-4 rounded-lg bg-amber-50 border border-amber-300 text-center text-xs font-mono text-amber-950 font-bold">
-              [ FRONT PODIUM & DYNAMIC SCREEN • CHALLENGE CODE: 9K4-PX2 ]
+              [ FRONT LECTERN & CONTROLLER REFERENCE STAGE • 180° SWEEP ANCHOR ]
             </div>
             <div className="flex flex-col gap-1.5 items-center">
-              {Array.from({ length: 12 }).map((_, r) => {
+              {Array.from({ length: 13 }).map((_, r) => {
                 const rowSeats = seatsData.current.filter((s) => s.row === r + 1);
                 return (
                   <div key={r} className="flex items-center gap-1">
@@ -1740,21 +1826,21 @@ export default function LectureHallScene({
         <div className="bg-white/95 backdrop-blur-md px-4 py-2.5 rounded-2xl border border-slate-300/80 text-xs font-mono flex items-center gap-3 shadow-lg pointer-events-auto">
           <div className="flex items-center gap-1.5 text-emerald-900 font-extrabold">
             <CheckCircle2 className="w-4 h-4 text-emerald-700" />
-            <span>{liveVerifiedCount} / 240 MARKED</span>
+            <span>{liveVerifiedCount} / 260 MARKED</span>
           </div>
           <span className="text-slate-400 font-bold">|</span>
           <div className="w-24 sm:w-36 h-2 rounded-full bg-slate-200 overflow-hidden">
             <div
               className="h-full bg-gradient-to-r from-emerald-500 to-amber-500 transition-all duration-300"
-              style={{ width: `${(liveVerifiedCount / 240) * 100}%` }}
+              style={{ width: `${(liveVerifiedCount / 260) * 100}%` }}
             />
           </div>
           <span className="text-slate-800 font-extrabold text-[11px]">
-            {((liveVerifiedCount / 240) * 100).toFixed(0)}%
+            {((liveVerifiedCount / 260) * 100).toFixed(0)}%
           </span>
           <span className="text-slate-400 font-bold hidden sm:inline">|</span>
           <div className="hidden sm:flex items-center gap-2 text-[10px]">
-            <span className="text-amber-900 font-extrabold">12 Pending</span>
+            <span className="text-amber-900 font-extrabold">14 Pending</span>
             <span className="text-slate-400 font-bold">•</span>
             <span className="text-slate-700 font-bold">10 Unrecorded</span>
           </div>

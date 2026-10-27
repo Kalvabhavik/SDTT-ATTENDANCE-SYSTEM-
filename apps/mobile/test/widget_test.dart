@@ -6,9 +6,10 @@ void main() {
   testWidgets('app renders role selection screen with Student and Lecturer options',
       (tester) async {
     await tester.pumpWidget(const AttendanceApp());
-    expect(find.text('Attendrix'), findsOneWidget);
-    expect(find.text('I am a Student'), findsOneWidget);
-    expect(find.text('I am a Lecturer'), findsOneWidget);
+    expect(find.textContaining('ATTENDRIX'), findsOneWidget);
+    expect(find.text('Student Portal'), findsOneWidget);
+    expect(find.text('Faculty / Lecturer'), findsOneWidget);
+    expect(find.text('Academic Controller'), findsOneWidget);
   });
 
   test('User model maps DB teacher role to display Lecturer', () {

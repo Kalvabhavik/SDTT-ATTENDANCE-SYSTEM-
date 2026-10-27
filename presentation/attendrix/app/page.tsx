@@ -34,7 +34,7 @@ function HomeContent() {
   const { lenis, scrollTo } = useSmoothScroll();
   const [scrollProgress, setScrollProgress] = useState<number>(0);
   const [activeSection, setActiveSection] = useState<string>("section-01");
-  const [selectedCohort, setSelectedCohort] = useState<80 | 120 | 240>(240);
+  const [selectedCohort, setSelectedCohort] = useState<80 | 120 | 240 | 260>(260);
   const [activeZone, setActiveZone] = useState<"all" | "zoneA" | "zoneB" | "zoneC">("all");
   const [isReducedMotion, setIsReducedMotion] = useState<boolean>(false);
 
@@ -120,7 +120,7 @@ function HomeContent() {
       <Navbar activeSection={activeSection} />
 
       {/* Persistent 3D Lecture Hall Canvas in Background */}
-      <div className="fixed inset-0 z-0 pointer-events-auto h-screen w-screen opacity-100">
+      <div className="fixed inset-0 z-0 pointer-events-none h-screen w-screen opacity-100">
         <LectureHallScene
           scrollProgress={scrollProgress}
           activeSection={activeSection}

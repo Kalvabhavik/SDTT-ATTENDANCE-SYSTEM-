@@ -1,65 +1,76 @@
 import 'dart:async' as async;
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 
-/// Ultra-modern design palette for Classroom Attendance
+/// Clean Forest-Green Minimal Design Palette (Matching Image 2)
 class AppColors {
   AppColors._();
 
-  // Primary & Accents
-  static const primary = Color(0xFF4F46E5); // Electric Indigo
-  static const primaryDark = Color(0xFF3730A3);
-  static const primaryLight = Color(0xFF818CF8);
-  static const secondary = Color(0xFF0EA5E9); // Bright Sky / Cyan
-  static const secondaryDark = Color(0xFF0284C7);
+  // Primary & Accents (Rich Forest Green from Reference)
+  static const primary = Color(0xFF0D7A5F); // Forest Green
+  static const primaryDark = Color(0xFF084E3A);
+  static const primaryLight = Color(0xFF109575);
+  static const secondary = Color(0xFF006B4D); // Deep Green
+  static const secondaryDark = Color(0xFF004D37);
 
-  // Status Colors
-  static const emerald = Color(0xFF10B981); // Present / Success
-  static const emeraldBg = Color(0xFFECFDF5);
+  // Status Colors (Soft pastels and clean badges)
+  static const emerald = Color(0xFF0D7A5F); // Present / Success
+  static const emeraldBg = Color(0xFFE8F8F0);
   static const emeraldBorder = Color(0xFFA7F3D0);
 
-  static const rose = Color(0xFFF43F5E); // Absent / Alert
-  static const roseBg = Color(0xFFFFF1F2);
-  static const roseBorder = Color(0xFFFECDD3);
+  static const rose = Color(0xFFDC2626); // Absent / Alert
+  static const roseBg = Color(0xFFFEE2E2);
+  static const roseBorder = Color(0xFFFECACA);
 
-  static const amber = Color(0xFFF59E0B); // Pending / Warning
-  static const amberBg = Color(0xFFFFFBEB);
+  static const amber = Color(0xFFD97706); // Pending / Warning
+  static const amberBg = Color(0xFFFEF3E2);
   static const amberBorder = Color(0xFFFDE68A);
 
   // Surfaces & Backgrounds
-  static const background = Color(0xFFF8FAFC); // Slate-50 canvas
+  static const background = Color(0xFFF9F9FB); // Clean soft canvas
   static const card = Color(0xFFFFFFFF);
-  static const cardSubtle = Color(0xFFF1F5F9);
+  static const cardSubtle = Color(0xFFF3F4F6);
 
   // Typography
-  static const ink = Color(0xFF0F172A); // Slate-900
-  static const slate = Color(0xFF475569); // Slate-600
-  static const muted = Color(0xFF94A3B8); // Slate-400
-  static const border = Color(0xFFE2E8F0); // Slate-200
+  static const ink = Color(0xFF111827); // Charcoal Ink (Non-neon)
+  static const slate = Color(0xFF4B5563); // Mid-tone Gray
+  static const muted = Color(0xFF9CA3AF); // Muted Label Gray
+  static const border = Color(0xFFECEEF1); // Subtle divider
   static const line = border;
-  static const borderHighlight = Color(0xFFCBD5E1);
+  static const borderHighlight = Color(0xFFD1D5DB);
 
-  // Gradients
+  // Pastel Chips
+  static const tagBacklogBg = Color(0xFFF1F3F5);
+  static const tagBacklogText = Color(0xFF495057);
+  static const tagProgressBg = Color(0xFFFEF3E2);
+  static const tagProgressText = Color(0xFFD97706);
+  static const tagHoldBg = Color(0xFFFEE2E2);
+  static const tagHoldText = Color(0xFFDC2626);
+  static const tagApprovedBg = Color(0xFFE8F8F0);
+  static const tagApprovedText = Color(0xFF0D7A5F);
+
+  // Gradients (Clean and organic, matching reference)
   static const primaryGradient = LinearGradient(
-    colors: [Color(0xFF4F46E5), Color(0xFF7C3AED)],
+    colors: [Color(0xFF109575), Color(0xFF0D7A5F)],
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
   );
 
   static const studentHeroGradient = LinearGradient(
-    colors: [Color(0xFF0F172A), Color(0xFF1E1B4B), Color(0xFF312E81)],
+    colors: [Color(0xFF0D7A5F), Color(0xFF084E3A)],
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
   );
 
   static const teacherHeroGradient = LinearGradient(
-    colors: [Color(0xFF042F2E), Color(0xFF064E3B), Color(0xFF065F46)],
+    colors: [Color(0xFF0D7A5F), Color(0xFF064E3B)],
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
   );
 
   static const accentGradient = LinearGradient(
-    colors: [Color(0xFF0EA5E9), Color(0xFF10B981)],
+    colors: [Color(0xFF109575), Color(0xFF059669)],
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
   );
@@ -67,8 +78,6 @@ class AppColors {
 
 /// App theme with modern typography, smooth shapes, and crisp contrast
 ThemeData buildTheme() {
-  const fontFamily = 'sans-serif';
-
   return ThemeData(
     useMaterial3: true,
     scaffoldBackgroundColor: AppColors.background,
@@ -79,7 +88,6 @@ ThemeData buildTheme() {
       secondary: AppColors.secondary,
       surface: AppColors.card,
     ),
-    fontFamily: fontFamily,
     appBarTheme: const AppBarTheme(
       backgroundColor: AppColors.background,
       elevation: 0,
@@ -93,46 +101,48 @@ ThemeData buildTheme() {
         letterSpacing: -0.5,
       ),
     ),
-    textTheme: const TextTheme(
-      headlineLarge: TextStyle(
-        fontSize: 32,
-        fontWeight: FontWeight.w900,
-        color: AppColors.ink,
-        letterSpacing: -0.8,
-        height: 1.15,
-      ),
-      headlineMedium: TextStyle(
-        fontSize: 24,
-        fontWeight: FontWeight.w800,
-        color: AppColors.ink,
-        letterSpacing: -0.5,
-      ),
-      titleLarge: TextStyle(
-        fontSize: 19,
-        fontWeight: FontWeight.w800,
-        color: AppColors.ink,
-        letterSpacing: -0.3,
-      ),
-      titleMedium: TextStyle(
-        fontSize: 16,
-        fontWeight: FontWeight.w700,
-        color: AppColors.ink,
-      ),
-      bodyLarge: TextStyle(
-        fontSize: 15,
-        height: 1.5,
-        color: AppColors.slate,
-      ),
-      bodyMedium: TextStyle(
-        fontSize: 13.5,
-        height: 1.45,
-        color: AppColors.slate,
-      ),
-      labelSmall: TextStyle(
-        fontSize: 11.5,
-        fontWeight: FontWeight.w600,
-        color: AppColors.muted,
-        letterSpacing: 0.3,
+    textTheme: GoogleFonts.plusJakartaSansTextTheme(
+      const TextTheme(
+        headlineLarge: TextStyle(
+          fontSize: 32,
+          fontWeight: FontWeight.w900,
+          color: AppColors.ink,
+          letterSpacing: -0.8,
+          height: 1.15,
+        ),
+        headlineMedium: TextStyle(
+          fontSize: 24,
+          fontWeight: FontWeight.w800,
+          color: AppColors.ink,
+          letterSpacing: -0.5,
+        ),
+        titleLarge: TextStyle(
+          fontSize: 19,
+          fontWeight: FontWeight.w800,
+          color: AppColors.ink,
+          letterSpacing: -0.3,
+        ),
+        titleMedium: TextStyle(
+          fontSize: 16,
+          fontWeight: FontWeight.w700,
+          color: AppColors.ink,
+        ),
+        bodyLarge: TextStyle(
+          fontSize: 15,
+          height: 1.5,
+          color: AppColors.slate,
+        ),
+        bodyMedium: TextStyle(
+          fontSize: 13.5,
+          height: 1.45,
+          color: AppColors.slate,
+        ),
+        labelSmall: TextStyle(
+          fontSize: 11.5,
+          fontWeight: FontWeight.w600,
+          color: AppColors.muted,
+          letterSpacing: 0.3,
+        ),
       ),
     ),
     inputDecorationTheme: InputDecorationTheme(

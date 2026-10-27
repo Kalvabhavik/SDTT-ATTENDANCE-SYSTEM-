@@ -18,7 +18,7 @@ import {
   Fingerprint,
 } from "lucide-react";
 
-type ScenarioKey = "valid" | "poor_quality" | "expired_token" | "duplicate" | "uncertain_match";
+type ScenarioKey = "valid" | "poor_quality" | "empty_room_proxy" | "duplicate" | "uncertain_match";
 
 interface ScenarioConfig {
   key: ScenarioKey;
@@ -37,49 +37,49 @@ interface ScenarioConfig {
 const scenarios: Record<ScenarioKey, ScenarioConfig> = {
   valid: {
     key: "valid",
-    label: "1. Valid Illustrative Submission",
-    badge: "IDEAL FLOW",
+    label: "1. Valid Active Liveness & Room Match",
+    badge: "VERIFIED PRESENT",
     badgeColor: "bg-emerald-100 text-emerald-900 border-emerald-300 font-bold",
-    qualityScore: 94,
+    qualityScore: 95,
     challengeMatch: true,
     cosineSimilarity: 0.86,
     isDuplicate: false,
     outcomeStatus: "VERIFIED",
-    outcomeMessage: "All configured demo checks passed.",
+    outcomeMessage: "All Attendrix verification checks passed.",
     outcomeExplanation:
-      "Token matched current 15s window, 112x112 face crop met sharpness threshold, ArcFace cosine similarity (0.86) exceeded 0.72 verification threshold.",
+      "Active liveness confirmed (Yaw left -18°, yaw right +22°, eye blink verified), ArcFace cosine similarity (0.86 ≥ 0.68), lecturer detected on stage, and lecture hall matched.",
   },
   poor_quality: {
     key: "poor_quality",
-    label: "2. Poor-Quality Image (Motion Blur)",
-    badge: "QUALITY FAILURE",
-    badgeColor: "bg-amber-100 text-amber-900 border-amber-300 font-bold",
+    label: "2. Spoof Replay / Liveness Incomplete",
+    badge: "LIVENESS FAILED",
+    badgeColor: "bg-rose-100 text-rose-900 border-rose-300 font-bold",
     qualityScore: 32,
-    challengeMatch: true,
+    challengeMatch: false,
     cosineSimilarity: 0.48,
     isDuplicate: false,
-    outcomeStatus: "UNCERTAIN",
-    outcomeMessage: "Insufficient image quality. Retry or use the approved alternative.",
+    outcomeStatus: "PENDING REVIEW",
+    outcomeMessage: "Liveness challenge incomplete: Static face image detected.",
     outcomeExplanation:
-      "Laplacian variance indicates severe motion blur. Image quality score (32/100) below acceptable threshold (70/100). System prompts student for immediate recapture.",
+      "YuNet detected 0° yaw excursion and zero eyelid closure motion across frames. Replay spoof attempt intercepted and logged as attendance.liveness_incomplete.",
   },
-  expired_token: {
-    key: "expired_token",
-    label: "3. Expired Challenge Token",
-    badge: "TOKEN EXPIRED",
+  empty_room_proxy: {
+    key: "empty_room_proxy",
+    label: "3. Empty Room Proxy Spoof Attempt",
+    badge: "PROXY INTERCEPTED",
     badgeColor: "bg-rose-100 text-rose-900 border-rose-300 font-bold",
     qualityScore: 91,
     challengeMatch: false,
     cosineSimilarity: 0.88,
     isDuplicate: false,
-    outcomeStatus: "REJECTED",
-    outcomeMessage: "Challenge expired. Refresh the session evidence.",
+    outcomeStatus: "PENDING REVIEW",
+    outcomeMessage: "Empty hall detected. 0 peers found. Blocked by Anti-Proxy defense.",
     outcomeExplanation:
-      "The submitted challenge token was issued 46 seconds prior (exceeding 15s TTL + 5s network grace). Rejected to prevent delayed relay submissions.",
+      "Audience face count = 0 and no lecturer on stage. The student attempted to claim attendance in a vacant room. Intercepted with security audit alert attendance.empty_room_proxy_detected.",
   },
   duplicate: {
     key: "duplicate",
-    label: "4. Duplicate Submission Attempt",
+    label: "4. Duplicate Submission (1-Attempt Policy)",
     badge: "DUPLICATE REPLAY",
     badgeColor: "bg-rose-100 text-rose-900 border-rose-300 font-bold",
     qualityScore: 95,
@@ -89,11 +89,11 @@ const scenarios: Record<ScenarioKey, ScenarioConfig> = {
     outcomeStatus: "REJECTED",
     outcomeMessage: "A record already exists for this student and session.",
     outcomeExplanation:
-      "Student ID STU-2024-0482 already holds a committed attendance record for session #8491. Deduplication constraint rejects re-submission.",
+      "Student ID STU-2024-0482 already holds a committed attendance record for session #8491. 1-Attempt Policy rejects re-submission.",
   },
   uncertain_match: {
     key: "uncertain_match",
-    label: "5. Uncertain Identity (Marginal Cosine)",
+    label: "5. Borderline Biometric Match",
     badge: "HUMAN AUDIT REQUIRED",
     badgeColor: "bg-amber-100 text-amber-900 border-amber-300 font-bold",
     qualityScore: 82,
@@ -101,9 +101,9 @@ const scenarios: Record<ScenarioKey, ScenarioConfig> = {
     cosineSimilarity: 0.58,
     isDuplicate: false,
     outcomeStatus: "PENDING REVIEW",
-    outcomeMessage: "No automatic final decision. Teacher review required.",
+    outcomeMessage: "Cosine below 0.68 threshold. Routed to Lecturer Review Desk.",
     outcomeExplanation:
-      "Cosine similarity of 0.58 falls in the ambiguous zone (0.50–0.71). Rather than unfairly marking the student absent, the case is routed to the instructor's review queue.",
+      "Cosine similarity of 0.58 falls below the autonomous 0.68 threshold. System automatically preserves filmstrip keyframes and routes to Lecturer Review Desk.",
   },
 };
 
@@ -236,15 +236,15 @@ export default function Section05StudentVerification() {
               </div>
             </div>
 
-            {/* Bottom Challenge Token Banner */}
+            {/* Bottom 180° Gyro Sweep Telemetry Banner */}
             <div className="absolute bottom-3 inset-x-3 bg-slate-900/95 border border-slate-800 rounded-lg p-2 flex items-center justify-between text-xs font-mono">
-              <span className="text-slate-300 font-bold">Classroom Code:</span>
+              <span className="text-slate-300 font-bold">180° Sweep Arc:</span>
               <span
                 className={`font-bold ${
                   scenario.challengeMatch ? "text-amber-300" : "text-rose-400 line-through"
                 }`}
               >
-                {scenario.challengeMatch ? "9K4-PX2 (MATCHED)" : "4M1-ZX8 (EXPIRED)"}
+                {scenario.challengeMatch ? "Δyaw = 142° (CONTINUOUS PASS)" : "Δyaw = 18° / YuNet: 0 FACES (FLAGGED)"}
               </span>
             </div>
           </div>
@@ -301,7 +301,7 @@ export default function Section05StudentVerification() {
 
           {/* 4 Sequential Verification Step Cards */}
           <div className="space-y-2.5">
-            {/* Step 1: Session & Challenge Check */}
+            {/* Step 1: Active Liveness Challenge */}
             <div
               className={`p-3 rounded-xl border text-xs font-mono flex items-center justify-between transition-colors ${
                 currentStepIndex >= 1
@@ -313,18 +313,18 @@ export default function Section05StudentVerification() {
             >
               <div className="flex items-center gap-2.5">
                 <Clock className="w-4 h-4" />
-                <span>1. Session Token &amp; Replay Window</span>
+                <span>1. Active Liveness (Turn Left, Right &amp; Blink)</span>
               </div>
               <span className="font-bold">
                 {currentStepIndex >= 1
                   ? scenario.challengeMatch
-                    ? "PASS (TTL Valid)"
-                    : "FAIL (Token Expired)"
+                    ? "PASS (Yaw Rotation & Blink OK)"
+                    : "FLAGGED (Liveness Incomplete / Static)"
                   : "WAITING"}
               </span>
             </div>
 
-            {/* Step 2: Quality & Sharpness Check */}
+            {/* Step 2: 180° Classroom Physical Sweep & Anti-Proxy Check */}
             <div
               className={`p-3 rounded-xl border text-xs font-mono flex items-center justify-between transition-colors ${
                 currentStepIndex >= 2
@@ -336,13 +336,13 @@ export default function Section05StudentVerification() {
             >
               <div className="flex items-center gap-2.5">
                 <Camera className="w-4 h-4" />
-                <span>2. Face Sharpness &amp; Illumination</span>
+                <span>2. 180° Classroom Physical Sweep &amp; Anti-Proxy</span>
               </div>
               <span className="font-bold">
                 {currentStepIndex >= 2
-                  ? `${scenario.qualityScore}/100 (${
-                      scenario.qualityScore >= 70 ? "Sharp" : "Blurred"
-                    })`
+                  ? scenario.challengeMatch
+                    ? "PASS (Δyaw ≥ 120° & Peers Present)"
+                    : "FLAGGED (Empty Room / 0 Faces)"
                   : "WAITING"}
               </span>
             </div>
@@ -351,7 +351,7 @@ export default function Section05StudentVerification() {
             <div
               className={`p-3 rounded-xl border text-xs font-mono flex items-center justify-between transition-colors ${
                 currentStepIndex >= 3
-                  ? scenario.cosineSimilarity >= 0.72
+                  ? scenario.cosineSimilarity >= 0.68
                     ? "bg-emerald-50 border-emerald-300 text-emerald-900"
                     : scenario.cosineSimilarity >= 0.5
                     ? "bg-amber-50 border-amber-300 text-amber-900"
@@ -365,7 +365,7 @@ export default function Section05StudentVerification() {
               </div>
               <span className="font-bold">
                 {currentStepIndex >= 3
-                  ? `${scenario.cosineSimilarity.toFixed(2)} (Threshold: 0.72)`
+                  ? `${scenario.cosineSimilarity.toFixed(2)} (Threshold: ≥ 0.68)`
                   : "WAITING"}
               </span>
             </div>
@@ -382,13 +382,13 @@ export default function Section05StudentVerification() {
             >
               <div className="flex items-center gap-2.5">
                 <ShieldCheck className="w-4 h-4" />
-                <span>4. Database Deduplication Check</span>
+                <span>4. 1-Attempt Policy &amp; Deduplication</span>
               </div>
               <span className="font-bold">
                 {currentStepIndex >= 4
                   ? !scenario.isDuplicate
-                    ? "PASS (Unique Record)"
-                    : "FAIL (Duplicate Entry)"
+                    ? "PASS (First & Only Submission)"
+                    : "REJECTED (Duplicate Attempt)"
                   : "WAITING"}
               </span>
             </div>

@@ -4,73 +4,74 @@ import { useEffect } from "react";
 import { gsap } from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 
-gsap.registerPlugin(ScrollTrigger);
+if (typeof window !== "undefined") {
+  gsap.registerPlugin(ScrollTrigger);
+}
 
 export default function GsapScrollEffects() {
   useEffect(() => {
-    // Check if user prefers reduced motion
     const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     if (prefersReducedMotion) return;
 
-    // Small delay to ensure DOM is fully ready
+    // Small delay ensuring DOM and Lenis ticker are synchronized
     const timer = setTimeout(() => {
-      // 1. Section Header Reveals
+      // 1. Section Headers - Clean, subtle upward drift on entrance
       const sectionHeaders = document.querySelectorAll("h2, .section-header");
       sectionHeaders.forEach((el) => {
         gsap.fromTo(
           el,
-          { y: 35, opacity: 0 },
+          { y: 22, opacity: 0 },
           {
             y: 0,
             opacity: 1,
-            duration: 0.9,
-            ease: "power3.out",
+            duration: 0.7,
+            ease: "power2.out",
             scrollTrigger: {
               trigger: el,
-              start: "top 85%",
-              toggleActions: "play none none reverse",
+              start: "top 88%",
+              once: true,
             },
           }
         );
       });
 
-      // 2. Glass Panel Cards Staggered Reveal
+      // 2. Glass Panel Content Cards - Smooth staggered entrance
       const cards = document.querySelectorAll(".glass-panel");
       cards.forEach((card) => {
         gsap.fromTo(
           card,
-          { y: 30, opacity: 0.2 },
+          { y: 18, opacity: 0.3 },
           {
             y: 0,
             opacity: 1,
-            duration: 0.85,
+            duration: 0.65,
             ease: "power2.out",
             scrollTrigger: {
               trigger: card,
-              start: "top 90%",
-              toggleActions: "play none none reverse",
+              start: "top 92%",
+              once: true,
             },
           }
         );
       });
 
-      // 3. Subtle Parallax on Hero Stat Badges
+      // 3. Hero Pillar Stat Badges
       const statPillars = document.querySelectorAll("#experience .glass-panel");
       if (statPillars.length > 0) {
         gsap.fromTo(
           statPillars,
-          { y: 40, opacity: 0 },
+          { y: 24, opacity: 0 },
           {
             y: 0,
             opacity: 1,
-            duration: 0.8,
-            stagger: 0.12,
-            ease: "back.out(1.5)",
-            delay: 0.3,
+            duration: 0.6,
+            stagger: 0.08,
+            ease: "power2.out",
+            delay: 0.2,
           }
         );
       }
-    }, 150);
+    }, 120);
 
     return () => {
       clearTimeout(timer);

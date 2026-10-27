@@ -70,6 +70,9 @@ class Classroom {
     this.roomPhoto = '',
     this.teacherName = '',
     this.studentCount = 0,
+    this.capacity = 120,
+    this.hallType = '120-Seater Lecture Theater',
+    this.referenceCapturedAt = '',
   });
 
   final String id;
@@ -80,6 +83,9 @@ class Classroom {
   final String roomPhoto;
   final String teacherName;
   final int studentCount;
+  final int capacity;
+  final String hallType;
+  final String referenceCapturedAt;
 
   factory Classroom.fromJson(Map<String, dynamic> json) => Classroom(
         id: _string(json['id'] ?? json['class_id']),
@@ -90,6 +96,9 @@ class Classroom {
         roomPhoto: _string(json['room_photo']),
         teacherName: _string(json['teacher_name']),
         studentCount: _int(json['student_count']),
+        capacity: _int(json['capacity']) > 0 ? _int(json['capacity']) : 120,
+        hallType: _string(json['hall_type'], '120-Seater Lecture Theater'),
+        referenceCapturedAt: _string(json['reference_captured_at']),
       );
 }
 
@@ -330,6 +339,8 @@ class AttendanceVerifyResult {
     required this.faceMatch,
     required this.faceConfidence,
     required this.roomMatch,
+    this.livenessPassed = true,
+    this.livenessNote = 'Liveness verified',
     this.sirDetected = true,
     this.sirName = 'Lecturer',
     this.crowdDetected = true,
@@ -337,6 +348,7 @@ class AttendanceVerifyResult {
     this.crowdDensityPct = 100.0,
     this.hallCapacity = 120,
     this.hallType = '120-Seater Hall',
+    this.isEmptyRoom = false,
     required this.message,
   });
 
@@ -344,6 +356,8 @@ class AttendanceVerifyResult {
   final bool faceMatch;
   final double faceConfidence;
   final bool roomMatch;
+  final bool livenessPassed;
+  final String livenessNote;
   final bool sirDetected;
   final String sirName;
   final bool crowdDetected;
@@ -351,6 +365,7 @@ class AttendanceVerifyResult {
   final double crowdDensityPct;
   final int hallCapacity;
   final String hallType;
+  final bool isEmptyRoom;
   final String message;
 
   bool get isPresent => status == 'present';
@@ -363,6 +378,8 @@ class AttendanceVerifyResult {
         faceMatch: json['face_match'] == true,
         faceConfidence: _double(json['face_confidence']),
         roomMatch: json['room_match'] == true,
+        livenessPassed: json['liveness_passed'] != false,
+        livenessNote: _string(json['liveness_note'], 'Liveness verified'),
         sirDetected: json['sir_detected'] == true,
         sirName: _string(json['sir_name'], 'Lecturer'),
         crowdDetected: json['crowd_detected'] == true,
@@ -370,6 +387,7 @@ class AttendanceVerifyResult {
         crowdDensityPct: _double(json['crowd_density_pct']),
         hallCapacity: _int(json['hall_capacity']),
         hallType: _string(json['hall_type'], '120-Seater Hall'),
+        isEmptyRoom: json['is_empty_room'] == true,
         message: _string(json['message']),
       );
 }

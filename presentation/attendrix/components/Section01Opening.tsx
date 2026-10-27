@@ -69,10 +69,10 @@ export default function Section01Opening({
       <div className="pt-4 sm:pt-10 max-w-2xl pointer-events-auto glass-panel p-6 sm:p-9 rounded-3xl border border-white/70 shadow-2xl bg-white/80 backdrop-blur-xl">
         <div
           ref={badgeRef}
-          className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-amber-100 border border-amber-300 mb-6 text-xs font-mono font-bold text-amber-900 shadow-sm"
+          className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-amber-100/90 border border-amber-300 mb-6 text-xs font-mono font-bold text-amber-900 shadow-sm"
         >
           <span className="w-2 h-2 rounded-full bg-amber-600 animate-ping" />
-          <span>SDTT REAL CLASSROOM VERIFICATION • LIGHT ARCHITECTURAL MODE</span>
+          <span>SDTT ARCHITECTURE • THREE.JS &amp; GSAP SCROLLTRIGGER ENGINE</span>
         </div>
 
         <h1
@@ -89,8 +89,8 @@ export default function Section01Opening({
           ref={paraRef}
           className="text-lg sm:text-xl text-slate-700 font-medium leading-relaxed max-w-2xl mb-8"
         >
-          A smarter approach to attendance verification in large lecture halls.
-          Replacing manual 20-minute roll calls with authenticated sessions, dynamic projector challenges, and confidence-scored human review.
+          A state-of-the-art approach to attendance verification in large university lecture halls.
+          Replacing manual 20-minute roll calls with continuous 180° sweep verification, YuNet real face detection, strict anti-empty-room proxy interception, and real-time controller administration.
         </p>
 
         {/* Action CTAs */}
@@ -113,7 +113,7 @@ export default function Section01Opening({
             }}
             className="px-7 py-4 rounded-xl text-sm font-bold bg-slate-100 hover:bg-slate-200 text-slate-900 border border-slate-300 transition-colors flex items-center gap-2.5 cursor-pointer shadow-sm"
           >
-            <span>View Attendance Workflow</span>
+            <span>View 180° Sweep Workflow</span>
             <Eye className="w-4 h-4 text-amber-700" />
           </button>
         </div>
@@ -131,8 +131,8 @@ export default function Section01Opening({
               <Users className="w-3.5 h-3.5 text-amber-600" />
               <span>COHORT SCALE</span>
             </div>
-            <div className="text-xl font-bold text-slate-900">80 / 120 / 240</div>
-            <div className="text-[11px] text-slate-700 font-semibold">Tested lecture hall tiers</div>
+            <div className="text-xl font-bold text-slate-900">80 / 120 / 240 / 260</div>
+            <div className="text-[11px] text-slate-700 font-semibold">Auditorium &amp; balcony tiers</div>
           </div>
 
           <div className="glass-panel p-4 rounded-xl border border-slate-300/90 bg-white/95 hover:border-amber-500 transition-all hover:scale-[1.02] shadow-md">
@@ -141,7 +141,7 @@ export default function Section01Opening({
               <span>SPEED TARGET</span>
             </div>
             <div className="text-xl font-bold text-slate-900">&lt; 15 Seconds</div>
-            <div className="text-[11px] text-slate-700 font-semibold">Batch session capture</div>
+            <div className="text-[11px] text-slate-700 font-semibold">180° continuous sweep</div>
           </div>
 
           <div className="glass-panel p-4 rounded-xl border border-slate-300/90 bg-white/95 hover:border-amber-500 transition-all hover:scale-[1.02] shadow-md">
@@ -149,8 +149,8 @@ export default function Section01Opening({
               <ShieldCheck className="w-3.5 h-3.5 text-amber-600" />
               <span>VERIFICATION</span>
             </div>
-            <div className="text-xl font-bold text-slate-900">Multi-Source</div>
-            <div className="text-[11px] text-slate-700 font-semibold">Selfie + Dynamic Challenge</div>
+            <div className="text-xl font-bold text-slate-900">Zero-Proxy AI</div>
+            <div className="text-[11px] text-slate-700 font-semibold">YuNet + ArcFace 512-D</div>
           </div>
 
           <div className="glass-panel p-4 rounded-xl border border-slate-300/90 bg-white/95 hover:border-amber-500 transition-all hover:scale-[1.02] shadow-md">
@@ -158,8 +158,8 @@ export default function Section01Opening({
               <CheckCircle2 className="w-3.5 h-3.5 text-amber-600" />
               <span>INTEGRITY</span>
             </div>
-            <div className="text-xl font-bold text-slate-900">Human-in-Loop</div>
-            <div className="text-[11px] text-slate-700 font-semibold">Dispute audit logging</div>
+            <div className="text-xl font-bold text-slate-900">3-Role Control</div>
+            <div className="text-[11px] text-slate-700 font-semibold">Controller &amp; Teacher audit</div>
           </div>
         </div>
 

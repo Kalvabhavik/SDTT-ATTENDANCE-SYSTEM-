@@ -84,7 +84,7 @@ export default function Section06Cohort80({ onSelectCohort }: Section06Cohort80P
 
           {/* Front Stage Indicator */}
           <div className="w-full py-2.5 mb-6 rounded-xl bg-amber-50 border border-amber-300 text-center text-xs font-mono text-amber-900 font-bold tracking-widest shadow-sm">
-            [ FRONT LECTERN &amp; DYNAMIC CHALLENGE SCREEN ]
+            [ FRONT LECTERN &amp; CONTROLLER VENUE ANCHOR ]
           </div>
 
           {/* 8 Rows of Seats */}
@@ -230,8 +230,8 @@ export default function Section06Cohort80({ onSelectCohort }: Section06Cohort80P
                   <span className="text-amber-900 font-extrabold">{activeSeatRecord.confidence}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-slate-700 font-bold">Challenge Code:</span>
-                  <span className="text-emerald-800 font-bold">9K4-PX2 (Valid)</span>
+                  <span className="text-slate-700 font-bold">180° Sweep Arc:</span>
+                  <span className="text-emerald-800 font-bold">Δyaw = 142° (Valid)</span>
                 </div>
               </div>
             </div>

@@ -25,7 +25,7 @@ export default function Navbar({ activeSection }: NavbarProps) {
     { label: "Concept", href: "#concept" },
     { label: "Workflow", href: "#workflow" },
     { label: "1:1 Verification", href: "#verification" },
-    { label: "Scale (80/120/240)", href: "#scale" },
+    { label: "Scale (80-260)", href: "#scale" },
     { label: "Pipeline", href: "#pipeline" },
     { label: "Dashboard", href: "#dashboard" },
     { label: "Architecture", href: "#architecture" },

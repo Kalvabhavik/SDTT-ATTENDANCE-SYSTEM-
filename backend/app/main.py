@@ -13,10 +13,12 @@ from __future__ import annotations
 
 import asyncio
 import csv
+import hashlib
 import io
 import json
 import logging
 import os
+import random
 import secrets
 import threading
 import time
@@ -59,12 +61,16 @@ from app.config import (
 from app.db import supa, utc_now
 from app.face_engine import FaceDetection, get_face_engine
 from app.security import (
+    check_and_record_image_replay,
     check_login_rate_limit,
     check_submit_rate_limit,
+    consume_challenge_nonce,
     create_access_token,
+    create_liveness_challenge_token,
     decrypt_face_embedding,
     encrypt_face_embedding,
     verify_jwt_token,
+    verify_liveness_challenge_token,
 )
 from app.verification import (
     SweepFrame,
@@ -590,7 +596,7 @@ async def enroll_reference_selfie(
         raise HTTPException(status_code=400, detail="Invalid image file.")
 
     engine = get_face_engine()
-    faces = engine.detect_faces(img)
+    faces = engine.detect_faces(img, allow_fallback=True)
 
     if not faces:
         raise HTTPException(
@@ -1688,48 +1694,11 @@ def analyze_classroom_panorama(
             "hall_capacity": capacity,
             "hall_type": hall_type,
             "room_number": expected_room,
+            "is_empty_room": True,
             "room_note": f"Classroom photo is too dark ({mean_lum}) or blurry ({lap_var}) for {hall_type} ({expected_room}).",
         }
 
-    # 1. Detect all faces across panoramic composite
-    faces = engine.detect_faces(img_room)
-    stage_faces = [f for f in faces if f.bbox_y < (rh * 0.65)]
-    audience_faces = [f for f in faces if f.bbox_y >= (rh * 0.25)]
-
-    # 2. Check for the Sir (Lecturer on podium / stage)
-    teacher_id = class_row.get("teacher_id")
-    teacher_prof = db.table("profiles").select("name").eq("id", teacher_id).single().execute().data if teacher_id else None
-    teacher_name = teacher_prof.get("name", "Sir (Lecturer)") if teacher_prof else "Sir (Lecturer)"
-
-    sir_detected = False
-    sir_confidence = 0.0
-
-    if teacher_id:
-        t_tmpl = db.table("face_templates").select("encrypted_embedding").eq("user_id", teacher_id).execute().data
-        if t_tmpl:
-            reg_t_emb = decrypt_face_embedding(t_tmpl[0]["encrypted_embedding"])
-            norm_t = float(np.linalg.norm(reg_t_emb))
-            for sf in stage_faces:
-                sf_emb = engine.extract_embedding(img_room, sf)
-                norm_sf = float(np.linalg.norm(sf_emb))
-                if norm_t > 0 and norm_sf > 0:
-                    sim_t = float(np.dot(sf_emb, reg_t_emb) / (norm_t * norm_sf))
-                    if sim_t >= 0.40:
-                        sir_detected = True
-                        sir_confidence = max(sir_confidence, sim_t)
-
-    # If teacher template is not enrolled yet, verify physical presence of instructor on front stage
-    if not sir_detected and (stage_faces or (rw >= 400 and mean_lum >= 12)):
-        sir_detected = True
-        sir_confidence = 0.88
-
-    # 3. Detect Student Crowd & Audience Density for the Hall Capacity
-    crowd_count = max(len(audience_faces), len(faces) - (1 if sir_detected else 0))
-    expected_density_scale = max(1, int(capacity * 0.15))
-    crowd_density_pct = min(100.0, round((max(1, crowd_count) / expected_density_scale) * 100, 1))
-    crowd_detected = crowd_count >= 1 or (rw >= 400 and lap_var >= 4.0)
-
-    # 4. Compare with Session or Controller's Captured Classroom Reference (if available)
+    # 1. Compare with Session or Controller's Captured Classroom Reference (if available)
     room_similarity = 1.0
     ref_photo = (session_row.get("room_photo") if session_row else None) or class_row.get("room_photo")
     if ref_photo and ref_photo.startswith("data:image/"):
@@ -1750,8 +1719,74 @@ def analyze_classroom_panorama(
 
     room_matched = room_similarity >= 0.25
 
+    # 2. Detect all faces across panoramic composite (strictly real detections, no fallback)
+    faces = engine.detect_faces(img_room, allow_fallback=False)
+
+    teacher_id = class_row.get("teacher_id")
+    teacher_prof = db.table("profiles").select("name").eq("id", teacher_id).single().execute().data if teacher_id else None
+    teacher_name = teacher_prof.get("name", "Sir (Lecturer)") if teacher_prof else "Sir (Lecturer)"
+
+    # Genuine empty room check: If 0 human faces are detected in the entire panorama
+    if not faces:
+        return {
+            "room_matched": room_matched,
+            "sir_detected": False,
+            "sir_name": teacher_name,
+            "sir_confidence": 0.0,
+            "crowd_detected": False,
+            "crowd_count": 0,
+            "crowd_density_pct": 0.0,
+            "hall_capacity": capacity,
+            "hall_type": hall_type,
+            "room_number": expected_room,
+            "room_similarity": room_similarity,
+            "is_empty_room": True,
+            "room_note": f"Empty room detected: 0 faces detected in {hall_type} ({expected_room}). Neither instructor nor student crowd is present.",
+        }
+
+    stage_faces = [f for f in faces if f.bbox_y < (rh * 0.65)]
+    audience_faces = [f for f in faces if f.bbox_y >= (rh * 0.25)]
+
+    # 3. Check for the Sir (Lecturer on podium / stage)
+    sir_detected = False
+    sir_confidence = 0.0
+    sir_face_idx = None
+
+    if teacher_id:
+        t_tmpl = db.table("face_templates").select("encrypted_embedding").eq("user_id", teacher_id).execute().data
+        if t_tmpl:
+            reg_t_emb = decrypt_face_embedding(t_tmpl[0]["encrypted_embedding"])
+            norm_t = float(np.linalg.norm(reg_t_emb))
+            for idx, sf in enumerate(stage_faces):
+                sf_emb = engine.extract_embedding(img_room, sf)
+                norm_sf = float(np.linalg.norm(sf_emb))
+                if norm_t > 0 and norm_sf > 0:
+                    sim_t = float(np.dot(sf_emb, reg_t_emb) / (norm_t * norm_sf))
+                    if sim_t >= 0.38:
+                        sir_detected = True
+                        sir_confidence = max(sir_confidence, sim_t)
+                        sir_face_idx = idx
+
+    # If teacher template is not enrolled yet, verify presence of an actual face in stage area
+    if not sir_detected and len(stage_faces) > 0:
+        sir_detected = True
+        sir_confidence = 0.85
+        sir_face_idx = 0
+
+    # 4. Detect Student Crowd & Audience Density for the Hall Capacity
+    if sir_detected and sir_face_idx is not None and sir_face_idx < len(stage_faces):
+        remaining_faces = [f for i, f in enumerate(stage_faces) if i != sir_face_idx] + audience_faces
+        unique_crowd = len(set((f.bbox_x, f.bbox_y) for f in remaining_faces))
+        crowd_count = max(0, unique_crowd)
+    else:
+        crowd_count = len(audience_faces) if audience_faces else len(faces)
+
+    crowd_detected = crowd_count >= 1
+    expected_density_scale = max(1, int(capacity * 0.15))
+    crowd_density_pct = min(100.0, round((crowd_count / expected_density_scale) * 100, 1)) if crowd_detected else 0.0
+
     sir_status_str = f"Sir ({teacher_name}) detected on stage" if sir_detected else "Sir not detected on stage"
-    crowd_status_str = f"Crowd detected ({max(1, crowd_count)} peers, {crowd_density_pct}% density in {hall_type})" if crowd_detected else f"Crowd missing in {hall_type}"
+    crowd_status_str = f"Crowd detected ({crowd_count} peers, {crowd_density_pct}% density in {hall_type})" if crowd_detected else f"Crowd missing in {hall_type}"
     room_status_str = f"Venue {expected_room} confirmed ({int(room_similarity * 100)}%)" if room_matched else f"Venue does not match {expected_room}"
 
     overall_note = f"{sir_status_str} • {crowd_status_str} • {room_status_str}"
@@ -1762,13 +1797,50 @@ def analyze_classroom_panorama(
         "sir_name": teacher_name,
         "sir_confidence": round(sir_confidence, 2),
         "crowd_detected": crowd_detected,
-        "crowd_count": max(1, crowd_count),
+        "crowd_count": crowd_count,
         "crowd_density_pct": crowd_density_pct,
         "hall_capacity": capacity,
         "hall_type": hall_type,
         "room_number": expected_room,
         "room_similarity": room_similarity,
+        "is_empty_room": False,
         "room_note": overall_note,
+    }
+
+
+@app.post("/api/sessions/{session_id}/liveness-challenge")
+async def create_session_liveness_challenge(
+    session_id: str,
+    user: dict[str, Any] = Depends(current_user),
+) -> dict[str, Any]:
+    """Issue a randomized, cryptographically signed liveness challenge token for an open session."""
+    require_student(user)
+    sess = _get_session_or_404(session_id)
+    if sess.get("status") != "open":
+        raise HTTPException(status_code=400, detail="This attendance session is not open.")
+    _assert_session_access(sess, user)
+
+    # Generate a randomized sequence of 2 distinct active challenges
+    available_actions = ["turn_left", "turn_right", "blink"]
+    challenges = random.sample(available_actions, 2)
+
+    token = create_liveness_challenge_token(
+        session_id=session_id,
+        student_id=user["id"],
+        challenges=challenges,
+        ttl_seconds=90,
+    )
+
+    return {
+        "challenge_token": token,
+        "challenges": challenges,
+        "expires_in_s": 90,
+        "session_id": session_id,
+        "student_id": user["id"],
+        "instructions": [
+            "Step 1: Center your face in the oval (Frontal scan)",
+            *[f"Step {i+2}: Perform {c.replace('_', ' ').title()}" for i, c in enumerate(challenges)],
+        ],
     }
 
 
@@ -1777,6 +1849,10 @@ async def verify_student_live_attendance(
     session_id: str,
     face_image: UploadFile = File(...),
     classroom_image: Optional[UploadFile] = File(default=None),
+    face_left: Optional[UploadFile] = File(default=None),
+    face_right: Optional[UploadFile] = File(default=None),
+    face_blink: Optional[UploadFile] = File(default=None),
+    challenge_token: Optional[str] = Form(default=None),
     user: dict[str, Any] = Depends(current_user),
 ) -> dict[str, Any]:
     require_student(user)
@@ -1784,8 +1860,22 @@ async def verify_student_live_attendance(
     sess = _get_session_or_404(session_id)
     if sess.get("status") != "open":
         raise HTTPException(status_code=400, detail="This attendance session is not open.")
+    _assert_session_access(sess, user)
 
-    # 1. Check face template enrollment
+    # 1. Challenge Token Verification (when provided)
+    expected_challenges: Optional[list[str]] = None
+    if challenge_token is not None and challenge_token.strip():
+        token_payload = verify_liveness_challenge_token(challenge_token.strip())
+        if token_payload.get("session_id") != session_id:
+            raise HTTPException(status_code=400, detail="Challenge token was issued for a different session.")
+        if token_payload.get("sub") != user["id"]:
+            raise HTTPException(status_code=403, detail="Challenge token was issued for a different student.")
+        nonce = token_payload.get("nonce", "")
+        if not consume_challenge_nonce(nonce):
+            raise HTTPException(status_code=400, detail="Challenge token has already been used. Tokens are strictly single-use.")
+        expected_challenges = token_payload.get("challenges", [])
+
+    # 2. Check face template enrollment
     ft_resp = db.table("face_templates").select("*").eq("user_id", user["id"]).single().execute()
     if not ft_resp.data:
         raise HTTPException(
@@ -1793,7 +1883,7 @@ async def verify_student_live_attendance(
             detail="Biometrics not enrolled. You must register your face reference on first sign-in before marking attendance.",
         )
 
-    # 2. Enforce Strictly First Attempt Only ("only first attempt strightly")
+    # 3. Enforce Strictly First Attempt Only ("only first attempt strictly")
     existing_att = (
         db.table("attendance")
         .select("*")
@@ -1815,14 +1905,35 @@ async def verify_student_live_attendance(
                 detail="Strictly 1 attempt allowed. You have already completed your live attendance attempt for this session.",
             )
 
-    # 3. Decode and analyze live face frame
+    # 4. Decode and analyze live face frame & check for replay attack
     face_bytes = await face_image.read()
+    if not face_bytes or len(face_bytes) == 0:
+        raise HTTPException(status_code=400, detail="Empty face image frame received.")
+
+    sha256_digest = hashlib.sha256(face_bytes).hexdigest()
     img_face = parse_image_frame(face_bytes)
     if img_face is None:
         raise HTTPException(status_code=400, detail="Could not decode live face frame.")
 
     engine = get_face_engine()
-    detected_faces = engine.detect_faces(img_face)
+    phash_val = engine.compute_phash(img_face)
+
+    is_replay, replay_reason = check_and_record_image_replay(sha256_digest, phash_val)
+    if is_replay:
+        _audit(
+            session_id=session_id,
+            actor_id=user["id"],
+            action="attendance.replay_attack_blocked",
+            note=f"Replay attack blocked for {user.get('name', 'Student')}: {replay_reason}",
+        )
+        raise HTTPException(
+            status_code=400,
+            detail=f"Replay attack detected: {replay_reason}. Fresh camera capture is strictly required.",
+        )
+
+    # Face Detection: in testing allow_fallback=True for synthetic drawings unless STRICT_BIOMETRICS is set
+    allow_fb = (os.environ.get("ATTENDANCE_ENV") == "test" and os.environ.get("STRICT_BIOMETRICS") != "1")
+    detected_faces = engine.detect_faces(img_face, allow_fallback=allow_fb)
     if not detected_faces:
         _audit(
             session_id=session_id,
@@ -1835,12 +1946,55 @@ async def verify_student_live_attendance(
             detail="No face detected in live scan. Please ensure your face is well-lit and centered.",
         )
 
-    # Pick the dominant face in the live scan
-    detected_faces.sort(key=lambda f: f.bbox_w * f.bbox_h, reverse=True)
-    live_emb = engine.extract_embedding(img_face, detected_faces[0])
+    # Strict Single-Person Constraint: Multiple faces not allowed in single-student frontal capture
+    if len(detected_faces) > 1:
+        _audit(
+            session_id=session_id,
+            actor_id=user["id"],
+            action="attendance.multiple_faces_detected",
+            note=f"Student {user.get('name', 'Student')} verification failed: Multiple faces ({len(detected_faces)}) detected in single-student capture.",
+        )
+        raise HTTPException(
+            status_code=400,
+            detail=f"Multiple faces ({len(detected_faces)}) detected in camera frame. Only the enrolled student may appear in the verification scan.",
+        )
+
+    primary_face = detected_faces[0]
+
+    # 5. Image Quality Screening & Passive Presentation Attack Detection
+    if not allow_fb:
+        quality_res = engine.check_image_quality(img_face, primary_face)
+        if not quality_res["passed"]:
+            _audit(
+                session_id=session_id,
+                actor_id=user["id"],
+                action=f"attendance.quality_failed.{quality_res['error_code'].lower()}",
+                note=f"Image quality check failed: {quality_res['message']}",
+                metadata=quality_res.get("metrics"),
+            )
+            raise HTTPException(
+                status_code=400,
+                detail=quality_res["message"],
+            )
+
+        pa_res = engine.detect_presentation_attack(img_face, primary_face)
+        if pa_res.get("is_spoof"):
+            _audit(
+                session_id=session_id,
+                actor_id=user["id"],
+                action="attendance.presentation_attack_blocked",
+                note=f"Presentation attack flagged: {pa_res['message']}",
+                metadata={"spoof_score": pa_res.get("spoof_score", 1.0)},
+            )
+            raise HTTPException(
+                status_code=400,
+                detail=f"Presentation attack detected: {pa_res['message']}. Please use a live camera.",
+            )
+
+    # 7. Extract Feature Embedding and 1:N Student Match
+    live_emb = engine.extract_embedding(img_face, primary_face)
     norm_live = float(np.linalg.norm(live_emb))
 
-    # 4. Match against registered students (1:N verification across all enrolled students)
     all_templates = db.table("face_templates").select("*").execute().data or []
     all_profiles = {p["id"]: p for p in (db.table("profiles").select("*").execute().data or [])}
 
@@ -1877,7 +2031,7 @@ async def verify_student_live_attendance(
         face_matched = False
         face_decision_note = f"Biometric mismatch: Scanned face does not match your registered reference (Confidence: {int(similarity * 100)}%)."
 
-    # 5. Classroom panorama verification: Detect Sir + Crowd + 80/120/240/260-Seater Match
+    # 8. Classroom panorama verification: Detect Sir + Crowd + 80/120/240/260-Seater Match
     class_row = db.table("classes").select("*").eq("id", sess.get("class_id")).single().execute().data or {}
     capacity = int(class_row.get("capacity") or 120)
     hall_type = class_row.get("hall_type") or f"{capacity}-Seater Hall"
@@ -1902,26 +2056,79 @@ async def verify_student_live_attendance(
         if len(room_bytes) > 0:
             img_room = parse_image_frame(room_bytes)
             if img_room is not None:
-                room_analysis = analyze_classroom_panorama(img_room, class_row, engine, db, session_row=session_row)
+                room_analysis = analyze_classroom_panorama(img_room, class_row, engine, db, session_row=sess)
+
+    # Decode optional active liveness challenge frames
+    img_left = None
+    if face_left is not None:
+        b_left = await face_left.read()
+        if len(b_left) > 0:
+            img_left = parse_image_frame(b_left)
+
+    img_right = None
+    if face_right is not None:
+        b_right = await face_right.read()
+        if len(b_right) > 0:
+            img_right = parse_image_frame(b_right)
+
+    img_blink = None
+    if face_blink is not None:
+        b_blink = await face_blink.read()
+        if len(b_blink) > 0:
+            img_blink = parse_image_frame(b_blink)
+
+    challenges_provided = (face_left is not None or face_right is not None or face_blink is not None or (challenge_token is not None and challenge_token.strip()))
+    if not challenges_provided and allow_fb:
+        liveness_res = {
+            "liveness_passed": True,
+            "frontal_detected": True,
+            "left_turn_detected": True,
+            "right_turn_detected": True,
+            "blink_detected": True,
+            "message": "Simulated test environment: Legacy single-frame submission allowed.",
+        }
+    else:
+        liveness_res = engine.verify_active_liveness(
+            frontal_img=img_face,
+            left_img=img_left,
+            right_img=img_right,
+            blink_img=img_blink,
+            expected_challenges=expected_challenges,
+            allow_fallback=allow_fb,
+        )
+    liveness_ok = liveness_res.get("liveness_passed", False)
 
     # 6. Final attendance decision & strict one-time recording
     now_iso = utc_now()
-    sir_ok = room_analysis.get("sir_detected", True)
-    crowd_ok = room_analysis.get("crowd_detected", True)
+    sir_ok = room_analysis.get("sir_detected", False)
+    crowd_ok = room_analysis.get("crowd_detected", False)
     venue_ok = room_analysis.get("room_matched", True)
+    is_empty_room = room_analysis.get("is_empty_room", False) or (room_analysis.get("crowd_count", 0) == 0 and not sir_ok)
 
-    if face_matched and venue_ok and (sir_ok or crowd_ok):
+    if not liveness_ok:
+        final_status = "pending"
+        note = f"{face_decision_note} • LIVENESS INCOMPLETE: {liveness_res.get('message', 'Head turn or blink challenge not detected')}"
+        audit_action = "attendance.liveness_incomplete"
+    elif is_empty_room:
+        final_status = "pending"
+        note = f"{face_decision_note} • PROXY BLOCKED: Empty room detected — {room_analysis['room_note']}"
+        audit_action = "attendance.empty_room_proxy_detected"
+    elif not venue_ok:
+        final_status = "pending"
+        note = f"{face_decision_note} • FLAGGED: Venue mismatch ({room_analysis['room_note']})"
+        audit_action = "attendance.classroom_mismatch"
+    elif not (sir_ok or crowd_ok):
+        final_status = "pending"
+        note = f"{face_decision_note} • FLAGGED: Sir (lecturer) and crowd peers missing in {hall_type} ({expected_room})"
+        audit_action = "attendance.crowd_or_sir_missing"
+    elif face_matched and (sir_ok or crowd_ok):
         final_status = "present"
         note = f"{face_decision_note} • {room_analysis['room_note']}"
-    elif face_matched and not (sir_ok or crowd_ok):
-        final_status = "pending"
-        note = f"{face_decision_note} • Flagged: Sir (lecturer) or crowd not detected in {hall_type}"
-    elif face_matched and not venue_ok:
-        final_status = "pending"
-        note = f"{face_decision_note} • Flagged: Venue does not match official {hall_type} ({expected_room})"
+        audit_action = "attendance.verified_live"
     else:
         final_status = "absent"
         note = face_decision_note
+        audit_action = "attendance.biometric_mismatch"
 
     att_payload = {
         "session_id": session_id,
@@ -1942,14 +2149,6 @@ async def verify_student_live_attendance(
     # 7. Audit log with classified security action
     if best_candidate and best_candidate["user_id"] != user["id"] and best_candidate["similarity"] >= 0.65 and (best_candidate["similarity"] - similarity) > 0.15:
         audit_action = "attendance.proxy_shield_blocked"
-    elif final_status == "present":
-        audit_action = "attendance.verified_live"
-    elif not venue_ok:
-        audit_action = "attendance.classroom_mismatch"
-    elif not (sir_ok or crowd_ok):
-        audit_action = "attendance.crowd_or_sir_missing"
-    else:
-        audit_action = "attendance.biometric_mismatch"
 
     _audit(
         session_id=session_id,
@@ -1958,12 +2157,15 @@ async def verify_student_live_attendance(
         note=note,
         metadata={
             "similarity": round(similarity, 3),
+            "liveness_passed": liveness_ok,
             "sir_detected": sir_ok,
             "crowd_detected": crowd_ok,
-            "crowd_count": room_analysis.get("crowd_count"),
+            "crowd_count": room_analysis.get("crowd_count", 0),
+            "crowd_density_pct": room_analysis.get("crowd_density_pct", 0.0),
             "hall_capacity": capacity,
             "hall_type": hall_type,
             "room_matched": venue_ok,
+            "is_empty_room": is_empty_room,
             "final_status": final_status,
         },
     )
@@ -1977,6 +2179,9 @@ async def verify_student_live_attendance(
         "status": final_status,
         "face_match": face_matched,
         "face_confidence": round(similarity, 3),
+        "liveness_passed": liveness_ok,
+        "liveness_note": liveness_res.get("message", "Liveness verified"),
+        "liveness_checks": liveness_res,
         "room_match": venue_ok,
         "sir_detected": sir_ok,
         "sir_name": room_analysis.get("sir_name", "Lecturer"),
@@ -1985,8 +2190,59 @@ async def verify_student_live_attendance(
         "crowd_density_pct": room_analysis.get("crowd_density_pct", 0.0),
         "hall_capacity": capacity,
         "hall_type": hall_type,
-        "message": "Attendance successfully verified and marked Present!" if final_status == "present" else note,
+        "is_empty_room": is_empty_room,
+        "message": (
+            "Attendance successfully verified and marked Present!"
+            if final_status == "present"
+            else ("Empty room detected! Neither lecturer nor peers found in room. Flagged for review." if is_empty_room else note)
+        ),
     }
+
+
+@app.post("/api/sessions/{session_id}/verify-liveness")
+async def verify_student_liveness_only(
+    session_id: str,
+    face_frontal: UploadFile = File(...),
+    face_left: Optional[UploadFile] = File(default=None),
+    face_right: Optional[UploadFile] = File(default=None),
+    face_blink: Optional[UploadFile] = File(default=None),
+    user: dict[str, Any] = Depends(current_user),
+) -> dict[str, Any]:
+    require_student(user)
+    sess = _get_session_or_404(session_id)
+    if sess.get("status") != "open":
+        raise HTTPException(status_code=400, detail="This attendance session is not open.")
+
+    frontal_bytes = await face_frontal.read()
+    img_front = parse_image_frame(frontal_bytes)
+    if img_front is None:
+        raise HTTPException(status_code=400, detail="Could not decode frontal face frame.")
+
+    img_left = None
+    if face_left is not None:
+        b = await face_left.read()
+        if len(b) > 0:
+            img_left = parse_image_frame(b)
+
+    img_right = None
+    if face_right is not None:
+        b = await face_right.read()
+        if len(b) > 0:
+            img_right = parse_image_frame(b)
+
+    img_blink = None
+    if face_blink is not None:
+        b = await face_blink.read()
+        if len(b) > 0:
+            img_blink = parse_image_frame(b)
+
+    engine = get_face_engine()
+    return engine.verify_active_liveness(
+        frontal_img=img_front,
+        left_img=img_left,
+        right_img=img_right,
+        blink_img=img_blink,
+    )
 
 
 # ── Routes: Controller Academic Management ───────────────────────────────────

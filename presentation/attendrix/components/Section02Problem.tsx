@@ -120,13 +120,13 @@ export default function Section02Problem() {
 
         {/* Right Side: Structural Vulnerabilities of Manual Attendance */}
         <div className="lg:col-span-7 grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div className="glass-panel p-5 rounded-xl border border-slate-300/90 bg-white/95 hover:border-rose-400 transition-all shadow-md">
+          <div className="glass-panel p-5 rounded-xl border border-rose-300/80 bg-white/95 hover:border-rose-500 transition-all shadow-md">
             <div className="w-10 h-10 rounded-lg bg-rose-100 border border-rose-300 flex items-center justify-center text-rose-700 mb-3">
               <UserX className="w-5 h-5" />
             </div>
-            <h3 className="text-base font-bold text-slate-900 mb-1.5">Proxy Sign-ins &amp; Relay</h3>
+            <h3 className="text-base font-bold text-slate-900 mb-1.5">Empty Room Proxy Spoofing</h3>
             <p className="text-xs text-slate-700 font-medium leading-relaxed">
-              Paper sheets circulating across 240 seats enable unauthorized buddy signing. Verbal roll calls suffer from remote confederates responding for absent peers.
+              Students photographing an empty room outside session hours or holding up phones in vacant halls. Traditional apps blindly mark attendance despite zero humans present.
             </p>
           </div>
 
@@ -134,9 +134,9 @@ export default function Section02Problem() {
             <div className="w-10 h-10 rounded-lg bg-amber-100 border border-amber-300 flex items-center justify-center text-amber-700 mb-3">
               <FileSpreadsheet className="w-5 h-5" />
             </div>
-            <h3 className="text-base font-bold text-slate-900 mb-1.5">Transcription Overhead</h3>
+            <h3 className="text-base font-bold text-slate-900 mb-1.5">QR Screenshots &amp; Buddy Relay</h3>
             <p className="text-xs text-slate-700 font-medium leading-relaxed">
-              Teaching assistants spend hours digitizing paper rosters, reconciling ambiguous handwriting, and resolving conflicting dispute claims after class.
+              Paper circulation and static projector QR codes are instantly screenshotted and shared on messaging channels, allowing students in dorms to claim presence.
             </p>
           </div>
 
@@ -144,9 +144,9 @@ export default function Section02Problem() {
             <div className="w-10 h-10 rounded-lg bg-amber-100 border border-amber-300 flex items-center justify-center text-amber-700 mb-3">
               <EyeOff className="w-5 h-5" />
             </div>
-            <h3 className="text-base font-bold text-slate-900 mb-1.5">Occlusion &amp; Distance</h3>
+            <h3 className="text-base font-bold text-slate-900 mb-1.5">20-Meter Depth Blur</h3>
             <p className="text-xs text-slate-700 font-medium leading-relaxed">
-              In a 240-seat hall with 24-meter depth, students in rear rows are visually occluded by taller seats, laptop lids, and dim lecture hall lighting.
+              In large 260-seat tiered halls, rear-row students appear as 12×12 pixel blobs to front cameras. Without student-edge 180° sweeps, biometric verification is mathematically impossible.
             </p>
           </div>
 
@@ -154,9 +154,9 @@ export default function Section02Problem() {
             <div className="w-10 h-10 rounded-lg bg-emerald-100 border border-emerald-300 flex items-center justify-center text-emerald-700 mb-3">
               <Check className="w-5 h-5" />
             </div>
-            <h3 className="text-base font-bold text-slate-900 mb-1.5">Detection vs. Identification</h3>
+            <h3 className="text-base font-bold text-slate-900 mb-1.5">Detection vs. Verification</h3>
             <p className="text-xs text-slate-700 font-medium leading-relaxed">
-              A single wide classroom photograph can detect people exist, but cannot biometrically verify 240 individual identities without close-up capture.
+              Lightweight detection (YuNet) counts heads to prove the room is occupied; 1:1 biometric embedding (ArcFace) proves authorized identity. Attendrix unifies both.
             </p>
           </div>
         </div>

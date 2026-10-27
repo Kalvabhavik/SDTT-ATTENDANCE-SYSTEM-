@@ -9,52 +9,52 @@ export default function Section03Concept() {
 
   const pillars = [
     {
-      title: "Faculty Session Control",
+      title: "Academic Controller Venue Authority",
       icon: Monitor,
       color: "text-amber-700",
       borderColor: "border-amber-400",
-      desc: "Authorized instructor opens the class session, locks the roster, and starts the synchronized classroom challenge.",
-      role: "Initiation & Authority",
+      desc: "Controller provisions classroom venue (80, 120, 240, or 260 seats), captures reference room panorama, and locks biometric rosters.",
+      role: "Facility & Reference Anchor",
     },
     {
-      title: "Dynamic Classroom Challenge",
+      title: "Continuous 180° Gyro-Tracked Sweep",
       icon: Lock,
       color: "text-orange-700",
       borderColor: "border-orange-400",
-      desc: "The projector displays a short-lived token (15s rotating key). Required in the student's submission payload.",
-      role: "Classroom Proximity Indicator",
+      desc: "Student executes a continuous sweep from front selfie through neighbor audience to the lecturer stage (monotonic Δyaw ≥ 120°).",
+      role: "Spatial-Temporal Continuity",
     },
     {
-      title: "Student 1:1 Selfie Verification",
+      title: "Zero-Proxy Anti-Empty-Room Defense",
+      icon: ShieldCheck,
+      color: "text-emerald-700",
+      borderColor: "border-emerald-400",
+      desc: "YuNet face detector evaluates physical peer density. If zero faces or empty desks are scanned, attendance is blocked and logged as proxy fraud.",
+      role: "Autonomous Anti-Spoofing",
+    },
+    {
+      title: "1:1 Biometric Grounding (ArcFace 512-D)",
       icon: Smartphone,
       color: "text-amber-700",
       borderColor: "border-amber-400",
-      desc: "Student captures an authenticated selfie. 1-to-1 match against registered institutional photo via ArcFace vector embedding.",
+      desc: "Student selfie is aligned to canonical 112×112 crop and compared against enrolled institutional reference (cosine similarity ≥ 0.65).",
       role: "Biometric Identity Grounding",
     },
     {
-      title: "Contextual Classroom Capture",
+      title: "Lecturer Stage & Podium Corroboration",
       icon: Eye,
       color: "text-amber-700",
       borderColor: "border-amber-400",
-      desc: "Where supported, wide camera establishes physical room occupancy & seating density via YuNet person detection.",
+      desc: "Backend confirms lecturer presence at podium with inter-pupillary distance IPD ≥ 30px, confirming the student faces the active class stage.",
       role: "Environmental Context",
     },
     {
-      title: "Backend Integrity Engine",
-      icon: Cpu,
+      title: "Human-in-the-Loop Lecturer Control",
+      icon: UserCheck,
       color: "text-orange-700",
       borderColor: "border-orange-400",
-      desc: "FastAPI server validates session timestamps, challenge TTL, replay prevention, and duplicate student submissions.",
-      role: "Anti-Replay & Deduplication",
-    },
-    {
-      title: "Human-in-the-Loop Review",
-      icon: UserCheck,
-      color: "text-amber-700",
-      borderColor: "border-amber-400",
-      desc: "Uncertain scores or low-light captures enter a teacher queue. System never marks uncertain records as unappealable absences.",
-      role: "Ethical Fail-Safe",
+      desc: "Lecturer launches timed sessions (5, 10, 15 min), monitors real-time WebSocket tally, resolves dispute cases, and exports audit Excel reports.",
+      role: "Dispute & Audit Authority",
     },
   ];
 
@@ -73,8 +73,8 @@ export default function Section03Concept() {
           </span>
         </h2>
         <p className="text-base sm:text-lg text-slate-700 font-medium">
-          Attendrix replaces fragile single-point assumptions with a multi-source corroboration pipeline.
-          Neither a code nor a selfie alone proves presence—the backend cross-references evidence together.
+          Attendrix replaces fragile QR codes and manual sheets with a multi-source corroboration pipeline.
+          Neither an isolated selfie nor a forwarded code proves attendance—continuous 180° sweeps and real audience face detection verify real physical presence.
         </p>
       </div>
 
@@ -85,7 +85,7 @@ export default function Section03Concept() {
             <Sparkles className="w-4 h-4 text-amber-600" />
             <span>DUAL-STREAM EVIDENCE CONVERGENCE</span>
           </span>
-          <span className="text-slate-700 hidden sm:inline font-bold">REAL CLASSROOM CORROBORATION</span>
+          <span className="text-slate-700 hidden sm:inline font-bold">SDTT REAL CLASSROOM CORROBORATION</span>
         </div>
 
         {/* Visual Dual Streams Flowing to Central Engine */}
@@ -97,27 +97,27 @@ export default function Section03Concept() {
                 <Monitor className="w-5 h-5 text-amber-700" />
               </div>
               <div>
-                <h4 className="text-sm font-bold text-slate-900">STREAM A: Classroom Context</h4>
-                <span className="text-[11px] text-amber-800 font-mono font-bold">Faculty &amp; Lecture Hall Projector</span>
+                <h4 className="text-sm font-bold text-slate-900">STREAM A: Venue &amp; Stage Anchor</h4>
+                <span className="text-[11px] text-amber-800 font-mono font-bold">Controller &amp; Faculty Lectern</span>
               </div>
             </div>
 
             <div className="space-y-2 text-xs text-slate-800 font-mono bg-slate-50 p-3 rounded-xl border border-slate-200">
               <div className="flex justify-between">
-                <span className="text-slate-700 font-bold">Session ID:</span>
-                <span className="text-slate-900 font-bold">SES-8491 (CS-401)</span>
+                <span className="text-slate-700 font-bold">Classroom Venue:</span>
+                <span className="text-slate-900 font-bold">Hall A (260-Seat Tier)</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-700 font-bold">Rotating Challenge:</span>
-                <span className="text-amber-800 font-bold">9K4-PX2 (TTL: 14s)</span>
+                <span className="text-slate-700 font-bold">Room Panorama:</span>
+                <span className="text-amber-800 font-bold">LOCKED &amp; SYNCED</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-700 font-bold">Projection State:</span>
-                <span className="text-emerald-800 font-bold">ACTIVE IN HALL A</span>
+                <span className="text-slate-700 font-bold">Lecturer Stage:</span>
+                <span className="text-emerald-800 font-bold">CONFIRMED AT PODIUM</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-700 font-bold">Contextual Occupancy:</span>
-                <span className="text-slate-900 font-bold">220/240 Detected</span>
+                <span className="text-slate-700 font-bold">Server Clock TTL:</span>
+                <span className="text-slate-900 font-bold">09:15:00 DEADLINE</span>
               </div>
             </div>
           </div>
@@ -130,7 +130,7 @@ export default function Section03Concept() {
             </div>
             <div className="w-full h-2 bg-gradient-to-r from-amber-500 via-amber-600 to-orange-600 rounded-full shadow-sm" />
             <div className="text-[10px] text-slate-700 text-center font-mono font-bold">
-              FastAPI Core • Mutual Validation
+              FastAPI 9-Rule Corroboration Core
             </div>
           </div>
 
@@ -141,7 +141,7 @@ export default function Section03Concept() {
                 <Smartphone className="w-5 h-5 text-orange-700" />
               </div>
               <div>
-                <h4 className="text-sm font-bold text-slate-900">STREAM B: Student Submission</h4>
+                <h4 className="text-sm font-bold text-slate-900">STREAM B: 180° Sweep Payload</h4>
                 <span className="text-[11px] text-orange-800 font-mono font-bold">Flutter Mobile Client</span>
               </div>
             </div>
@@ -152,16 +152,16 @@ export default function Section03Concept() {
                 <span className="text-slate-900 font-bold">STU-2024-0482</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-700 font-bold">Challenge Input:</span>
-                <span className="text-amber-800 font-bold">9K4-PX2 (Matched)</span>
+                <span className="text-slate-700 font-bold">Gyro Heading:</span>
+                <span className="text-amber-800 font-bold">Δyaw = 142° (Pass)</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-700 font-bold">1:1 Biometric Crop:</span>
-                <span className="text-slate-900 font-bold">112x112 Canonical</span>
+                <span className="text-slate-700 font-bold">YuNet Face Count:</span>
+                <span className="text-emerald-800 font-bold">N=236 Peers (Non-Empty)</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-700 font-bold">Replay &amp; Freshness:</span>
-                <span className="text-emerald-800 font-bold">t+1.4s (Valid Nonce)</span>
+                <span className="text-slate-700 font-bold">Biometric Cosine:</span>
+                <span className="text-emerald-800 font-bold">0.86 (Threshold ≥ 0.65)</span>
               </div>
             </div>
           </div>
@@ -176,16 +176,16 @@ export default function Section03Concept() {
             <div>
               <div className="text-xs font-mono text-amber-900 font-bold">ATTENDANCE VERIFICATION OUTCOME</div>
               <div className="text-sm font-bold text-slate-900">
-                Multi-Evidence Check: VERIFIED (or routed to Review Queue)
+                Multi-Evidence Check: 9-Rule Decision Engine Resolved
               </div>
             </div>
           </div>
           <div className="flex items-center gap-2">
             <span className="px-2.5 py-1 rounded text-xs font-mono bg-emerald-100 text-emerald-950 border border-emerald-300 font-bold">
-              Verified: 90.8%
+              Verified: 90.8% (236/260)
             </span>
             <span className="px-2.5 py-1 rounded text-xs font-mono bg-amber-100 text-amber-950 border border-amber-300 font-bold">
-              Human Review: 5.0%
+              Human Review: 5.4% (14)
             </span>
           </div>
         </div>

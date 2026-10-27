@@ -110,6 +110,8 @@ class AppState extends ChangeNotifier {
     required String code,
     String? section,
     String? roomNumber,
+    int? capacity,
+    String? hallType,
     String? roomPhoto,
   }) async {
     busy = true;
@@ -121,7 +123,38 @@ class AppState extends ChangeNotifier {
         code: code,
         section: section,
         roomNumber: roomNumber,
+        capacity: capacity,
+        hallType: hallType,
         roomPhoto: roomPhoto,
+      );
+      await loadControllerData();
+      return true;
+    } on ApiException catch (e) {
+      error = e.message;
+      return false;
+    } finally {
+      busy = false;
+      notifyListeners();
+    }
+  }
+
+  Future<bool> captureClassRoom({
+    required String classId,
+    required List<int> photoBytes,
+    int? capacity,
+    String? hallType,
+    String? roomNumber,
+  }) async {
+    busy = true;
+    error = null;
+    notifyListeners();
+    try {
+      await api.controllerCaptureRoom(
+        classId: classId,
+        photoBytes: photoBytes,
+        capacity: capacity,
+        hallType: hallType,
+        roomNumber: roomNumber,
       );
       await loadControllerData();
       return true;
@@ -174,6 +207,9 @@ class AppState extends ChangeNotifier {
     String sessionId, {
     required List<int> faceBytes,
     List<int>? roomBytes,
+    List<int>? faceLeftBytes,
+    List<int>? faceRightBytes,
+    List<int>? faceBlinkBytes,
   }) async {
     busy = true;
     error = null;
@@ -183,6 +219,9 @@ class AppState extends ChangeNotifier {
         sessionId,
         faceBytes: faceBytes,
         roomBytes: roomBytes,
+        faceLeftBytes: faceLeftBytes,
+        faceRightBytes: faceRightBytes,
+        faceBlinkBytes: faceBlinkBytes,
       );
       await loadHome();
       return res;

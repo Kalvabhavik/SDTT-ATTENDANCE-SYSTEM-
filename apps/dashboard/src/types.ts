@@ -24,9 +24,32 @@ export interface ControllerStudent {
   registration_locked: boolean
   has_template: boolean
 }
-export interface ClassItem { id: string; name: string; code?: string; schedule?: string; room?: string; student_count?: number }
-export interface AttendanceEntry { student_id: string; student_name: string; student_email?: string; status: AttendanceStatus; confidence?: number; note?: string; changed_at?: string; updated_at?: string }
-export interface Suggestion { student_id: string; student_name: string; confidence: number; status?: 'suggestion' | AttendanceStatus }
+export interface ClassItem {
+  id: string
+  name: string
+  code?: string
+  schedule?: string
+  room?: string
+  student_count?: number
+}
+export interface AttendanceEntry {
+  student_id: string
+  student_name: string
+  student_email?: string
+  status: AttendanceStatus
+  confidence?: number
+  note?: string
+  changed_at?: string
+  updated_at?: string
+  liveness?: string
+  sweep_valid?: boolean
+}
+export interface Suggestion {
+  student_id: string
+  student_name: string
+  confidence: number
+  status?: 'suggestion' | AttendanceStatus
+}
 export interface ReviewItem {
   id: string
   attempt_id?: string
@@ -59,6 +82,8 @@ export interface Session {
   needs_review_count?: number
   rejected_count?: number
   total_enrolled?: number
+  room_photo?: string
+  reference_captured_at?: string
 }
 export interface AttendanceSummary { present: number; absent: number; pending: number; total_finalized: number; percentage: number | null }
 export interface StudentAttendanceEntry { session_id: string; class_name?: string; created_at: string; updated_at?: string; status: AttendanceStatus; note?: string }

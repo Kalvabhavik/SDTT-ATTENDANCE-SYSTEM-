@@ -1,0 +1,17 @@
+Host Information:
+Kernel / OS: Linux bhavik 7.2.11-arch1-1 #1 SMP PREEMPT_DYNAMIC Fri, 16 Oct 2026 00:28:58 +0000 x86_64 GNU/Linux
+Architecture: x86_64
+Hostname: bhavik
+CPU: 12th Gen Intel(R) Core(TM) i5-12450HX
+RAM: 15Gi
+Python Version: Python 3.14.8
+Pytest Version: pytest 8.4.2
+OpenCV Version: 5.0.0
+ONNXRuntime Version: 1.31.0
+FastAPI Version: 0.162.0
+Flutter Version: Flutter 3.47.7 • channel stable • https://github.com/flutter/flutter.git
+Node.js Version: v26.12.1
+ADB Connected Devices: RZCY2279EPE	device  
+Display Server: :1 / wayland-1
+Camera Devices: /dev/video0
+/dev/video1

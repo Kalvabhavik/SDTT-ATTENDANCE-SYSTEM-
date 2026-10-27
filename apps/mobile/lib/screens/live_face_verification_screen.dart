@@ -16,6 +16,14 @@ enum VerificationStep {
   result,
 }
 
+enum LivenessStage {
+  center,
+  turnLeft,
+  turnRight,
+  blink,
+  completed,
+}
+
 class LiveFaceVerificationScreen extends StatefulWidget {
   const LiveFaceVerificationScreen({
     super.key,
@@ -41,9 +49,13 @@ class _LiveFaceVerificationScreenState
   bool _cameraPermissionError = false;
 
   VerificationStep _currentStep = VerificationStep.liveFace;
+  LivenessStage _livenessStage = LivenessStage.center;
 
-  // Captured images
-  XFile? _facePhoto;
+  // Captured images for multi-action active liveness
+  XFile? _facePhoto;    // Frontal
+  XFile? _faceLeft;     // Left turn
+  XFile? _faceRight;    // Right turn
+  XFile? _faceBlink;    // Eye blink
   XFile? _roomPhoto;
 
   // Liveness animation state
@@ -96,7 +108,7 @@ class _LiveFaceVerificationScreenState
       if (_secondsLeft <= 1) {
         t.cancel();
         if (_currentStep == VerificationStep.liveFace && !_livenessPassed && !_isProcessing) {
-          _captureFace();
+          _advanceLivenessStage();
         }
       } else {
         setState(() => _secondsLeft--);
@@ -184,9 +196,10 @@ class _LiveFaceVerificationScreenState
   }
 
   // ─────────────────────────────────────────────────────────────────────────
-  // FACE CAPTURE & LIVENESS CONFIRMATION
+  // ACTIVE LIVENESS CONFIRMATION (CENTER -> TURN LEFT -> TURN RIGHT -> BLINK)
   // ─────────────────────────────────────────────────────────────────────────
-  Future<void> _captureFace() async {
+  Future<void> _advanceLivenessStage() async {
+    if (_isProcessing) return;
     setState(() {
       _isProcessing = true;
       _errorMessage = null;
@@ -197,7 +210,6 @@ class _LiveFaceVerificationScreenState
       if (_isCameraInitialized && _cameraController != null) {
         photo = await _cameraController!.takePicture();
       } else {
-        // Fallback using image_picker if hardware controller unavailable
         photo = await _picker.pickImage(
           source: ImageSource.camera,
           preferredCameraDevice: CameraDevice.front,
@@ -211,28 +223,64 @@ class _LiveFaceVerificationScreenState
         return;
       }
 
-      setState(() {
+      try {
+        HapticFeedback.mediumImpact();
+        SystemSound.play(SystemSoundType.click);
+      } catch (_) {}
+
+      if (_livenessStage == LivenessStage.center) {
         _facePhoto = photo;
-        _livenessPassed = true;
-        _isProcessing = false;
-      });
-
-      // Show brief success checkmark, then advance to classroom panorama step
-      await Future.delayed(const Duration(milliseconds: 700));
-
-      if (mounted) {
-        // Switch to back camera automatically for classroom photo if available
-        int backIndex = _cameras.indexWhere(
-          (c) => c.lensDirection == CameraLensDirection.back,
-        );
-        if (backIndex != -1 && backIndex != _selectedCameraIndex) {
-          _selectedCameraIndex = backIndex;
-          await _setupCameraController(_cameras[_selectedCameraIndex]);
-        }
+        setState(() {
+          _livenessStage = LivenessStage.turnLeft;
+          _isProcessing = false;
+          _secondsLeft = 3;
+        });
+        _startAutoScanCountdown();
+      } else if (_livenessStage == LivenessStage.turnLeft) {
+        _faceLeft = photo;
+        setState(() {
+          _livenessStage = LivenessStage.turnRight;
+          _isProcessing = false;
+          _secondsLeft = 3;
+        });
+        _startAutoScanCountdown();
+      } else if (_livenessStage == LivenessStage.turnRight) {
+        _faceRight = photo;
+        setState(() {
+          _livenessStage = LivenessStage.blink;
+          _isProcessing = false;
+          _secondsLeft = 3;
+        });
+        _startAutoScanCountdown();
+      } else if (_livenessStage == LivenessStage.blink) {
+        _faceBlink = photo;
+        _countdownTimer?.cancel();
+        try {
+          HapticFeedback.heavyImpact();
+        } catch (_) {}
 
         setState(() {
-          _currentStep = VerificationStep.classroomRoom;
+          _livenessStage = LivenessStage.completed;
+          _livenessPassed = true;
+          _isProcessing = false;
         });
+
+        // Show brief success checkmark, then advance to classroom panorama step
+        await Future.delayed(const Duration(milliseconds: 700));
+
+        if (mounted) {
+          int backIndex = _cameras.indexWhere(
+            (c) => c.lensDirection == CameraLensDirection.back,
+          );
+          if (backIndex != -1 && backIndex != _selectedCameraIndex) {
+            _selectedCameraIndex = backIndex;
+            await _setupCameraController(_cameras[_selectedCameraIndex]);
+          }
+
+          setState(() {
+            _currentStep = VerificationStep.classroomRoom;
+          });
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -243,6 +291,8 @@ class _LiveFaceVerificationScreenState
       }
     }
   }
+
+  Future<void> _captureFace() => _advanceLivenessStage();
 
   // ─────────────────────────────────────────────────────────────────────────
   // CLASSROOM ROOM / 180° PANORAMA SWEEP CAPTURE
@@ -459,10 +509,28 @@ class _LiveFaceVerificationScreenState
         roomBytes = await _roomPhoto!.readAsBytes();
       }
 
+      List<int>? leftBytes;
+      if (_faceLeft != null) {
+        leftBytes = await _faceLeft!.readAsBytes();
+      }
+
+      List<int>? rightBytes;
+      if (_faceRight != null) {
+        rightBytes = await _faceRight!.readAsBytes();
+      }
+
+      List<int>? blinkBytes;
+      if (_faceBlink != null) {
+        blinkBytes = await _faceBlink!.readAsBytes();
+      }
+
       final res = await widget.state.verifyAttendanceLive(
         widget.session.id,
         faceBytes: faceBytes,
         roomBytes: roomBytes,
+        faceLeftBytes: leftBytes,
+        faceRightBytes: rightBytes,
+        faceBlinkBytes: blinkBytes,
       );
 
       if (mounted) {
@@ -669,148 +737,403 @@ class _LiveFaceVerificationScreenState
   }
 
   // ─────────────────────────────────────────────────────────────────────────
-  // WIDGET: FACE SCANNING HUD
+  // WIDGET: FACE SCANNING HUD (ACTIVE LIVENESS INTERACTIVE DETECTION)
   // ─────────────────────────────────────────────────────────────────────────
+  Widget _buildLivenessStageIndicators() {
+    final stages = [
+      (LivenessStage.center, '1. Center', Icons.face_rounded),
+      (LivenessStage.turnLeft, '2. Turn Left', Icons.arrow_back_rounded),
+      (LivenessStage.turnRight, '3. Turn Right', Icons.arrow_forward_rounded),
+      (LivenessStage.blink, '4. Blink Eyes', Icons.remove_red_eye_rounded),
+    ];
+
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      physics: const BouncingScrollPhysics(),
+      padding: const EdgeInsets.symmetric(horizontal: 14),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: stages.map((st) {
+          final isCurrent = _livenessStage == st.$1;
+          final isDone = _livenessStage.index > st.$1.index;
+          return Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 3),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 250),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: isCurrent
+                    ? AppColors.primaryLight.withValues(alpha: 0.28)
+                    : isDone
+                        ? AppColors.emerald.withValues(alpha: 0.2)
+                        : Colors.black.withValues(alpha: 0.5),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: isCurrent
+                      ? AppColors.primaryLight
+                      : isDone
+                          ? AppColors.emerald
+                          : Colors.white12,
+                  width: isCurrent ? 1.5 : 1.0,
+                ),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    isDone ? Icons.check_circle_rounded : st.$3,
+                    size: 12,
+                    color: isCurrent
+                        ? Colors.white
+                        : isDone
+                            ? AppColors.emerald
+                            : Colors.white54,
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    st.$2,
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: isCurrent ? FontWeight.w800 : FontWeight.w600,
+                      color: isCurrent
+                          ? Colors.white
+                          : isDone
+                              ? AppColors.emerald
+                              : Colors.white54,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
   Widget _buildFaceScanningHUD() {
     final size = MediaQuery.of(context).size;
-    final ovalWidth = size.width * 0.72;
-    final ovalHeight = ovalWidth * 1.35;
+    final boxWidth = (size.width * 0.76).clamp(240.0, 320.0);
+    final boxHeight = (boxWidth * 1.25).clamp(280.0, 400.0);
 
     return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // Oval Reticle with animated scanning line
-          SizedBox(
-            width: ovalWidth,
-            height: ovalHeight,
-            child: Stack(
-              alignment: Alignment.center,
-              children: [
-                // Oval Border Reticle
-                Container(
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.all(
-                      Radius.elliptical(ovalWidth / 2, ovalHeight / 2),
-                    ),
-                    border: Border.all(
+      child: SingleChildScrollView(
+        physics: const BouncingScrollPhysics(),
+        padding: const EdgeInsets.symmetric(vertical: 20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Top Active Liveness Multi-Step Progression Pill Bar (Safe horizontal scroll)
+            _buildLivenessStageIndicators(),
+            const SizedBox(height: 14),
+
+            // Viewfinder Frame with White Corner Brackets matching Image 2 (Screen 3)
+            SizedBox(
+              width: boxWidth,
+              height: boxHeight,
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  // White Rounded Corner Brackets (Image 2 Viewfinder)
+                  CustomPaint(
+                    size: Size(boxWidth, boxHeight),
+                    painter: _CornerBracketPainter(
                       color: _livenessPassed
                           ? AppColors.emerald
-                          : Colors.cyanAccent.withValues(alpha: 0.8),
-                      width: 3.5,
+                          : (_livenessStage == LivenessStage.turnLeft || _livenessStage == LivenessStage.turnRight)
+                              ? Colors.white
+                              : _livenessStage == LivenessStage.blink
+                                  ? const Color(0xFF6EE7B7)
+                                  : Colors.white.withValues(alpha: 0.95),
+                      cornerLength: 36.0,
+                      strokeWidth: 3.5,
+                      cornerRadius: 18.0,
                     ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: (_livenessPassed ? AppColors.emerald : Colors.cyanAccent)
-                            .withValues(alpha: 0.25),
-                        blurRadius: 20,
-                        spreadRadius: 2,
-                      ),
-                    ],
                   ),
-                ),
 
-                // Animated Scanner Line
-                if (!_livenessPassed)
-                  AnimatedBuilder(
-                    animation: _scannerAnim,
-                    builder: (context, _) {
-                      return Positioned(
-                        top: 20 + _scannerAnim.value * (ovalHeight - 40),
-                        left: 20,
-                        right: 20,
-                        child: Container(
-                          height: 3,
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              colors: [
-                                Colors.transparent,
-                                Colors.cyanAccent.withValues(alpha: 0.85),
-                                Colors.white,
-                                Colors.cyanAccent.withValues(alpha: 0.85),
-                                Colors.transparent,
+                  // Soft inner guidance oval
+                  Container(
+                    width: boxWidth * 0.88,
+                    height: boxHeight * 0.88,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.all(
+                        Radius.elliptical(boxWidth * 0.44, boxHeight * 0.44),
+                      ),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.15),
+                        width: 1.0,
+                      ),
+                    ),
+                  ),
+
+                  // Center visual guidance tailored to active liveness challenge
+                  if (!_livenessPassed) ...[
+                    if (_livenessStage == LivenessStage.center)
+                      Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.center_focus_strong_rounded,
+                            size: 38,
+                            color: Colors.white.withValues(alpha: 0.4),
+                          ),
+                          const SizedBox(height: 6),
+                          const Text(
+                            'LOOK STRAIGHT',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w800,
+                              fontSize: 13,
+                              letterSpacing: 1.0,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          const Text(
+                            'Center face inside brackets',
+                            style: TextStyle(color: Colors.white60, fontSize: 11),
+                          ),
+                        ],
+                      )
+                    else if (_livenessStage == LivenessStage.turnLeft)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.65),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: AppColors.primaryLight.withValues(alpha: 0.6)),
+                        ),
+                        child: const Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.arrow_circle_left_rounded,
+                              size: 44,
+                              color: Colors.white,
+                            ),
+                            SizedBox(height: 4),
+                            Text(
+                              'TURN FACE LEFT ◀',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w900,
+                                fontSize: 13,
+                                letterSpacing: 0.8,
+                              ),
+                            ),
+                            SizedBox(height: 2),
+                            Text(
+                              'Rotate head ~20° to left',
+                              style: TextStyle(color: Colors.white70, fontSize: 11),
+                            ),
+                          ],
+                        ),
+                      )
+                    else if (_livenessStage == LivenessStage.turnRight)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.65),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: AppColors.primaryLight.withValues(alpha: 0.6)),
+                        ),
+                        child: const Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.arrow_circle_right_rounded,
+                              size: 44,
+                              color: Colors.white,
+                            ),
+                            SizedBox(height: 4),
+                            Text(
+                              'TURN FACE RIGHT ▶',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w900,
+                                fontSize: 13,
+                                letterSpacing: 0.8,
+                              ),
+                            ),
+                            SizedBox(height: 2),
+                            Text(
+                              'Rotate head ~20° to right',
+                              style: TextStyle(color: Colors.white70, fontSize: 11),
+                            ),
+                          ],
+                        ),
+                      )
+                    else if (_livenessStage == LivenessStage.blink)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.65),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: const Color(0xFF6EE7B7).withValues(alpha: 0.6)),
+                        ),
+                        child: const Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.remove_red_eye_rounded,
+                              size: 42,
+                              color: Color(0xFF6EE7B7),
+                            ),
+                            SizedBox(height: 4),
+                            Text(
+                              'BLINK BOTH EYES 👁️',
+                              style: TextStyle(
+                                color: Color(0xFF6EE7B7),
+                                fontWeight: FontWeight.w900,
+                                fontSize: 13,
+                                letterSpacing: 0.8,
+                              ),
+                            ),
+                            SizedBox(height: 2),
+                            Text(
+                              'Firmly close and open eyes',
+                              style: TextStyle(color: Colors.white70, fontSize: 11),
+                            ),
+                          ],
+                        ),
+                      ),
+                  ],
+
+                  // Animated Scanner Line
+                  if (!_livenessPassed)
+                    AnimatedBuilder(
+                      animation: _scannerAnim,
+                      builder: (context, _) {
+                        return Positioned(
+                          top: 16 + _scannerAnim.value * (boxHeight - 32),
+                          left: 14,
+                          right: 14,
+                          child: Container(
+                            height: 2.5,
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: [
+                                  Colors.transparent,
+                                  AppColors.primaryLight.withValues(alpha: 0.85),
+                                  Colors.white,
+                                  AppColors.primaryLight.withValues(alpha: 0.85),
+                                  Colors.transparent,
+                                ],
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: AppColors.primaryLight.withValues(alpha: 0.5),
+                                  blurRadius: 8,
+                                ),
                               ],
                             ),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.cyanAccent.withValues(alpha: 0.6),
-                                blurRadius: 8,
-                              ),
-                            ],
                           ),
-                        ),
-                      );
-                    },
-                  ),
-
-                // Verification Checkmark if captured
-                if (_livenessPassed)
-                  Container(
-                    width: 72,
-                    height: 72,
-                    decoration: const BoxDecoration(
-                      color: AppColors.emerald,
-                      shape: BoxShape.circle,
+                        );
+                      },
                     ),
-                    child: const Icon(
-                      Icons.check_rounded,
-                      color: Colors.white,
-                      size: 48,
+
+                  // Verification Checkmark if captured
+                  if (_livenessPassed)
+                    Container(
+                      width: 72,
+                      height: 72,
+                      decoration: const BoxDecoration(
+                        color: AppColors.emerald,
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.check_rounded,
+                        color: Colors.white,
+                        size: 48,
+                      ),
                     ),
-                  ),
-              ],
+                ],
+              ),
             ),
-          ),
-          const SizedBox(height: 24),
+            const SizedBox(height: 16),
 
-          // Instruction Pill
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
-            decoration: BoxDecoration(
-              color: Colors.black.withValues(alpha: 0.75),
-              borderRadius: BorderRadius.circular(999),
-              border: Border.all(color: Colors.white24),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  _livenessPassed ? Icons.verified_rounded : Icons.face_rounded,
-                  color: _livenessPassed ? AppColors.emerald : Colors.cyanAccent,
-                  size: 18,
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  _livenessPassed
-                      ? 'Liveness Confirmed'
-                      : 'Live Face ID • Auto-scanning in ${_secondsLeft}s',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w700,
-                    fontSize: 13,
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          if (_errorMessage != null) ...[
-            const SizedBox(height: 12),
+            // Instruction Pill with countdown badge
             Container(
-              margin: const EdgeInsets.symmetric(horizontal: 24),
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
               decoration: BoxDecoration(
-                color: AppColors.rose.withValues(alpha: 0.9),
-                borderRadius: BorderRadius.circular(10),
+                color: Colors.black.withValues(alpha: 0.82),
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(
+                  color: _livenessPassed
+                      ? AppColors.emerald
+                      : Colors.white24,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.4),
+                    blurRadius: 10,
+                  ),
+                ],
               ),
-              child: Text(
-                _errorMessage!,
-                textAlign: TextAlign.center,
-                style: const TextStyle(color: Colors.white, fontSize: 12),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (!_livenessPassed)
+                    Container(
+                      width: 22,
+                      height: 22,
+                      margin: const EdgeInsets.only(right: 8),
+                      alignment: Alignment.center,
+                      decoration: const BoxDecoration(
+                        color: AppColors.primaryLight,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Text(
+                        '$_secondsLeft',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w900,
+                          fontSize: 11,
+                        ),
+                      ),
+                    )
+                  else
+                    const Padding(
+                      padding: EdgeInsets.only(right: 8),
+                      child: Icon(Icons.verified_rounded, color: AppColors.emerald, size: 18),
+                    ),
+                  Text(
+                    _livenessPassed
+                        ? 'Liveness Motion Confirmed ✓'
+                        : _livenessStage == LivenessStage.center
+                            ? 'Step 1/4: Looking straight ahead...'
+                            : _livenessStage == LivenessStage.turnLeft
+                                ? 'Step 2/4: Turn head to the left...'
+                                : _livenessStage == LivenessStage.turnRight
+                                    ? 'Step 3/4: Turn head to the right...'
+                                    : 'Step 4/4: Blink both eyes firmly...',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 12.5,
+                    ),
+                  ),
+                ],
               ),
             ),
+
+            if (_errorMessage != null) ...[
+              const SizedBox(height: 10),
+              Container(
+                margin: const EdgeInsets.symmetric(horizontal: 24),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                decoration: BoxDecoration(
+                  color: AppColors.rose.withValues(alpha: 0.9),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(
+                  _errorMessage!,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: Colors.white, fontSize: 11.5),
+                ),
+              ),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }
@@ -1140,42 +1463,47 @@ class _LiveFaceVerificationScreenState
   // WIDGET: VERIFICATION RESULT HUD
   // ─────────────────────────────────────────────────────────────────────────
   Widget _buildResultHUD() {
-    final isPresent = _result?.isPresent == true;
-    final isFlagged = _result?.isFlagged == true;
+    final isEmptyRoom = _result?.isEmptyRoom == true;
+    final isPresent = _result?.isPresent == true && !isEmptyRoom;
+    final isFlagged = _result?.isFlagged == true || isEmptyRoom;
 
     final Color headerColor = isPresent
         ? AppColors.emerald
-        : (isFlagged ? AppColors.amber : AppColors.rose);
+        : (isEmptyRoom ? AppColors.rose : (isFlagged ? AppColors.amber : AppColors.rose));
 
     final IconData headerIcon = isPresent
         ? Icons.verified_user_rounded
-        : (isFlagged ? Icons.warning_amber_rounded : Icons.gpp_bad_rounded);
+        : (isEmptyRoom ? Icons.meeting_room_outlined : (isFlagged ? Icons.warning_amber_rounded : Icons.gpp_bad_rounded));
 
     final String title = isPresent
         ? 'Attendance Verified Present!'
-        : (isFlagged
-            ? 'Attendance Flagged for Review'
-            : 'Verification Failed');
+        : (isEmptyRoom
+            ? 'Empty Room Detected — Proxy Blocked'
+            : (isFlagged
+                ? 'Attendance Flagged for Review'
+                : 'Verification Failed'));
 
     return Center(
-      child: Container(
-        margin: const EdgeInsets.all(24),
-        padding: const EdgeInsets.all(24),
-        decoration: BoxDecoration(
-          color: const Color(0xFF0F172A),
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: headerColor.withValues(alpha: 0.6), width: 2),
-          boxShadow: [
-            BoxShadow(
-              color: headerColor.withValues(alpha: 0.25),
-              blurRadius: 28,
-            ),
-          ],
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
+      child: SingleChildScrollView(
+        physics: const BouncingScrollPhysics(),
+        padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 20),
+        child: Container(
+          padding: const EdgeInsets.all(22),
+          decoration: BoxDecoration(
+            color: const Color(0xFF0F172A),
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: headerColor.withValues(alpha: 0.6), width: 2),
+            boxShadow: [
+              BoxShadow(
+                color: headerColor.withValues(alpha: 0.25),
+                blurRadius: 28,
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
             Center(
               child: Container(
                 width: 64,
@@ -1219,6 +1547,29 @@ class _LiveFaceVerificationScreenState
                 ),
                 child: Column(
                   children: [
+                    if (isEmptyRoom) ...[
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        margin: const EdgeInsets.only(bottom: 12),
+                        decoration: BoxDecoration(
+                          color: AppColors.rose.withValues(alpha: 0.18),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: AppColors.rose.withValues(alpha: 0.45)),
+                        ),
+                        child: const Row(
+                          children: [
+                            Icon(Icons.shield_outlined, color: AppColors.rose, size: 20),
+                            SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'Anti-Proxy Triggered: Room is completely empty. Both Lecturer and student peers are absent from stage and hall.',
+                                style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
@@ -1229,6 +1580,30 @@ class _LiveFaceVerificationScreenState
                             color: _result!.faceMatch ? AppColors.emerald : AppColors.rose,
                             fontWeight: FontWeight.w800,
                           ),
+                        ),
+                      ],
+                    ),
+                    const Divider(color: Colors.white12, height: 14),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text('Active Liveness (Turn & Blink):', style: TextStyle(color: AppColors.slate, fontSize: 13)),
+                        Row(
+                          children: [
+                            Icon(
+                              _result!.livenessPassed ? Icons.check_circle_rounded : Icons.warning_amber_rounded,
+                              size: 14,
+                              color: _result!.livenessPassed ? AppColors.emerald : AppColors.amber,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              _result!.livenessPassed ? 'Verified Passed' : _result!.livenessNote,
+                              style: TextStyle(
+                                color: _result!.livenessPassed ? AppColors.emerald : AppColors.amber,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
@@ -1327,7 +1702,8 @@ class _LiveFaceVerificationScreenState
           ],
         ),
       ),
-    );
+    ),
+  );
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -1335,6 +1711,16 @@ class _LiveFaceVerificationScreenState
   // ─────────────────────────────────────────────────────────────────────────
   Widget _buildBottomActions() {
     if (_currentStep == VerificationStep.liveFace) {
+      final String actionLabel = _livenessStage == LivenessStage.center
+          ? 'Tap to capture frontal face'
+          : _livenessStage == LivenessStage.turnLeft
+              ? 'Tap to capture left angle'
+              : _livenessStage == LivenessStage.turnRight
+                  ? 'Tap to capture right angle'
+                  : _livenessStage == LivenessStage.blink
+                      ? 'Tap to capture blink'
+                      : 'Liveness confirmed';
+
       return Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -1346,28 +1732,20 @@ class _LiveFaceVerificationScreenState
                 height: 76,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: Colors.white,
+                  color: AppColors.primary,
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.cyanAccent.withValues(alpha: 0.45),
+                      color: AppColors.primary.withValues(alpha: 0.45),
                       blurRadius: 20,
-                      spreadRadius: 2,
+                      spreadRadius: 3,
                     ),
                   ],
                 ),
-                child: Center(
-                  child: Container(
-                    width: 62,
-                    height: 62,
-                    decoration: const BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: Color(0xFF0F172A),
-                    ),
-                    child: const Icon(
-                      Icons.face_rounded,
-                      color: Colors.cyanAccent,
-                      size: 32,
-                    ),
+                child: const Center(
+                  child: Icon(
+                    Icons.qr_code_scanner_rounded,
+                    color: Colors.white,
+                    size: 34,
                   ),
                 ),
               ),
@@ -1376,7 +1754,7 @@ class _LiveFaceVerificationScreenState
             Text(
               _livenessPassed
                   ? 'Face scan verified'
-                  : 'Auto-scan active • Tap circle for manual capture',
+                  : 'Auto-scan in ${_secondsLeft}s • $actionLabel',
               style: const TextStyle(
                 color: Colors.white70,
                 fontSize: 12,
@@ -1554,4 +1932,69 @@ class _VerificationStepRow extends StatelessWidget {
       ],
     );
   }
+}
+
+/// Custom painter for crisp rounded corner brackets matching Image 2 (Screen 3)
+class _CornerBracketPainter extends CustomPainter {
+  final Color color;
+  final double cornerLength;
+  final double strokeWidth;
+  final double cornerRadius;
+
+  const _CornerBracketPainter({
+    required this.color,
+    this.cornerLength = 32.0,
+    this.strokeWidth = 3.5,
+    this.cornerRadius = 14.0,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = strokeWidth
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round;
+
+    final w = size.width;
+    final h = size.height;
+    final r = cornerRadius;
+    final len = cornerLength;
+
+    // Top-Left corner
+    final pathTL = Path()
+      ..moveTo(0, len)
+      ..lineTo(0, r)
+      ..arcToPoint(Offset(r, 0), radius: Radius.circular(r))
+      ..lineTo(len, 0);
+    canvas.drawPath(pathTL, paint);
+
+    // Top-Right corner
+    final pathTR = Path()
+      ..moveTo(w - len, 0)
+      ..lineTo(w - r, 0)
+      ..arcToPoint(Offset(w, r), radius: Radius.circular(r))
+      ..lineTo(w, len);
+    canvas.drawPath(pathTR, paint);
+
+    // Bottom-Left corner
+    final pathBL = Path()
+      ..moveTo(0, h - len)
+      ..lineTo(0, h - r)
+      ..arcToPoint(Offset(r, h), radius: Radius.circular(r))
+      ..lineTo(len, h);
+    canvas.drawPath(pathBL, paint);
+
+    // Bottom-Right corner
+    final pathBR = Path()
+      ..moveTo(w - len, h)
+      ..lineTo(w - r, h)
+      ..arcToPoint(Offset(w, h - r), radius: Radius.circular(r))
+      ..lineTo(w, h - len);
+    canvas.drawPath(pathBR, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _CornerBracketPainter oldDelegate) =>
+      color != oldDelegate.color;
 }

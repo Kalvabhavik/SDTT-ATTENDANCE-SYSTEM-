@@ -305,163 +305,177 @@ class _SweepCaptureScreenState extends State<SweepCaptureScreen>
         ],
       ),
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(22.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              if (phase == SweepPhase.ready) ...[
-                // Instructions & Camera Rationale Card
-                AppCard(
-                  padding: const EdgeInsets.all(20),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(10),
-                            decoration: BoxDecoration(
-                              color: AppColors.primary.withValues(alpha: 0.12),
-                              borderRadius: BorderRadius.circular(14),
-                            ),
-                            child: const Icon(Icons.panorama_horizontal_rounded, color: AppColors.primary, size: 24),
-                          ),
-                          const SizedBox(width: 14),
-                          const Expanded(
-                            child: Text(
-                              'One Continuous Sweep',
-                              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: AppColors.ink),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                      const Text(
-                        '1. Hold phone at arm\'s length facing yourself and your neighbours.\n'
-                        '2. Press Start and hold still for 1 second.\n'
-                        '3. Slowly sweep your phone in a 180° horizontal arc until pointing at the lecturer on stage.\n'
-                        '4. Hold steady for 1 second until the audio chime sounds.',
-                        style: TextStyle(fontSize: 13.5, color: AppColors.slate, height: 1.5),
-                      ),
-                    ],
-                  ),
-                ),
-                if (_cameraPermissionError) ...[
-                  const AppCard(
-                    padding: EdgeInsets.all(16),
-                    child: Row(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            return SingleChildScrollView(
+              physics: const BouncingScrollPhysics(),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                child: Padding(
+                  padding: const EdgeInsets.all(22.0),
+                  child: IntrinsicHeight(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        Icon(Icons.videocam_off_rounded, color: AppColors.rose, size: 20),
-                        SizedBox(width: 10),
-                        Expanded(
-                          child: Text(
-                            'Camera unavailable. Grant camera permission to run the live sweep check-in.',
-                            style: TextStyle(fontSize: 12.5, color: AppColors.slate, height: 1.35),
+                        if (phase == SweepPhase.ready) ...[
+                          // Instructions & Camera Rationale Card
+                          AppCard(
+                            padding: const EdgeInsets.all(20),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.all(10),
+                                      decoration: BoxDecoration(
+                                        color: AppColors.primary.withValues(alpha: 0.12),
+                                        borderRadius: BorderRadius.circular(14),
+                                      ),
+                                      child: const Icon(Icons.panorama_horizontal_rounded, color: AppColors.primary, size: 24),
+                                    ),
+                                    const SizedBox(width: 14),
+                                    const Expanded(
+                                      child: Text(
+                                        'One Continuous Sweep',
+                                        style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: AppColors.ink),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 16),
+                                const Text(
+                                  '1. Hold phone at arm\'s length facing yourself and your neighbours.\n'
+                                  '2. Press Start and hold still for 1 second.\n'
+                                  '3. Slowly sweep your phone in a 180° horizontal arc until pointing at the lecturer on stage.\n'
+                                  '4. Hold steady for 1 second until the audio chime sounds.',
+                                  style: TextStyle(fontSize: 13.5, color: AppColors.slate, height: 1.5),
+                                ),
+                              ],
+                            ),
                           ),
-                        ),
+                          if (_cameraPermissionError) ...[
+                            const SizedBox(height: 14),
+                            const AppCard(
+                              padding: EdgeInsets.all(16),
+                              child: Row(
+                                children: [
+                                  Icon(Icons.videocam_off_rounded, color: AppColors.rose, size: 20),
+                                  SizedBox(width: 10),
+                                  Expanded(
+                                    child: Text(
+                                      'Camera unavailable. Grant camera permission to run the live sweep check-in.',
+                                      style: TextStyle(fontSize: 12.5, color: AppColors.slate, height: 1.35),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                          const SizedBox(height: 20),
+                          const Spacer(),
+                          // Visual Practice Indicator
+                          Center(
+                            child: CustomPaint(
+                              size: const Size(200, 100),
+                              painter: _ProgressArcPainter(progress: isPracticeMode ? 0.5 : 0.0),
+                            ),
+                          ),
+                          const Spacer(),
+                          const SizedBox(height: 20),
+                          AnimatedPressable(
+                            onTap: _startSweepGesture,
+                            child: Container(
+                              height: 52,
+                              decoration: BoxDecoration(
+                                gradient: isPracticeMode
+                                    ? const LinearGradient(colors: [AppColors.amber, Colors.orange])
+                                    : AppColors.primaryGradient,
+                                borderRadius: BorderRadius.circular(16),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: (isPracticeMode ? AppColors.amber : AppColors.primary).withValues(alpha: 0.3),
+                                    blurRadius: 14,
+                                    offset: const Offset(0, 5),
+                                  ),
+                                ],
+                              ),
+                              child: Center(
+                                child: Text(
+                                  isPracticeMode ? 'Start Practice Mode (No Submission)' : 'Start Verification Sweep',
+                                  style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w800),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ] else if (phase == SweepPhase.holdingSelfie ||
+                            phase == SweepPhase.sweeping ||
+                            phase == SweepPhase.holdingLecturer) ...[
+                          // Active Sweep Gesture View
+                          const Spacer(),
+                          Center(
+                            child: Column(
+                              children: [
+                                Text(
+                                  phase == SweepPhase.holdingSelfie
+                                      ? 'Hold Still (Selfie Frames)'
+                                      : (phase == SweepPhase.sweeping
+                                          ? 'Sweeping Arc (${round(currentHeading)}° / 180°)'
+                                          : 'Hold Facing Stage (Lecturer)'),
+                                  style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: AppColors.ink),
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  phase == SweepPhase.sweeping
+                                      ? 'Audio and haptic pulses guide rotation as screen turns'
+                                      : 'Maintain stable arm position',
+                                  style: const TextStyle(fontSize: 13, color: AppColors.slate),
+                                ),
+                                const SizedBox(height: 36),
+                                CustomPaint(
+                                  size: const Size(240, 120),
+                                  painter: _ProgressArcPainter(progress: currentHeading / 180.0),
+                                ),
+                                const SizedBox(height: 24),
+                                Text(
+                                  '$recordedFrameCount frames recorded',
+                                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.slate),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const Spacer(),
+                        ] else if (phase == SweepPhase.uploading) ...[
+                          const Spacer(),
+                          const Center(
+                            child: Column(
+                              children: [
+                                CircularProgressIndicator(color: AppColors.primary),
+                                SizedBox(height: 20),
+                                Text(
+                                  'Analyzing Sweep Evidence...',
+                                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: AppColors.ink),
+                                ),
+                                SizedBox(height: 6),
+                                Text(
+                                  'Executing 9-rule biometric and geometry verification',
+                                  style: TextStyle(fontSize: 13, color: AppColors.slate),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const Spacer(),
+                        ] else if (phase == SweepPhase.result) ...[
+                          // Plain-Language Result Screen
+                          _buildResultView(),
+                        ],
                       ],
                     ),
                   ),
-                  const SizedBox(height: 16),
-                ],
-                const Spacer(),
-                // Visual Practice Indicator
-                Center(
-                  child: CustomPaint(
-                    size: const Size(200, 100),
-                    painter: _ProgressArcPainter(progress: isPracticeMode ? 0.5 : 0.0),
-                  ),
                 ),
-                const Spacer(),
-                AnimatedPressable(
-                  onTap: _startSweepGesture,
-                  child: Container(
-                    height: 52,
-                    decoration: BoxDecoration(
-                      gradient: isPracticeMode
-                          ? const LinearGradient(colors: [AppColors.amber, Colors.orange])
-                          : AppColors.primaryGradient,
-                      borderRadius: BorderRadius.circular(16),
-                      boxShadow: [
-                        BoxShadow(
-                          color: (isPracticeMode ? AppColors.amber : AppColors.primary).withValues(alpha: 0.3),
-                          blurRadius: 14,
-                          offset: const Offset(0, 5),
-                        ),
-                      ],
-                    ),
-                    child: Center(
-                      child: Text(
-                        isPracticeMode ? 'Start Practice Mode (No Submission)' : 'Start Verification Sweep',
-                        style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w800),
-                      ),
-                    ),
-                  ),
-                ),
-              ] else if (phase == SweepPhase.holdingSelfie ||
-                  phase == SweepPhase.sweeping ||
-                  phase == SweepPhase.holdingLecturer) ...[
-                // Active Sweep Gesture View
-                const Spacer(),
-                Center(
-                  child: Column(
-                    children: [
-                      Text(
-                        phase == SweepPhase.holdingSelfie
-                            ? 'Hold Still (Selfie Frames)'
-                            : (phase == SweepPhase.sweeping
-                                ? 'Sweeping Arc (${round(currentHeading)}° / 180°)'
-                                : 'Hold Facing Stage (Lecturer)'),
-                        style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: AppColors.ink),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        phase == SweepPhase.sweeping
-                            ? 'Audio and haptic pulses guide rotation as screen turns'
-                            : 'Maintain stable arm position',
-                        style: const TextStyle(fontSize: 13, color: AppColors.slate),
-                      ),
-                      const SizedBox(height: 36),
-                      CustomPaint(
-                        size: const Size(240, 120),
-                        painter: _ProgressArcPainter(progress: currentHeading / 180.0),
-                      ),
-                      const SizedBox(height: 24),
-                      Text(
-                        '$recordedFrameCount frames recorded',
-                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.slate),
-                      ),
-                    ],
-                  ),
-                ),
-                const Spacer(),
-              ] else if (phase == SweepPhase.uploading) ...[
-                const Spacer(),
-                const Center(
-                  child: Column(
-                    children: [
-                      CircularProgressIndicator(color: AppColors.primary),
-                      SizedBox(height: 20),
-                      Text(
-                        'Analyzing Sweep Evidence...',
-                        style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: AppColors.ink),
-                      ),
-                      SizedBox(height: 6),
-                      Text(
-                        'Executing 9-rule biometric and geometry verification',
-                        style: TextStyle(fontSize: 13, color: AppColors.slate),
-                      ),
-                    ],
-                  ),
-                ),
-                const Spacer(),
-              ] else if (phase == SweepPhase.result) ...[
-                // Plain-Language Result Screen
-                _buildResultView(),
-              ],
-            ],
-          ),
+              ),
+            );
+          },
         ),
       ),
     );

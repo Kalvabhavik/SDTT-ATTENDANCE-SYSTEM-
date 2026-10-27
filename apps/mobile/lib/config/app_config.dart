@@ -1,14 +1,40 @@
+import 'package:flutter/foundation.dart';
+
 class AppConfig {
   AppConfig._();
 
+  static const String usbBaseUrl = 'http://localhost:8000/api';
+  static const String lanBaseUrl = 'http://10.0.4.99:8000/api';
+
   static String _apiBaseUrl = const String.fromEnvironment(
     'API_BASE_URL',
-    defaultValue: 'http://localhost:8000/api',
+    defaultValue: usbBaseUrl,
   );
+
+  static final ValueNotifier<String> activeUrlNotifier = ValueNotifier<String>(_apiBaseUrl);
 
   static String get apiBaseUrl => _apiBaseUrl;
   static set apiBaseUrl(String url) {
-    _apiBaseUrl = url.trim();
+    final trimmed = url.trim();
+    if (_apiBaseUrl != trimmed) {
+      _apiBaseUrl = trimmed;
+      activeUrlNotifier.value = trimmed;
+    }
+  }
+
+  static String get alternateUrl {
+    if (_apiBaseUrl.contains('localhost') || _apiBaseUrl.contains('127.0.0.1')) {
+      return lanBaseUrl;
+    }
+    return usbBaseUrl;
+  }
+
+  static bool get isUsingLan => !_apiBaseUrl.contains('localhost') && !_apiBaseUrl.contains('127.0.0.1');
+
+  static String get connectionModeLabel => isUsingLan ? 'Wi-Fi (10.0.4.99)' : 'USB (localhost)';
+
+  static void toggleServerUrl() {
+    apiBaseUrl = alternateUrl;
   }
 
   static Uri get apiUri => Uri.parse(_apiBaseUrl);

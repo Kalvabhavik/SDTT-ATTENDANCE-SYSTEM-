@@ -164,3 +164,148 @@ def test_teacher_establishes_session_reference():
     get_res = client.get(f"/api/sessions/{session_id}", headers=t_headers)
     assert get_res.status_code == 200
     assert get_res.json()["room_photo"] == dummy_b64
+
+
+def test_empty_room_proxy_attempt_is_blocked_and_flagged():
+    reset_test_db()
+    # 1. Login as Student and enroll biometric reference
+    s_login = client.post(
+        "/api/auth/login",
+        json={"email": "student1@demo.edu", "password": "password123"},
+    )
+    s_token = s_login.json()["access_token"]
+    s_headers = {"Authorization": f"Bearer {s_token}"}
+
+    # Generate synthetic face image
+    import cv2
+    import numpy as np
+    img = np.zeros((200, 200, 3), dtype=np.uint8)
+    cv2.circle(img, (100, 100), 50, (255, 255, 255), -1)
+    _, face_buf = cv2.imencode(".jpg", img)
+    face_bytes = face_buf.tobytes()
+
+    enroll_resp = client.post(
+        "/api/auth/enroll",
+        headers=s_headers,
+        data={"consent": "true"},
+        files={"photo": ("selfie.jpg", face_bytes, "image/jpeg")},
+    )
+    assert enroll_resp.status_code == 200
+
+    # 2. Teacher creates session
+    t_login = client.post(
+        "/api/auth/login",
+        json={"email": "teacher@demo.edu", "password": "password123"},
+    )
+    t_token = t_login.json()["access_token"]
+    sess_res = client.post(
+        "/api/sessions",
+        headers={"Authorization": f"Bearer {t_token}"},
+        json={"class_id": "11111111-1111-1111-1111-111111111111", "duration_minutes": 15},
+    )
+    session_id = sess_res.json()["id"]
+
+    # 3. Student scans an EMPTY ROOM (e.g. wall, empty hall, 0 human faces)
+    empty_room = np.zeros((300, 500, 3), dtype=np.uint8)
+    empty_room[:150] = [180, 190, 200]  # wall
+    empty_room[150:] = [80, 90, 100]    # floor
+    _, empty_buf = cv2.imencode(".jpg", empty_room)
+    empty_bytes = empty_buf.tobytes()
+
+    verify_res = client.post(
+        f"/api/sessions/{session_id}/verify-attendance",
+        headers=s_headers,
+        files={
+            "face_image": ("live_face.jpg", face_bytes, "image/jpeg"),
+            "classroom_image": ("empty_room.jpg", empty_bytes, "image/jpeg"),
+        },
+    )
+    assert verify_res.status_code == 200
+    v_data = verify_res.json()
+    # Anti-Proxy Verification: Empty room CANNOT be marked present!
+    assert v_data["status"] == "pending"
+    assert v_data["is_empty_room"] is True
+    assert v_data["sir_detected"] is False
+    assert v_data["crowd_detected"] is False
+    assert v_data["crowd_count"] == 0
+    assert "Empty room detected" in v_data["message"]
+
+    # Verify audit log recorded empty room proxy attempt
+    db = supa()
+    audits = db.table("audit_log").select("*").eq("session_id", session_id).eq("action", "attendance.empty_room_proxy_detected").execute().data
+    assert len(audits) >= 1
+
+
+def test_verify_student_live_attendance_with_active_classroom():
+    reset_test_db()
+    # 1. Login as Student and enroll biometric reference
+    s_login = client.post(
+        "/api/auth/login",
+        json={"email": "student1@demo.edu", "password": "password123"},
+    )
+    s_token = s_login.json()["access_token"]
+    s_headers = {"Authorization": f"Bearer {s_token}"}
+
+    import cv2
+    import numpy as np
+    img = np.zeros((200, 200, 3), dtype=np.uint8)
+    cv2.circle(img, (100, 100), 50, (255, 255, 255), -1)
+    _, face_buf = cv2.imencode(".jpg", img)
+    face_bytes = face_buf.tobytes()
+
+    enroll_resp = client.post(
+        "/api/auth/enroll",
+        headers=s_headers,
+        data={"consent": "true"},
+        files={"photo": ("selfie.jpg", face_bytes, "image/jpeg")},
+    )
+    assert enroll_resp.status_code == 200
+
+    # 2. Teacher creates session
+    t_login = client.post(
+        "/api/auth/login",
+        json={"email": "teacher@demo.edu", "password": "password123"},
+    )
+    t_token = t_login.json()["access_token"]
+    sess_res = client.post(
+        "/api/sessions",
+        headers={"Authorization": f"Bearer {t_token}"},
+        json={"class_id": "11111111-1111-1111-1111-111111111111", "duration_minutes": 15},
+    )
+    session_id = sess_res.json()["id"]
+
+    # 3. Simulate active room with Sir on stage and crowd in audience
+    from unittest.mock import patch
+    from app.face_engine import FaceDetection, get_face_engine
+
+    engine = get_face_engine()
+    orig_detect = engine.detect_faces
+
+    def mock_detect(frame, allow_fallback=False):
+        if allow_fallback:
+            return orig_detect(frame, allow_fallback=True)
+        # For classroom panorama with active lecture:
+        return [
+            FaceDetection(bbox_x=250, bbox_y=60, bbox_w=60, bbox_h=60, confidence=0.92),   # Stage (Sir)
+            FaceDetection(bbox_x=120, bbox_y=220, bbox_w=50, bbox_h=50, confidence=0.88),  # Audience peer
+            FaceDetection(bbox_x=340, bbox_y=220, bbox_w=50, bbox_h=50, confidence=0.87),  # Audience peer
+        ]
+
+    with patch.object(engine, "detect_faces", side_effect=mock_detect):
+        verify_res = client.post(
+            f"/api/sessions/{session_id}/verify-attendance",
+            headers=s_headers,
+            files={
+                "face_image": ("live_face.jpg", face_bytes, "image/jpeg"),
+                "classroom_image": ("active_classroom.jpg", face_bytes, "image/jpeg"),
+            },
+        )
+    assert verify_res.status_code == 200
+    v_data = verify_res.json()
+    assert v_data["status"] == "present"
+    assert v_data["face_match"] is True
+    assert v_data["sir_detected"] is True
+    assert v_data["crowd_detected"] is True
+    assert v_data["crowd_count"] >= 2
+    assert "120-Seater" in v_data["hall_type"] or "Theater" in v_data["hall_type"]
+

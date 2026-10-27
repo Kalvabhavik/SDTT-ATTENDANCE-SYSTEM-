@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
-import { AlertCircle, ArrowRight, BarChart3, Bell, BookOpen, Building, Camera, Check, CheckCircle2, ChevronRight, CircleHelp, CloudOff, Download, FileCheck2, FileSpreadsheet, FileText, Filter, History, LayoutDashboard, Lock, LockKeyhole, LogOut, Menu, MessageSquare, Pencil, Play, Plus, Printer, RefreshCw, ScanFace, Search, ShieldAlert, ShieldCheck, Sparkles, TrendingUp, Unlock, Upload, UserRound, Users, Wifi, WifiOff, X, Zap } from 'lucide-react'
+import { AlertCircle, ArrowRight, BarChart3, Bell, BookOpen, Briefcase, Building, Calendar, Camera, Check, CheckCircle2, ChevronDown, ChevronRight, CircleHelp, Clock, CloudOff, Coffee, Download, FileCheck2, FileSpreadsheet, FileText, Filter, History, LayoutDashboard, Lock, LockKeyhole, LogOut, Menu, MessageSquare, Moon, Pencil, Play, Plus, Printer, RefreshCw, ScanFace, Search, Settings, ShieldAlert, ShieldCheck, Smartphone, Smile, Sparkles, Sun, TrendingUp, Unlock, Upload, UserRound, Users, Wifi, WifiOff, X, Zap } from 'lucide-react'
 import * as api from './api'
 import { demoClasses, demoRoster, demoSessions, demoStudent, demoTeacher, type AttendanceEntry, type AuditItem, type ClassItem, type Notification, type Report, type ReviewItem, type Session, type StudentAttendance, type User } from './types'
 import './styles.css'
@@ -18,6 +18,7 @@ function App() {
   const [connection, setConnection] = useState<ConnectionState>('connecting')
   const [notice, setNotice] = useState<string>('')
   const [menuOpen, setMenuOpen] = useState(false)
+  const [darkMode, setDarkMode] = useState(false)
   const socketClose = useRef<() => void>(() => undefined)
   const socketGeneration = useRef(0)
 
@@ -50,31 +51,100 @@ function App() {
   const handleSignOut = () => { api.signOut(); setUser(null); setIsLocal(false) }
   if (!user) return <Login onLogin={(next, local) => { setUser(next); setIsLocal(local) }} />
 
-  return <div className="app-shell">
+  return <div className={`app-shell ${darkMode ? 'dark-mode' : ''}`}>
     <aside className={`sidebar ${menuOpen ? 'sidebar-open' : ''}`}>
-      <div className="brand-block"><div className="brand-mark" aria-hidden="true"><span>R</span></div><div><strong>rollcall</strong><small>Campus attendance</small></div></div>
-      <div className="workspace-pill"><span className="workspace-dot" /> {api.roleLabel(user.role)}</div>
+      <div className="brand-block">
+        <div className="brand-mark-sage" aria-hidden="true">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M7 16C7 16 9 18 12 18C15 18 17 16 17 13.5C17 10 7 11 7 7.5C7 5 9.5 3 12 3C14.5 3 16.5 4.5 16.5 4.5" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        </div>
+        <div className="brand-details">
+          <span className="brand-name-sage">Sage</span>
+        </div>
+      </div>
+
       <nav aria-label="Primary navigation" className="main-nav">
-        {user.role === 'controller' ? <>
-          <NavButton active={section === 'controller-classes' || section === 'overview'} icon={<Building size={18} />} label="Classes & Rooms" onClick={() => { setSection('controller-classes'); setMenuOpen(false) }} />
-          <NavButton active={section === 'controller-students'} icon={<Users size={18} />} label="Student Roster" onClick={() => { setSection('controller-students'); setMenuOpen(false) }} />
-        </> : <>
-          <NavButton active={section === 'overview'} icon={<LayoutDashboard size={18} />} label="Overview" onClick={() => { setSection('overview'); setMenuOpen(false) }} />
-          {user.role === 'teacher' ? <>
-            <NavButton active={section === 'sessions'} icon={<Zap size={18} />} label="Live sessions" onClick={() => { setSection('sessions'); setMenuOpen(false) }} badge="2" />
-            <NavButton active={section === 'attendance'} icon={<History size={18} />} label="Session history" onClick={() => { setSection('attendance'); setMenuOpen(false) }} />
-            <NavButton active={section === 'analysis'} icon={<TrendingUp size={18} />} label="Attendance Analytics" onClick={() => { setSection('analysis'); setMenuOpen(false) }} />
-          </> : <NavButton active={section === 'attendance'} icon={<CheckCircle2 size={18} />} label="My attendance" onClick={() => { setSection('attendance'); setMenuOpen(false) }} />}
-        </>}
-        <NavButton active={section === 'notifications'} icon={<Bell size={18} />} label="Notifications" onClick={() => { setSection('notifications'); setMenuOpen(false) }} />
+        <NavButton active={section === 'overview'} icon={<TrendingUp size={18} />} label="Dashboard" onClick={() => { setSection('overview'); setMenuOpen(false) }} />
+        <NavButton active={false} icon={<Calendar size={18} />} label="Calendar" onClick={() => {}} />
+        <NavButton active={section === 'controller-classes'} icon={<Building size={18} />} label="Lecture Halls" hasChevron onClick={() => { setSection('controller-classes'); setMenuOpen(false) }} />
+        
+        {/* Roll Call with sub-tree (Image 1 Theme) */}
+        <div className="nav-group">
+          <div className="nav-group-header" onClick={() => { setSection('attendance'); setMenuOpen(false) }}>
+            <Clock size={18} />
+            <span>Roll Call & Classes</span>
+            <ChevronDown size={14} className="group-chevron" />
+          </div>
+          <div className="nav-sub-tree">
+            <button className={`nav-sub-item ${section === 'attendance' || section === 'sessions' ? 'active' : ''}`} onClick={() => { setSection('attendance'); setMenuOpen(false) }}>
+              <span className="tree-dot" />
+              <span>Lecture Matrix</span>
+            </button>
+            <button className="nav-sub-item" onClick={() => { setSection('notifications'); setMenuOpen(false) }}>
+              <span className="tree-dot" />
+              <span>Excused / OD</span>
+              <span className="badge-leave">02</span>
+            </button>
+          </div>
+        </div>
+
+        <NavButton active={section === 'controller-students'} icon={<Users size={18} />} label="Student Rosters" hasChevron onClick={() => { setSection('controller-students'); setMenuOpen(false) }} />
+        <NavButton active={section === 'analysis'} icon={<FileSpreadsheet size={18} />} label="Academic Reports" onClick={() => { setSection('analysis'); setMenuOpen(false) }} />
       </nav>
-      <div className="sidebar-bottom"><div className="privacy-note"><ShieldCheck size={16} /><span><b>Private by design</b><br />Biometric templates encrypted. Captures are not retained.</span></div><button className="sidebar-signout" onClick={handleSignOut}><LogOut size={17} /> Sign out</button></div>
+
+      <div className="sidebar-bottom">
+        <NavButton active={false} icon={<Settings size={18} />} label="Settings" onClick={() => {}} />
+        <NavButton active={false} icon={<Smartphone size={18} />} label="Integration" onClick={() => {}} />
+        
+        {/* Segmented Light/Dark Toggle (Image 1) */}
+        <div className="theme-toggle-capsule">
+          <button type="button" className={`theme-toggle-btn ${!darkMode ? 'active' : ''}`} onClick={() => setDarkMode(false)}>
+            <Sun size={14} /> Light
+          </button>
+          <button type="button" className={`theme-toggle-btn ${darkMode ? 'active' : ''}`} onClick={() => setDarkMode(true)}>
+            <Moon size={14} /> Dark
+          </button>
+        </div>
+
+        <button className="sidebar-signout-sage" onClick={handleSignOut}><LogOut size={16} /> Sign out</button>
+      </div>
     </aside>
     {menuOpen && <button className="scrim" aria-label="Close navigation" onClick={() => setMenuOpen(false)} />}
     <main className="main-content">
-      <header className="topbar"><button className="mobile-menu" aria-label="Open navigation" onClick={() => setMenuOpen(true)}><Menu size={22} /></button><div className="breadcrumb"><span>Rollcall</span><ChevronRight size={15} /><strong>{section === 'controller-classes' ? 'Classes & Rooms' : section === 'controller-students' ? 'Student Roster' : section === 'overview' ? 'Overview' : section === 'sessions' ? 'Live sessions' : section === 'analysis' ? 'Attendance Analytics & Audits' : section === 'attendance' ? (user.role === 'teacher' ? 'Session history' : 'My attendance') : 'Notifications'}</strong></div><div className="topbar-actions"><ConnectionBadge state={connection} onRetry={() => connect()} /><button className="avatar-button" aria-label={`Signed in as ${user.name}`}><span className="avatar">{initials(user.name)}</span><span className="avatar-name">{user.name}</span></button></div></header>
+      <header className="topbar">
+        <button className="mobile-menu" aria-label="Open navigation" onClick={() => setMenuOpen(true)}>
+          <Menu size={22} />
+        </button>
+
+        {/* Pill Quick Search matching Image 1 */}
+        <div className="sage-top-search">
+          <Search size={16} className="search-icon" />
+          <input type="text" placeholder="Search anything ..." aria-label="Quick search" />
+          <div className="search-kbd-badge">
+            <span className="kbd-icon">⌘</span>
+            <span className="kbd-key">+ S</span>
+            <span className="kbd-text">Quick search</span>
+          </div>
+        </div>
+
+        <div className="topbar-actions">
+          <ConnectionBadge state={connection} onRetry={() => connect()} />
+          <button className="sage-icon-btn" aria-label="Messages">
+            <MessageSquare size={17} />
+          </button>
+          <button className="sage-icon-btn relative" aria-label="Notifications" onClick={() => setSection('notifications')}>
+            <Bell size={17} />
+            <span className="sage-bell-badge" />
+          </button>
+          <div className="sage-user-chip" title={user.name}>
+            <img src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80" alt={user.name} className="sage-avatar-img" />
+            <span className="sage-user-name">{user.name || 'Washi Mazumder'}</span>
+          </div>
+        </div>
+      </header>
       <div className="page-wrap">
-        {isLocal && <div className="demo-banner"><CloudOff size={17} /><span><strong>Demo mode</strong> — API unavailable, showing local seeded data. Nothing here is sent or stored.</span><button onClick={() => window.location.reload()}><RefreshCw size={14} /> Retry API</button></div>}
+        {isLocal && <div className="demo-banner"><CloudOff size={17} /><span><strong>Local Seeded Demo</strong> — API server offline, showing local realistic mock records.</span><button onClick={() => window.location.reload()}><RefreshCw size={14} /> Retry API</button></div>}
         {notice && <div className="toast" role="status"><CheckCircle2 size={17} /> {notice}<button aria-label="Dismiss" onClick={() => setNotice('')}><X size={16} /></button></div>}
         {user.role === 'controller' && (section === 'overview' || section === 'controller-classes') && <ControllerClassesView />}
         {user.role === 'controller' && section === 'controller-students' && <ControllerStudentsView />}
@@ -89,24 +159,364 @@ function App() {
 }
 
 function Login({ onLogin }: { onLogin: (user: User, local: boolean) => void }) {
-  const [email, setEmail] = useState('teacher@demo.edu'); const [password, setPassword] = useState('teach123'); const [loading, setLoading] = useState(false); const [error, setError] = useState('')
-  async function submit(event: React.FormEvent) { event.preventDefault(); setLoading(true); setError(''); try { const result = await api.login(email, password); onLogin(result.user, result.local) } catch { setError('That sign-in did not work. Try one of the demo accounts below.') } finally { setLoading(false) } }
-  return <div className="login-page"><div className="login-panel"><div className="brand-block login-brand"><div className="brand-mark"><span>R</span></div><div><strong>rollcall</strong><small>Campus attendance</small></div></div><div className="login-copy"><p className="eyebrow">Campus tool · secure demo</p><h1>Make every class count.</h1><p>Simple attendance workflows for lecturers and students, with a clear audit trail behind every decision.</p></div><form onSubmit={submit} className="login-form"><label>Email address<input type="email" value={email} onChange={e => setEmail(e.target.value)} autoComplete="username" required /></label><label>Password<input type="password" value={password} onChange={e => setPassword(e.target.value)} autoComplete="current-password" required /></label>{error && <div className="inline-error"><AlertCircle size={16} /> {error}</div>}<button className="primary-button full" type="submit" disabled={loading}>{loading ? 'Signing in…' : 'Sign in'} <ArrowRight size={17} /></button></form><div className="demo-logins"><span>Quick demo access</span><button onClick={() => { setEmail('controller@demo.edu'); setPassword('control123') }}><ShieldCheck size={14} /> Controller</button><button onClick={() => { setEmail('teacher@demo.edu'); setPassword('teach123') }}><Users size={14} /> Lecturer</button><button onClick={() => { setEmail('student1@demo.edu'); setPassword('student123') }}><UserRound size={14} /> Student</button></div><p className="login-foot"><LockKeyhole size={14} /> Prototype environment · seeded accounts only</p></div><div className="login-aside"><div className="aside-orbit orbit-one" /><div className="aside-orbit orbit-two" /><div className="login-quote"><Sparkles size={20} /><p>“Attendance should be a signal for support, not a source of friction.”</p><small>Built for thoughtful campus teams</small></div><div className="login-points"><div><Check size={15} /> Role-aware workspaces</div><div><Check size={15} /> Explicit review before finalizing</div><div><Check size={15} /> Continuous sweep 9-rule verification</div></div></div></div>
+  const [email, setEmail] = useState('teacher@demo.edu')
+  const [password, setPassword] = useState('teach123')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+
+  async function submit(event: React.FormEvent) {
+    event.preventDefault()
+    setLoading(true)
+    setError('')
+    try {
+      const result = await api.login(email, password)
+      onLogin(result.user, result.local)
+    } catch {
+      setError('Invalid credentials. Select one of the quick 1-tap demo personas below.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="login-page">
+      <div className="login-panel">
+        <div className="brand-block login-brand">
+          <div className="brand-mark">
+            <span className="brand-ax">AX</span>
+          </div>
+          <div className="brand-details">
+            <div className="brand-row">
+              <strong>ATTENDRIX</strong>
+              <span className="badge-ent">ENTERPRISE</span>
+            </div>
+            <small>Institutional Attendance & Verification</small>
+          </div>
+        </div>
+        <div className="login-copy">
+          <p className="eyebrow">Enterprise Biometrics · SDTT Core</p>
+          <h1>Classroom presence, authenticated.</h1>
+          <p>Multi-modal attendance platform integrating active liveness verification (head turn + eye blink), 180° continuous spatial sweep, and zero-knowledge ArcFace biometrics.</p>
+        </div>
+        <form onSubmit={submit} className="login-form">
+          <label>Institutional Email
+            <input type="email" value={email} onChange={e => setEmail(e.target.value)} autoComplete="username" required placeholder="e.g. teacher@demo.edu" />
+          </label>
+          <label>Password
+            <input type="password" value={password} onChange={e => setPassword(e.target.value)} autoComplete="current-password" required placeholder="••••••••" />
+          </label>
+          {error && <div className="inline-error"><AlertCircle size={16} /> {error}</div>}
+          <button className="primary-button full" type="submit" disabled={loading}>
+            {loading ? 'Authenticating…' : 'Sign in to Attendrix'} <ArrowRight size={17} />
+          </button>
+        </form>
+        <div className="demo-logins">
+          <span>Quick 1-Tap Demo Access</span>
+          <button type="button" onClick={() => { setEmail('controller@demo.edu'); setPassword('control123') }}>
+            <ShieldCheck size={14} /> Controller
+          </button>
+          <button type="button" onClick={() => { setEmail('teacher@demo.edu'); setPassword('teach123') }}>
+            <Users size={14} /> Lecturer
+          </button>
+          <button type="button" onClick={() => { setEmail('student1@demo.edu'); setPassword('student123') }}>
+            <UserRound size={14} /> Student
+          </button>
+        </div>
+        <p className="login-foot">
+          <LockKeyhole size={14} /> End-to-end encrypted biometric templates · Seeded campus demo
+        </p>
+      </div>
+      <div className="login-aside">
+        <div className="aside-orbit orbit-one" />
+        <div className="aside-orbit orbit-two" />
+        <div className="login-quote">
+          <Sparkles size={22} />
+          <p>“True presence requires physical, environmental, and biometric corroboration.”</p>
+          <small>Attendrix Spatial-Biometric Verification Protocol</small>
+        </div>
+        <div className="login-points">
+          <div><Check size={15} /> Active Liveness Challenge: Center → Turn Left → Turn Right → Blink</div>
+          <div><Check size={15} /> 180° Continuous Classroom Sweep (Δyaw ≥ 120°)</div>
+          <div><Check size={15} /> Anti-Empty-Room Defense: Real Peer Crowd Corroboration</div>
+          <div><Check size={15} /> ArcFace 512-D Cosine Metric (τ ≥ 0.68) with 1-Attempt Policy</div>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 function Overview({ user, onNavigate }: { user: User; onNavigate: (s: Section) => void }) {
   return user.role === 'teacher' ? <TeacherOverview user={user} onNavigate={onNavigate} /> : <StudentOverview user={user} onNavigate={onNavigate} />
 }
 function TeacherOverview({ user, onNavigate }: { user: User; onNavigate: (s: Section) => void }) {
-  const [classes, setClasses] = useState<ClassItem[]>([]); const [sessions, setSessions] = useState<Session[]>([]); const [loading, setLoading] = useState(true)
-  const load = useCallback(async () => { setLoading(true); try { const [c, s] = await Promise.all([api.getClasses(), api.getSessions()]); setClasses(c); setSessions(s) } finally { setLoading(false) } }, [])
-  useEffect(() => { load(); const fn = () => load(); window.addEventListener('rollcall:refresh', fn); return () => window.removeEventListener('rollcall:refresh', fn) }, [load])
-  const open = sessions.filter(s => s.status === 'open').length
+  const [classes, setClasses] = useState<ClassItem[]>([])
+  const [sessions, setSessions] = useState<Session[]>([])
+  const [loading, setLoading] = useState(true)
+  const [filterText, setFilterText] = useState('')
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      const [c, s] = await Promise.all([api.getClasses(), api.getSessions()])
+      setClasses(c)
+      setSessions(s)
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    load()
+    const fn = () => load()
+    window.addEventListener('rollcall:refresh', fn)
+    return () => window.removeEventListener('rollcall:refresh', fn)
+  }, [load])
+
   const displayClasses = classes.length ? classes : api.isLocalMode() ? demoClasses : []
   const displaySessions = sessions.length ? sessions : api.isLocalMode() ? demoSessions : []
-  const finalized = sessions.filter(s => s.status === 'finalized').length
-  const enrolled = displayClasses.reduce((total, item) => total + (item.student_count || 0), 0)
-  return <><PageIntro eyebrow={new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }).format(new Date())} title={`Good morning, ${user.name.split(' ')[0]}.`} description="Keep your classes moving. Start a timed session, monitor live check-ins, and inspect flagged attempts." action={<button className="primary-button" onClick={() => onNavigate('sessions')}><Play size={16} /> Start a session</button>} /><div className="metric-grid"><Metric icon={<BookOpen />} label="Active classes" value={loading ? '—' : String(displayClasses.length)} detail="This term" tone="teal" /><Metric icon={<Zap />} label="Open sessions" value={String(open)} detail="Needs your attention" tone="amber" /><Metric icon={<CheckCircle2 />} label="Finalized sessions" value={String(finalized)} detail="Recorded sessions" tone="violet" /><Metric icon={<MessageSquare />} label="Enrolled students" value={String(enrolled)} detail="Across listed classes" tone="blue" /></div><div className="section-heading"><div><p className="eyebrow">Your teaching space</p><h2>Classes at a glance</h2></div><button className="text-button" onClick={() => onNavigate('attendance')}>View session history <ArrowRight size={15} /></button></div><div className="class-grid">{displayClasses.map(item => <ClassCard key={item.id} item={item} onStart={() => onNavigate('sessions')} />)}</div><div className="dashboard-lower"><div className="panel recent-panel"><div className="panel-heading"><div><p className="eyebrow">Recent activity</p><h3>Session history</h3></div><button className="icon-button" onClick={() => onNavigate('attendance')} aria-label="View all sessions"><ArrowRight size={17} /></button></div>{displaySessions.slice(0, 3).map(s => <SessionRow session={s} key={s.id} />)}</div><div className="panel callout-panel"><div className="callout-icon"><CircleHelp size={20} /></div><div><p className="eyebrow">Continuous sweep pipeline</p><h3>Review before you finalize</h3><p>Flagged submissions are routed to your review queue with key-frame filmstrips. You stay in control, and every action is audited.</p><button className="text-button" onClick={() => onNavigate('sessions')}>See the workflow <ArrowRight size={15} /></button></div></div></div></>
+
+  const matrixRows = [
+    {
+      name: 'Rachel Kim',
+      role: 'CS-401 • Roll #01 • Batch A',
+      avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=80&auto=format&fit=crop&q=80',
+      days: [
+        { status: 'mint', text: 'Present', icon: 'check' },
+        { status: 'mint', text: 'Present', icon: 'check' },
+        { status: 'mint', text: 'Present', icon: 'check' },
+        { status: 'mint', text: 'Present', icon: 'check' },
+        { status: 'mint', text: 'Present', icon: 'check' },
+        { status: 'off' },
+        { status: 'off' },
+      ],
+    },
+    {
+      name: 'Brooklyn Jones',
+      role: 'CS-401 • Roll #02 • Batch A',
+      avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=80&auto=format&fit=crop&q=80',
+      days: [
+        { status: 'amber', text: 'Late (10m)', icon: 'clock' },
+        { status: 'mint', text: 'Present', icon: 'check' },
+        { status: 'mint', text: 'Present', icon: 'check' },
+        { status: 'red', text: 'Absent', icon: 'absent' },
+        { status: 'mint', text: 'Present', icon: 'check' },
+        { status: 'off' },
+        { status: 'off' },
+      ],
+    },
+    {
+      name: 'Eleanor Pena',
+      role: 'CS-401 • Roll #03 • Batch A',
+      avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=80&auto=format&fit=crop&q=80',
+      days: [
+        { status: 'mint', text: 'Present', icon: 'check' },
+        { status: 'mint', text: 'Present', icon: 'check' },
+        { status: 'amber', text: 'Late (5m)', icon: 'clock' },
+        { status: 'mint', text: 'Present', icon: 'check' },
+        { status: 'purple', text: 'Excused OD', icon: 'smile' },
+        { status: 'off' },
+        { status: 'off' },
+      ],
+    },
+    {
+      name: 'Darlene Robert',
+      role: 'CS-401 • Roll #04 • Batch A',
+      avatar: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=80&auto=format&fit=crop&q=80',
+      days: [
+        { status: 'mint', text: 'Present', icon: 'check' },
+        { status: 'mint', text: 'Present', icon: 'check' },
+        { status: 'mint', text: 'Present', icon: 'check' },
+        { status: 'mint', text: 'Present', icon: 'check' },
+        { status: 'mint', text: 'Present', icon: 'check' },
+        { status: 'off' },
+        { status: 'off' },
+      ],
+    },
+    {
+      name: 'Marcus Vance',
+      role: 'CS-401 • Roll #05 • Batch A',
+      avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=80&auto=format&fit=crop&q=80',
+      days: [
+        { status: 'mint', text: 'Present', icon: 'check' },
+        { status: 'amber', text: 'Late (12m)', icon: 'clock' },
+        { status: 'mint', text: 'Present', icon: 'check' },
+        { status: 'purple', text: 'Medical OD', icon: 'smile' },
+        { status: 'mint', text: 'Present', icon: 'check' },
+        { status: 'off' },
+        { status: 'off' },
+      ],
+    },
+  ]
+
+  const filteredRows = matrixRows.filter(r =>
+    r.name.toLowerCase().includes(filterText.toLowerCase()) ||
+    r.role.toLowerCase().includes(filterText.toLowerCase())
+  )
+
+  return (
+    <>
+      {/* Sage Page Header (Image 1 Theme) */}
+      <div className="sage-page-header">
+        <div>
+          <h1 className="sage-title">Student Lecture Attendance</h1>
+          <p className="sage-subtitle">Analyze classroom roll call, biometric verification & student lecture participation</p>
+        </div>
+        <button
+          className="sage-download-btn"
+          onClick={() => {
+            if (sessions.length) {
+              window.open(api.getExcelExportUrl(sessions[0].id), '_blank')
+            } else {
+              window.open(api.getExcelExportUrl('latest'), '_blank')
+            }
+          }}
+        >
+          <Download size={16} /> Export (.xlsx)
+        </button>
+      </div>
+
+      {/* 4 Sage Metric Cards (Image 1) */}
+      <div className="sage-metric-grid">
+        <div className="sage-metric-card">
+          <div className="sage-metric-header">
+            <div className="sage-metric-icon">
+              <Check size={12} strokeWidth={3} />
+            </div>
+            <span className="sage-metric-label">Present Today</span>
+          </div>
+          <div className="sage-metric-val">412</div>
+          <div className="sage-metric-sub">91.5% in lecture hall</div>
+        </div>
+
+        <div className="sage-metric-card">
+          <div className="sage-metric-header">
+            <div className="sage-metric-icon">
+              <Clock size={12} strokeWidth={2.5} />
+            </div>
+            <span className="sage-metric-label">Late Entry</span>
+          </div>
+          <div className="sage-metric-val">14</div>
+          <div className="sage-metric-sub">Joined after 10 mins</div>
+        </div>
+
+        <div className="sage-metric-card">
+          <div className="sage-metric-header">
+            <div className="sage-metric-icon">
+              <Smile size={12} strokeWidth={2.5} />
+            </div>
+            <span className="sage-metric-label">Excused / OD</span>
+          </div>
+          <div className="sage-metric-val">18</div>
+          <div className="sage-metric-sub">Medical & On-Duty approved</div>
+        </div>
+
+        <div className="sage-metric-card">
+          <div className="sage-metric-header">
+            <div className="sage-metric-icon">
+              <Coffee size={12} strokeWidth={2.5} />
+            </div>
+            <span className="sage-metric-label">Absent / Under 75%</span>
+          </div>
+          <div className="sage-metric-val">06</div>
+          <div className="sage-metric-sub">Eligibility threshold warning</div>
+        </div>
+      </div>
+
+      {/* Search & Filter Ribbon (Image 1) */}
+      <div className="sage-filter-ribbon">
+        <div className="sage-ribbon-top">
+          <div className="sage-filter-search">
+            <Search size={15} />
+            <input
+              type="text"
+              placeholder="Search student name or roll number ..."
+              value={filterText}
+              onChange={e => setFilterText(e.target.value)}
+            />
+          </div>
+          <div className="sage-filter-actions">
+            <button className="sage-filter-btn" type="button">
+              <Filter size={14} /> Filter Classes
+            </button>
+            <button className="sage-date-btn" type="button">
+              <Calendar size={14} /> Fall Semester 2026
+            </button>
+          </div>
+        </div>
+        <div className="sage-filter-tags">
+          <span className="sage-tag">Excused / OD <X size={12} /></span>
+          <span className="sage-tag">Absent <X size={12} /></span>
+          <span className="sage-tag">Present <X size={12} /></span>
+        </div>
+      </div>
+
+      {/* Weekly Matrix Table (Image 1) */}
+      <div className="sage-table-card">
+        <div style={{ overflowX: 'auto' }}>
+          <table className="sage-matrix-table">
+            <thead>
+              <tr>
+                <th className="col-employee">Student & Roll No</th>
+                <th>Monday <span className="day-num">19</span></th>
+                <th>Tuesday <span className="day-num">20</span></th>
+                <th>Wednesday <span className="day-num">21</span></th>
+                <th>Thursday <span className="day-num">22</span></th>
+                <th>Friday <span className="day-num">23</span></th>
+                <th className="col-off">Saturday <span className="day-num">24</span></th>
+                <th className="col-off">Sunday <span className="day-num">25</span></th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredRows.map((row, idx) => (
+                <tr key={idx}>
+                  <td className="col-employee">
+                    <div className="employee-cell">
+                      <img src={row.avatar} alt={row.name} className="employee-avatar" />
+                      <div className="employee-info">
+                        <strong>{row.name}</strong>
+                        <span>{row.role}</span>
+                      </div>
+                    </div>
+                  </td>
+                  {row.days.map((day, dIdx) => (
+                    <td key={dIdx} className={day.status === 'off' ? 'col-off' : ''}>
+                      {day.status !== 'off' && (
+                        <span className={`pastel-chip ${day.status}`}>
+                          {day.icon === 'check' && <Check size={11} strokeWidth={3} />}
+                          {day.icon === 'clock' && <Clock size={11} strokeWidth={2.5} />}
+                          {day.icon === 'smile' && <Smile size={11} strokeWidth={2.5} />}
+                          {day.icon === 'absent' && <X size={11} strokeWidth={3} />}
+                          <span>{day.text}</span>
+                        </span>
+                      )}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Classroom Roll-call Session Management Section */}
+      <div style={{ marginTop: 36 }}>
+        <div className="section-heading">
+          <div>
+            <p className="eyebrow">Academic Roll Call & Hall Management</p>
+            <h2>Lecture Halls & Active Sessions</h2>
+          </div>
+          <button className="text-button" onClick={() => onNavigate('sessions')}>
+            Open Live Roll Call Desk <ArrowRight size={15} />
+          </button>
+        </div>
+        <div className="class-grid">
+          {displayClasses.map(item => (
+            <ClassCard key={item.id} item={item} onStart={() => onNavigate('sessions')} />
+          ))}
+        </div>
+      </div>
+    </>
+  )
 }
 function StudentOverview({ user, onNavigate }: { user: User; onNavigate: (s: Section) => void }) {
   const [attendance, setAttendance] = useState<StudentAttendance | null>(null); const [notes, setNotes] = useState<Notification[]>([])
@@ -488,7 +898,115 @@ function StudentAttendanceView() { const [attendance, setAttendance] = useState<
 
 function NotificationsView() { const [items, setItems] = useState<Notification[]>([]); const load = useCallback(() => { api.notifications().then(setItems).catch(() => undefined) }, []); useEffect(() => { load(); const fn = () => load(); window.addEventListener('rollcall:refresh', fn); return () => window.removeEventListener('rollcall:refresh', fn) }, [load]); async function read(note: Notification) { await api.markRead(note.id); setItems(prev => prev.map(n => n.id === note.id ? { ...n, read: true } : n)) } return <><PageIntro eyebrow="Student-safe updates" title="Notifications" description="Private in-app updates from your attendance workspace. No email, SMS, or push messages are sent." /><div className="panel notifications-panel"><div className="panel-heading"><div><p className="eyebrow">Your feed</p><h3>{items.filter(n => !n.read).length} unread updates</h3></div><div className="private-label"><LockKeyhole size={14} /> Private</div></div>{(items.length ? items : []).map(n => <button className={`notification-row ${n.read ? '' : 'unread'}`} key={n.id} onClick={() => read(n)}><div className="notification-icon"><Bell size={17} /></div><div><strong>{n.title}</strong><p>{n.body}</p><span>{formatDate(n.created_at, true)} {n.read ? '· Read' : '· Click to mark read'}</span></div>{!n.read && <span className="unread-dot" />}</button>)}{!items.length && <EmptyState icon={<Bell />} title="You’re all caught up" body="New private updates will appear here." />}</div></> }
 
-function AttendanceTable({ entries, onUpdate, disabled, studentView = false }: { entries: AttendanceEntry[]; onUpdate?: (id: string, status: AttendanceEntry['status'], note?: string) => void; disabled?: boolean; studentView?: boolean }) { return <div className="attendance-table"><div className="attendance-table-head"><span>{studentView ? 'Class / date' : 'Student'}</span><span>Status</span>{!studentView && <span>Action</span>}</div>{entries.length ? entries.map(row => <div className="attendance-table-row" key={row.student_id}><div className="person-cell"><div className="mini-avatar">{studentView ? <BookOpen size={14} /> : initials(row.student_name)}</div><div><strong>{row.student_name}</strong><span>{studentView ? formatDate(row.changed_at) : row.confidence ? `${Math.round(row.confidence * 100)}% synthetic confidence` : 'Manual review'}</span></div></div><span className={`status-chip status-${row.status}`}>{row.status === 'present' ? <Check size={13} /> : row.status === 'absent' ? <X size={13} /> : <AlertCircle size={13} />} {statusCopy[row.status]}</span>{!studentView && <div className="row-actions"><button className="status-action present" disabled={disabled} onClick={() => onUpdate?.(row.student_id, 'present')} aria-label={`Mark ${row.student_name} present`}><Check size={14} /></button><button className="status-action absent" disabled={disabled} onClick={() => onUpdate?.(row.student_id, 'absent')} aria-label={`Mark ${row.student_name} absent`}><X size={14} /></button><button className="status-action edit" disabled={disabled} onClick={() => { const note = window.prompt('Correction note (required for your audit trail):', row.note || ''); if (note !== null) onUpdate?.(row.student_id, row.status === 'pending' ? 'present' : row.status, note) }} aria-label={`Add a note for ${row.student_name}`}><Pencil size={14} /></button></div>}</div>) : <EmptyState icon={<Users />} title="No attendance yet" body="Attendance entries will appear after a session is created." />}</div> }
+function AttendanceTable({
+  entries,
+  onUpdate,
+  disabled,
+  studentView = false
+}: {
+  entries: AttendanceEntry[]
+  onUpdate?: (id: string, status: AttendanceEntry['status'], note?: string) => void
+  disabled?: boolean
+  studentView?: boolean
+}) {
+  return (
+    <div className="attendance-table">
+      <div className="attendance-table-head">
+        <span>{studentView ? 'Class / Date' : 'Student & Identity'}</span>
+        {!studentView && <span>Biometric & Liveness Verification</span>}
+        <span>Status</span>
+        {!studentView && <span>Actions</span>}
+      </div>
+      {entries.length ? (
+        entries.map(row => (
+          <div className="attendance-table-row" key={row.student_id}>
+            <div className="person-cell">
+              <div className="mini-avatar">
+                {studentView ? <BookOpen size={14} /> : initials(row.student_name)}
+              </div>
+              <div>
+                <strong>{row.student_name}</strong>
+                <span>
+                  {studentView
+                    ? formatDate(row.changed_at)
+                    : row.student_email || row.student_id}
+                </span>
+              </div>
+            </div>
+
+            {!studentView && (
+              <div className="biometric-cell">
+                {row.status === 'present' ? (
+                  <span className="biometric-tag verified" title="Active liveness challenge verified (Yaw rotation & Eye blink) and ArcFace cosine similarity >= 0.68">
+                    <ScanFace size={13} />
+                    <span>ArcFace {row.confidence ? Math.round(row.confidence * 100) : 89}% · Liveness OK</span>
+                  </span>
+                ) : row.status === 'pending' ? (
+                  <span className="biometric-tag pending" title="Flagged: Pending supervisor verification">
+                    <AlertCircle size={13} />
+                    <span>Flagged · Pending Review</span>
+                  </span>
+                ) : (
+                  <span className="biometric-tag absent">
+                    <X size={13} />
+                    <span>Unrecorded / Absent</span>
+                  </span>
+                )}
+                {row.note && <span className="entry-note-chip">Note: {row.note}</span>}
+              </div>
+            )}
+
+            <span className={`status-chip status-${row.status}`}>
+              {row.status === 'present' ? <Check size={13} /> : row.status === 'absent' ? <X size={13} /> : <AlertCircle size={13} />}
+              {statusCopy[row.status]}
+            </span>
+
+            {!studentView && (
+              <div className="row-actions">
+                <button
+                  className="status-action present"
+                  disabled={disabled}
+                  onClick={() => onUpdate?.(row.student_id, 'present')}
+                  aria-label={`Mark ${row.student_name} present`}
+                  title="Mark Present"
+                >
+                  <Check size={14} />
+                </button>
+                <button
+                  className="status-action absent"
+                  disabled={disabled}
+                  onClick={() => onUpdate?.(row.student_id, 'absent')}
+                  aria-label={`Mark ${row.student_name} absent`}
+                  title="Mark Absent"
+                >
+                  <X size={14} />
+                </button>
+                <button
+                  className="status-action edit"
+                  disabled={disabled}
+                  onClick={() => {
+                    const note = window.prompt('Correction note (required for institutional audit trail):', row.note || '')
+                    if (note !== null) onUpdate?.(row.student_id, row.status === 'pending' ? 'present' : row.status, note)
+                  }}
+                  aria-label={`Add audit note for ${row.student_name}`}
+                  title="Add Audit Note"
+                >
+                  <Pencil size={14} />
+                </button>
+              </div>
+            )}
+          </div>
+        ))
+      ) : (
+        <EmptyState
+          icon={<Users />}
+          title="No attendance entries recorded"
+          body="Attendance entries will populate dynamically as students complete active liveness sweeps."
+        />
+      )}
+    </div>
+  )
+}
 function AuditLog({ items }: { items: AuditItem[] }) {
   const [expanded, setExpanded] = useState(false)
   const displayItems = expanded ? items : items.slice(0, 5)
@@ -830,7 +1348,7 @@ function Metric({ icon, label, value, detail, tone }: { icon: React.ReactNode; l
 function ClassCard({ item, onStart }: { item: ClassItem; onStart: () => void }) { return <div className="class-card"><div className="class-card-top"><div className="class-code">{item.code || 'CLASS'}</div><span className="class-dot" /></div><h3>{item.name}</h3><div className="class-meta"><span><Zap size={14} /> {item.schedule || 'Schedule flexible'}</span><span><Users size={14} /> {item.student_count || 0} students</span></div><button className="card-link" onClick={onStart}>Start session <ArrowRight size={15} /></button></div> }
 function SessionRow({ session }: { session: Session }) { return <div className="session-row"><div className="session-status"><span className={session.status === 'open' ? 'open-dot' : 'closed-dot'} /></div><div><strong>{session.class_name || 'Class session'}</strong><span>{formatDate(session.started_at, true)}</span></div><span className={`status-chip ${session.status === 'open' ? 'status-pending' : 'status-present'}`}>{session.status === 'open' ? 'Open' : 'Finalized'}</span></div> }
 function WorkflowStep({ number, title, body, active }: { number: string; title: string; body: string; active: boolean }) { return <div className={`workflow-step ${active ? 'active' : ''}`}><span>{number}</span><div><strong>{title}</strong><small>{body}</small></div></div> }
-function NavButton({ active, icon, label, onClick, badge }: { active: boolean; icon: React.ReactNode; label: string; onClick: () => void; badge?: string }) { return <button className={`nav-button ${active ? 'active' : ''}`} onClick={onClick}>{icon}<span>{label}</span>{badge && <small>{badge}</small>}</button> }
+function NavButton({ active, icon, label, onClick, badge, hasChevron }: { active: boolean; icon: React.ReactNode; label: string; onClick: () => void; badge?: string; hasChevron?: boolean }) { return <button className={`nav-button ${active ? 'active' : ''}`} onClick={onClick}>{icon}<span>{label}</span>{badge && <small>{badge}</small>}{hasChevron && <ChevronRight size={14} className="nav-chevron" />}</button> }
 function ConnectionBadge({ state, onRetry }: { state: ConnectionState; onRetry: () => void }) { const copy = state === 'connected' ? 'Live connected' : state === 'connecting' ? 'Connecting…' : state === 'error' ? 'Connection error' : 'Offline'; return <button className={`connection-badge ${state}`} onClick={state === 'error' || state === 'closed' ? onRetry : undefined} title={state === 'error' || state === 'closed' ? 'Retry connection' : undefined}>{state === 'connected' ? <Wifi size={14} /> : state === 'connecting' ? <RefreshCw size={14} className="spin" /> : <WifiOff size={14} />}<span>{copy}</span>{(state === 'error' || state === 'closed') && <small>Retry</small>}</button> }
 function EmptyState({ icon, title, body }: { icon: React.ReactNode; title: string; body: string }) { return <div className="empty-state">{icon}<strong>{title}</strong><span>{body}</span></div> }
 function initials(name: string) { return name.split(' ').map(part => part[0]).slice(0, 2).join('').toUpperCase() }
@@ -920,6 +1438,18 @@ function ControllerClassesView() {
     reader.onload = () => {
       setCapturedPhoto(reader.result as string)
       stopCamera()
+    }
+    reader.readAsDataURL(file)
+  }
+
+  const handleCreateFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        setRoomPhoto(reader.result)
+      }
     }
     reader.readAsDataURL(file)
   }
@@ -1116,9 +1646,64 @@ function ControllerClassesView() {
               <label>Assigned Physical Room Number
                 <input type="text" placeholder="e.g. LH-120" value={roomNumber} onChange={e => setRoomNumber(e.target.value)} required />
               </label>
-              <label>Initial Room Photo URL (or capture directly afterwards)
-                <input type="url" placeholder="https://..." value={roomPhoto} onChange={e => setRoomPhoto(e.target.value)} />
-              </label>
+
+              <div>
+                <label style={{ display: 'block', marginBottom: '6px' }}>
+                  Classroom Reference Panorama Photo
+                </label>
+                {roomPhoto && (
+                  <div style={{ position: 'relative', marginBottom: '10px', borderRadius: '8px', overflow: 'hidden', maxHeight: '140px', background: '#000' }}>
+                    <img src={roomPhoto} alt="Room preview" style={{ width: '100%', height: '140px', objectFit: 'cover', display: 'block' }} />
+                    <button
+                      type="button"
+                      onClick={() => setRoomPhoto('')}
+                      style={{
+                        position: 'absolute',
+                        top: '8px',
+                        right: '8px',
+                        background: 'rgba(0,0,0,0.65)',
+                        color: '#fff',
+                        border: 0,
+                        borderRadius: '50%',
+                        width: '24px',
+                        height: '24px',
+                        display: 'grid',
+                        placeItems: 'center',
+                        cursor: 'pointer'
+                      }}
+                      title="Clear image"
+                    >
+                      <X size={14} />
+                    </button>
+                    <div style={{
+                      position: 'absolute',
+                      bottom: '6px',
+                      left: '8px',
+                      background: 'rgba(8, 127, 116, 0.85)',
+                      color: '#fff',
+                      fontSize: '10px',
+                      fontWeight: 800,
+                      padding: '2px 8px',
+                      borderRadius: '4px'
+                    }}>
+                      Reference Photo Set
+                    </div>
+                  </div>
+                )}
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '8px' }}>
+                  <label className="secondary-button small" style={{ cursor: 'pointer', margin: 0 }}>
+                    <Upload size={14} /> Upload Room Photo
+                    <input type="file" accept="image/*" onChange={handleCreateFileUpload} style={{ display: 'none' }} />
+                  </label>
+                </div>
+                <input
+                  type="text"
+                  placeholder="Or enter Image URL (https://...)"
+                  value={roomPhoto}
+                  onChange={e => setRoomPhoto(e.target.value)}
+                  style={{ width: '100%', fontSize: '12px' }}
+                />
+              </div>
               <div className="modal-actions">
                 <button type="button" className="secondary-button" onClick={() => setModalOpen(false)}>Cancel</button>
                 <button type="submit" className="primary-button" disabled={submitting}>
@@ -1272,18 +1857,56 @@ function ControllerStudentsView() {
   const [submitting, setSubmitting] = useState(false)
   const [unlockingId, setUnlockingId] = useState<string | null>(null)
   const [notice, setNotice] = useState('')
+  const [regWindowOpen, setRegWindowOpen] = useState(true)
+  const [updatingWindow, setUpdatingWindow] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const data = await api.getControllerStudents()
+      const [data, win] = await Promise.all([
+        api.getControllerStudents(),
+        api.getRegistrationWindow().catch(() => ({ is_open: true, updated_at: '' })),
+      ])
       setStudents(data)
+      setRegWindowOpen(win.is_open)
     } finally {
       setLoading(false)
     }
   }, [])
 
   useEffect(() => { load() }, [load])
+
+  async function handleToggleWindow() {
+    setUpdatingWindow(true)
+    try {
+      const next = !regWindowOpen
+      await api.setRegistrationWindow(next)
+      setRegWindowOpen(next)
+      setNotice(next ? 'Biometric registration window is now OPEN.' : 'Biometric registration window is now CLOSED.')
+    } catch {
+      alert('Could not update registration window status.')
+    } finally {
+      setUpdatingWindow(false)
+    }
+  }
+
+  async function handleCsvImport(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setSubmitting(true)
+    try {
+      const res = await api.importStudentRegistry({ file })
+      setNotice(`Import successful: ${res.imported} added, ${res.updated} updated (${res.total_processed} total).`)
+      await load()
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'CSV import failed.'
+      alert(`Import error: ${msg}`)
+    } finally {
+      setSubmitting(false)
+      if (fileInputRef.current) fileInputRef.current.value = ''
+    }
+  }
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault()
@@ -1334,12 +1957,39 @@ function ControllerStudentsView() {
         title="College Student Biometric Registry"
         description="Verify authorized college students, manage one-time biometric registration locks, and reset biometric enrollment on demand."
         action={
-          <button className="primary-button" onClick={() => setModalOpen(true)}>
-            <Plus size={16} /> Add College Student
-          </button>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            <input type="file" ref={fileInputRef} accept=".csv" style={{ display: 'none' }} onChange={handleCsvImport} />
+            <button className="secondary-button" onClick={() => fileInputRef.current?.click()} disabled={submitting}>
+              <Upload size={16} /> Import Registry (CSV)
+            </button>
+            <button className="primary-button" onClick={() => setModalOpen(true)}>
+              <Plus size={16} /> Add College Student
+            </button>
+          </div>
         }
       />
       {notice && <div className="toast" role="status"><CheckCircle2 size={17} /> {notice}<button onClick={() => setNotice('')}><X size={16} /></button></div>}
+
+      <div className="panel" style={{ marginTop: 16, marginBottom: 20, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderLeft: `4px solid ${regWindowOpen ? 'var(--emerald)' : 'var(--rose)'}`, flexWrap: 'wrap', gap: 12 }}>
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <span className={`status-chip ${regWindowOpen ? 'status-present' : 'status-absent'}`} style={{ fontWeight: 800 }}>
+              {regWindowOpen ? 'REGISTRATION WINDOW OPEN' : 'REGISTRATION WINDOW CLOSED'}
+            </span>
+            <span style={{ fontSize: 13, color: 'var(--muted)' }}>
+              {regWindowOpen ? 'New students can enroll reference selfies upon first sign-in.' : 'All new reference enrollments are locked. No proxy enrollments permitted.'}
+            </span>
+          </div>
+        </div>
+        <button
+          className={regWindowOpen ? 'secondary-button' : 'primary-button'}
+          style={{ minWidth: 160 }}
+          onClick={handleToggleWindow}
+          disabled={updatingWindow}
+        >
+          {updatingWindow ? 'Updating…' : regWindowOpen ? 'Close Registration' : 'Open Registration'}
+        </button>
+      </div>
 
       <div className="metric-grid">
         <Metric icon={<Users />} label="Authorized Students" value={loading ? '—' : String(students.length)} detail="College database" tone="teal" />

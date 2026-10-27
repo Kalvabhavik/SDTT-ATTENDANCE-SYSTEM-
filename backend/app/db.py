@@ -366,6 +366,11 @@ def supa() -> Any:
 
 def reset_test_db() -> InMemoryDatabase:
     """Reset the test in-memory database to default seed state."""
+    try:
+        from app.security import reset_security_caches
+        reset_security_caches()
+    except Exception:
+        pass
     db = get_in_memory_db()
     db.seed_defaults()
     return db

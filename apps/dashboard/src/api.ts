@@ -81,6 +81,8 @@ function normalizeSession(value: unknown): Session {
     needs_review_count: raw.needs_review_count === undefined ? undefined : number(raw.needs_review_count),
     rejected_count: raw.rejected_count === undefined ? undefined : number(raw.rejected_count),
     total_enrolled: raw.total_enrolled === undefined ? undefined : number(raw.total_enrolled),
+    room_photo: raw.room_photo === undefined || raw.room_photo === null ? undefined : text(raw.room_photo),
+    reference_captured_at: raw.reference_captured_at === undefined || raw.reference_captured_at === null ? undefined : text(raw.reference_captured_at),
   }
 }
 function normalizeClass(value: unknown): ClassItem {

@@ -14,51 +14,60 @@ export default function Section08Hall240() {
   const [activeBeat, setActiveBeat] = useState<number>(5);
   const [panelOpen, setPanelOpen] = useState<boolean>(true);
   const [comparisonMode, setComparisonMode] = useState<"side_by_side" | "wide_crop" | "selfie_crop">("side_by_side");
+  const [hallCapacity, setHallCapacity] = useState<260 | 240>(260);
 
-  // Reconciled 240 dataset:
-  // Enrolled: 240
-  // Verified: 218 (90.8%)
-  // Pending review: 12 (5.0%)
-  // Not yet recorded: 10 (4.2%)
-  // Total: 218 + 12 + 10 = 240
-  const stats = {
+  // Reconciled Datasets:
+  // 260-Seat Grand Auditorium:
+  // Enrolled: 260 | Verified: 236 (90.8%) | Pending: 14 (5.4%) | Unrecorded: 10 (3.8%)
+  // Total: 236 + 14 + 10 = 260
+  // 240-Seat Amphitheater:
+  // Enrolled: 240 | Verified: 218 (90.8%) | Pending: 12 (5.0%) | Unrecorded: 10 (4.2%)
+  const stats = hallCapacity === 260 ? {
+    enrolled: 260,
+    verified: 236,
+    pending: 14,
+    unrecorded: 10,
+    rate: "90.8%",
+    tierDescription: "13 Tiers (12 Amphitheater + Tier D Grand Balcony Gallery)",
+  } : {
     enrolled: 240,
     verified: 218,
     pending: 12,
     unrecorded: 10,
     rate: "90.8%",
+    tierDescription: "12 Ascending Amphitheater Tiers (Left, Center, Right Banks)",
   };
 
   const beats = [
     {
       num: 1,
       title: "Beat 1: Reveal Scale",
-      desc: "Camera elevates above Row 12, revealing the full 240-seat lecture hall architecture.",
+      desc: "Camera ascends above Row 13 Grand Balcony, exposing all 260 seating coordinates in real-time 3D.",
     },
     {
       num: 2,
-      title: "Beat 2: Organize Blocks",
-      desc: "Seating rows segment into 3 physical banks (Left, Center, Right) across 12 ascending tiers.",
+      title: "Beat 2: Organize 4 Tiers",
+      desc: "Seating segments into 4 tiers: Tier A (1-4, 80 seats), Tier B (5-8, 80), Tier C (9-12, 80), Tier D Balcony (13, 20).",
     },
     {
       num: 3,
-      title: "Beat 3: Collect Submissions",
-      desc: "Submissions ingest concurrently from student mobile devices alongside the active projector challenge.",
+      title: "Beat 3: Ingest 180° Gyro Sweeps",
+      desc: "Student mobile clients stream continuous 180° sweeps (Δyaw ≥ 120°) alongside device-grounded ArcFace probe embeddings.",
     },
     {
       num: 4,
-      title: "Beat 4: Corroborate & Validate",
-      desc: "Backend cross-references 1:1 biometric crops, challenge TTL, replay prevention, and room context.",
+      title: "Beat 4: Anti-Empty-Room Corroboration",
+      desc: "Backend cross-references YuNet peer count (blocking zero-presence proxies), stage IPD ≥ 30px, and Controller venue lock.",
     },
     {
       num: 5,
-      title: "Beat 5: Resolve States",
-      desc: "Classifies each seat into Verified (218), Pending Review (12), or Not Recorded (10).",
+      title: "Beat 5: Resolve 260 States",
+      desc: `Classifies each seat deterministically: Verified (${stats.verified}), Pending Review (${stats.pending}), Unrecorded (${stats.unrecorded}).`,
     },
   ];
 
   return (
-    <section className="relative py-24 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
+    <section id="scale" className="relative py-24 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
       {/* Header */}
       <div className="text-center max-w-3xl mx-auto mb-16">
         <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-amber-100 border border-amber-300 text-amber-900 font-mono text-xs font-bold mb-4 shadow-sm">
@@ -66,15 +75,45 @@ export default function Section08Hall240() {
           <span>SECTION 08 • VISUAL CLIMAX</span>
         </div>
         <h2 className="text-3xl sm:text-5xl font-extrabold text-slate-900 tracking-tight mb-4">
-          Designed for the <br />
+          Engineered for the <br />
           <span className="bg-gradient-to-r from-amber-800 via-amber-700 to-orange-700 bg-clip-text text-transparent">
-            Entire Lecture Hall.
+            260-Seat Grand Auditorium.
           </span>
         </h2>
-        <p className="text-base sm:text-lg text-slate-700 font-medium">
-          The ultimate test of an attendance system is the 240-seat amphitheater.
-          Rather than relying on unrealistic long-distance facial recognition, Attendrix orchestrates high-density verification through distributed student evidence and human-in-the-loop audit.
+        <p className="text-base sm:text-lg text-slate-700 font-medium mb-6">
+          The ultimate stress-test of academic integrity is the high-capacity lecture hall.
+          Attendrix bypasses impossible 25-meter distance recognition through distributed 180° continuous gyro sweeps, ArcFace 512-D client grounding, and zero-proxy anti-empty-room defense.
         </p>
+
+        {/* Capacity Tier Toggle */}
+        <div className="inline-flex items-center p-1.5 bg-slate-100 rounded-xl border border-slate-300 gap-2">
+          <button
+            onClick={() => {
+              soundManager.playClick();
+              setHallCapacity(260);
+            }}
+            className={`px-4 py-1.5 rounded-lg text-xs font-mono font-bold transition-all cursor-pointer ${
+              hallCapacity === 260
+                ? "bg-amber-600 text-white shadow-md shadow-amber-600/30"
+                : "text-slate-700 hover:text-slate-950"
+            }`}
+          >
+            260-Seat Grand Auditorium (Balcony Tier)
+          </button>
+          <button
+            onClick={() => {
+              soundManager.playClick();
+              setHallCapacity(240);
+            }}
+            className={`px-4 py-1.5 rounded-lg text-xs font-mono font-bold transition-all cursor-pointer ${
+              hallCapacity === 240
+                ? "bg-amber-600 text-white shadow-md shadow-amber-600/30"
+                : "text-slate-700 hover:text-slate-950"
+            }`}
+          >
+            240-Seat Standard Amphitheater
+          </button>
+        </div>
       </div>
 
       {/* 5-Beat Story Progression Bar */}
@@ -107,17 +146,17 @@ export default function Section08Hall240() {
           </span>
           <span className="font-semibold text-slate-900">{beats[activeBeat - 1].desc}</span>
         </div>
-        <span className="text-slate-700 hidden sm:inline font-bold">240-Seat Real Classroom Storyboard</span>
+        <span className="text-slate-700 hidden sm:inline font-bold">{stats.tierDescription}</span>
       </div>
 
-      {/* 240-Seat Live Dashboard Telemetry Banner */}
+      {/* Live Dashboard Telemetry Banner */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-12">
         <div className="glass-panel p-5 rounded-2xl border border-slate-200 shadow-sm">
           <span className="text-[10px] font-mono text-amber-850 font-bold uppercase tracking-wider block mb-1">
             TOTAL ENROLLED
           </span>
           <div className="text-3xl font-extrabold text-slate-900 font-mono">{stats.enrolled}</div>
-          <div className="text-[11px] text-slate-700 font-medium mt-1">Full Amphitheater Roster</div>
+          <div className="text-[11px] text-slate-700 font-medium mt-1">Full Tier Roster</div>
         </div>
 
         <div className="glass-panel p-5 rounded-2xl border border-slate-200 shadow-sm">
@@ -125,7 +164,7 @@ export default function Section08Hall240() {
             VERIFIED PRESENT
           </span>
           <div className="text-3xl font-extrabold text-emerald-800 font-mono">{stats.verified}</div>
-          <div className="text-[11px] text-emerald-800 font-bold mt-1">{stats.rate} Sample Pass</div>
+          <div className="text-[11px] text-emerald-800 font-bold mt-1">{stats.rate} Passing Cohort</div>
         </div>
 
         <div className="glass-panel p-5 rounded-2xl border border-slate-200 shadow-sm">
@@ -133,7 +172,7 @@ export default function Section08Hall240() {
             PENDING REVIEW
           </span>
           <div className="text-3xl font-extrabold text-orange-800 font-mono">{stats.pending}</div>
-          <div className="text-[11px] text-orange-800 font-bold mt-1">Marginal Cosine / Low Light</div>
+          <div className="text-[11px] text-orange-800 font-bold mt-1">Zero-Proxy Flag / Marginal</div>
         </div>
 
         <div className="glass-panel p-5 rounded-2xl border border-slate-200 shadow-sm">
@@ -314,7 +353,7 @@ export default function Section08Hall240() {
             </div>
 
             <div className="text-xs text-slate-800 font-mono font-medium bg-slate-100 p-4 rounded-xl border border-slate-200">
-              *Conclusion: True attendance verification at 240-seat scale is achieved by combining student client capture for high-resolution biometric grounding with server-side challenge and audit reconciliation.
+              *Conclusion: True attendance verification at 240/260-seat scale is achieved by combining student client 180° continuous gyro sweeps with YuNet anti-empty-room face detection and Academic Controller venue grounding.
             </div>
           </div>
         )}

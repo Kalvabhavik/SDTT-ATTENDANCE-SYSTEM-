@@ -42,8 +42,8 @@ export default function Section11Architecture() {
       color: "text-amber-800",
       borderColor: "border-amber-400",
       summary:
-        "Authenticated mobile interface that captures the front camera selfie, performs local blur checking, retrieves the student's JWT token, and sends encrypted submissions to the backend.",
-      security: "Hardware keystore token storage, camera integrity check, zero persistent local photo storage.",
+        "Authenticated mobile interface that streams continuous 180° gyroscopic sweep telemetry (yaw/pitch/roll), captures front-camera biometric crops, evaluates local blur, and securely dispatches payloads to backend.",
+      security: "Hardware keystore token storage, sensor integrity validation, zero persistent local face storage.",
     },
     {
       id: "faculty",
@@ -54,8 +54,20 @@ export default function Section11Architecture() {
       color: "text-sky-800",
       borderColor: "border-sky-400",
       summary:
-        "Web application used by course professors to initialize attendance sessions, monitor live WebSocket submission feeds, broadcast the dynamic projector screen, and audit review cases.",
+        "Web application used by course professors to initialize attendance sessions, monitor live WebSocket submission feeds, broadcast stage seating telemetry, and audit review cases.",
       security: "Role-Based Access Control (RBAC) enforcing 'teacher' claims via Supabase JWT.",
+    },
+    {
+      id: "controller",
+      name: "Academic Controller Portal",
+      layer: "Governance Tier",
+      tech: "Next.js / FastAPI / Camera API",
+      icon: ShieldAlert,
+      color: "text-purple-800",
+      borderColor: "border-purple-400",
+      summary:
+        "Administrative console for defining institutional venues (80, 120, 240, 260 seats), capturing reference room panoramas via camera upload, and signing cryptographic biometric baselines.",
+      security: "Administrative privilege separation; locks classroom topology preventing faculty or student tampering.",
     },
     {
       id: "auth",
@@ -78,20 +90,20 @@ export default function Section11Architecture() {
       color: "text-emerald-800",
       borderColor: "border-emerald-400",
       summary:
-        "High-concurrency async service handling concurrent student submission bursts (up to 240 students in 15 seconds), validating nonces, and orchestrating verification workers.",
+        "High-concurrency async service handling concurrent student submission bursts (up to 260 students in seconds), validating trajectory data, and orchestrating verification workers.",
       security: "CORS isolation, payload size quotas (10MB max), rate limiting per IP.",
     },
     {
-      id: "challenge",
-      name: "Dynamic Session Manager",
-      layer: "Temporal Security Tier",
-      tech: "In-Memory Ticket Store & Redis TTL",
+      id: "sweep_engine",
+      name: "180° Sweep & Anti-Proxy Engine",
+      layer: "Spatial-Temporal Verification Tier",
+      tech: "Monotonic Gyro Analyzer + YuNet Face Counter",
       icon: Shield,
       color: "text-amber-800",
       borderColor: "border-amber-400",
       summary:
-        "Generates rotating 6-character classroom challenge tokens every 15 seconds. Validates that incoming submissions align with the projector display window.",
-      security: "Server-side cryptographic token rotation, strict TTL grace window (15s + 5s).",
+        "Analyzes continuous horizontal rotation telemetry (Δyaw ≥ 120°). Evaluates peer density in classroom frames; if 0 faces are detected (empty room capture), immediately triggers zero-presence proxy interception.",
+      security: "Replay-proof monotonic orientation tracking, zero-presence proxy detection, ephemeral sensor storage.",
     },
     {
       id: "vision",
@@ -120,7 +132,7 @@ export default function Section11Architecture() {
     {
       id: "audit",
       name: "Review & Audit Ledger",
-      layer: "Governance Tier",
+      layer: "Audit Ledger Tier",
       tech: "Immutable Audit Log Tables",
       icon: FileCheck,
       color: "text-rose-800",
@@ -331,7 +343,7 @@ export default function Section11Architecture() {
           <div className="space-y-2 text-xs text-emerald-900 leading-relaxed font-sans">
             <h4 className="text-sm font-bold text-emerald-950">Biometric Privacy &amp; Data Governance Principles</h4>
             <p className="text-emerald-800">
-              The Attendrix system is designed in compliance with strict privacy safeguards: dynamic challenge tokens are validated exclusively on the server, raw face photos are processed in memory and never committed to public unencrypted repositories, and institutional consent is mandatory before enrolling student reference vectors.
+              The Attendrix system is designed in compliance with strict privacy safeguards: continuous 180° gyro trajectories and anti-empty-room crowd counts are validated exclusively on the server, raw face photos are processed in memory and never committed to persistent storage, and institutional consent is mandatory before enrolling student reference vectors.
             </p>
           </div>
         </div>

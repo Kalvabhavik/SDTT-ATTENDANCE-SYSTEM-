@@ -17,23 +17,17 @@ import {
 } from "lucide-react";
 
 export default function Section04Workflow() {
-  const [activeStep, setActiveStep] = useState<number>(1);
-  const [tokenCountdown, setTokenCountdown] = useState<number>(14);
-  const [currentToken, setCurrentToken] = useState<string>("9K4-PX2");
+  const [activeStep, setActiveStep] = useState<number>(2);
+  const [sweepYaw, setSweepYaw] = useState<number>(142);
 
-  // Live rotating challenge countdown simulator
+  // Live 180 continuous sweep trajectory simulation
   useEffect(() => {
     const timer = setInterval(() => {
-      setTokenCountdown((prev) => {
-        if (prev <= 1) {
-          const tokens = ["9K4-PX2", "7B8-WR4", "3M2-LQ9", "5X9-ZT1", "8H3-VK7"];
-          const next = tokens[Math.floor(Math.random() * tokens.length)];
-          setCurrentToken(next);
-          return 15;
-        }
-        return prev - 1;
+      setSweepYaw((prev) => {
+        if (prev >= 170) return 30;
+        return prev + 15;
       });
-    }, 1000);
+    }, 600);
 
     return () => clearInterval(timer);
   }, []);
@@ -41,118 +35,112 @@ export default function Section04Workflow() {
   const steps = [
     {
       step: 1,
-      title: "Faculty Session Init",
-      shortTitle: "1. Faculty Init",
+      title: "Controller & Faculty Provisioning",
+      shortTitle: "1. Provision & Init",
       icon: MonitorCheck,
       color: "text-amber-700",
       bgBadge: "bg-amber-100 text-amber-900 border-amber-300 font-bold",
-      desc: "Faculty member authenticates via Supabase Auth, selects the course roster (80, 120, or 240 students), and spawns an active cryptographic attendance session with an assigned classroom ID.",
+      desc: "Academic Controller assigns classroom venue (80, 120, 240, or 260 seats), captures reference panorama with on-device camera, and locks enrollment. Faculty launches timed session with server-authoritative clock.",
       actionDetails: [
-        "Loads enrolled student roster from PostgreSQL database.",
-        "Generates session encryption secret and WebSocket room.",
-        "Launches projector interface in full-screen lecture display.",
+        "Academic Controller creates venue profile with exact capacity tier (80–260 seats).",
+        "Direct camera capture registers classroom baseline panorama into backend storage.",
+        "Faculty spawns active session with configurable deadline (5, 10, or 15 minutes).",
       ],
-      caution: "Prevents ghost sessions; only authorized faculty can activate room capture.",
+      caution: "Guarantees venue integrity; unauthorized rooms or unassigned halls cannot be selected.",
     },
     {
       step: 2,
-      title: "Dynamic Projector Challenge",
-      shortTitle: "2. Challenge",
+      title: "Interactive Active Liveness Detection",
+      shortTitle: "2. Active Liveness",
       icon: Timer,
       color: "text-orange-700",
       bgBadge: "bg-orange-100 text-orange-900 border-orange-300 font-bold",
-      desc: "Projector broadcasts a short-lived, dynamic alphanumeric token changing every 15 seconds. Students submit the currently valid token alongside their submission.",
+      desc: "Student camera prompt executes a 4-action biometric challenge: frontal alignment, head turn LEFT, head turn RIGHT, and firm EYE BLINK, actively verified by YuNet 5-point facial landmark geometry.",
       actionDetails: [
-        `Active Classroom Token: ${currentToken} (TTL: ${tokenCountdown}s)`,
-        "Backend rejects expired tokens (t > 15s window + 5s network grace).",
-        "Prevents asynchronous attendance submissions hours after lecture.",
+        "Head Yaw Excursion: Normalized dx_nose / IPD angle deflection (< -10° left, > +10° right).",
+        "Eyelid Blink Closure: Vertical Sobel gradient energy drop across pupil/sclera contours.",
+        "Anti-Spoof Defense: Rejects static printed photos, video screen playback, and deepfake masks.",
       ],
       caution:
-        "CRITICAL HONESTY: Visible codes can be shared or photographed. A valid code proves temporal alignment with the session, not physical bodily presence alone.",
+        "ACTIVE LIVENESS GUARANTEE: Student must perform genuine head rotation and eye blinking on-device during the live session window.",
     },
     {
       step: 3,
-      title: "Student Selfie Capture",
-      shortTitle: "3. Student Selfie",
-      icon: Camera,
-      color: "text-amber-700",
-      bgBadge: "bg-amber-100 text-amber-900 border-amber-300 font-bold",
-      desc: "Student opens the Flutter mobile client, authenticates, and captures a live front camera selfie with on-screen bounding guide and ambient illumination feedback.",
-      actionDetails: [
-        "Client verifies camera hardware integrity & geolocation perimeter.",
-        "Performs client-side face orientation and blur validation.",
-        "Prepares image crop for 1-to-1 ArcFace embedding comparison.",
-      ],
-      caution:
-        "Low-light or motion-blurred photos prompt immediate recapture rather than false rejection.",
-    },
-    {
-      step: 4,
-      title: "Contextual Classroom Evidence",
-      shortTitle: "4. Room Context",
+      title: "180° Classroom Physical Sweep & Stage Match",
+      shortTitle: "3. 180° Room Sweep",
       icon: Layers,
       color: "text-amber-700",
       bgBadge: "bg-amber-100 text-amber-900 border-amber-300 font-bold",
-      desc: "Where hardware allows, a wide-angle room capture establishes physical context, seating density, and detected human heads across amphitheater zones.",
+      desc: "Following liveness, student sweeps the classroom across neighbor peers to the lecturer stage (Δyaw ≥ 120°), corroborating the real physical environment with the controller baseline template.",
       actionDetails: [
-        "YuNet lightweight detector identifies bounding boxes across rows.",
-        "Corroborates submission volume against detected person clusters.",
-        "Flags anomalous spikes where submissions exceed visible seat occupancy.",
+        `Live Sweep Yaw Progression: ${sweepYaw}° (Monotonic gyroscope angular check ≥ 120°).`,
+        "Audience Peer Corroboration: Detects surrounding peers seated in the lecture hall.",
+        "Podium & Lecturer Stage Match: Verifies lecturer presence and stage architecture.",
       ],
       caution:
-        "TECHNICAL LIMITATION: Wide-angle panorama cannot biometrically resolve small 14x14px distant faces at 20 meters. It establishes environmental context, not individual proof.",
+        "ZERO-PROXY DEFENSE: Empty halls, outside photos, or scanned walls are immediately intercepted and flagged.",
+    },
+    {
+      step: 4,
+      title: "Zero-Proxy Anti-Empty-Room Defense",
+      shortTitle: "4. Anti-Proxy Defense",
+      icon: ShieldAlert,
+      color: "text-rose-700",
+      bgBadge: "bg-rose-100 text-rose-900 border-rose-300 font-bold",
+      desc: "YuNet evaluates active hall occupancy. If an empty room is captured (0 peers present, no lecturer on stage), the attempt is blocked as a ghost proxy fraud attempt.",
+      actionDetails: [
+        "Scans classroom frames for real peers and lecturer presence.",
+        "Blocks students who sneak into empty lecture halls before/after hours to claim attendance.",
+        "Automatically routes attempts to PENDING REVIEW with security audit alert attendance.empty_room_proxy_detected.",
+      ],
+      caution:
+        "EMPTY-ROOM INTERCEPTION: Both the lecturer on stage and peers in the hall must be present simultaneously.",
     },
     {
       step: 5,
-      title: "Backend Validation Sequence",
-      shortTitle: "5. Backend Validation",
-      icon: ServerCog,
-      color: "text-orange-700",
-      bgBadge: "bg-orange-100 text-orange-900 border-orange-300 font-bold",
-      desc: "FastAPI server executes an ordered 9-stage verification pipeline before committing any attendance state.",
+      title: "1:1 Biometric Verification (ArcFace 512-D)",
+      shortTitle: "5. Biometric 1:1",
+      icon: Camera,
+      color: "text-amber-700",
+      bgBadge: "bg-amber-100 text-amber-900 border-amber-300 font-bold",
+      desc: "Canonical 112×112 frontal crop is extracted, aligned, and matched against enrolled institutional reference vector using 512-dimensional ArcFace deep embeddings (cosine similarity threshold ≥ 0.68).",
       actionDetails: [
-        "1. Authenticate JWT token & student enrollment in course.",
-        "2. Validate session status = OPEN.",
-        "3. Match challenge token against rolling window history.",
-        "4. Enforce submission timestamp freshness (replay attack block).",
-        "5. Evaluate face image quality (sharpness, lux, angle).",
-        "6. Compute 1:1 ArcFace cosine similarity vs registered reference photo.",
-        "7. Deduplication check: single record per student per session.",
-        "8. Cross-reference contextual seat density.",
-        "9. Assign provisional classification (Verified / Uncertain / Rejected).",
+        "Laplacian sharpness variance check (≥ 1.5) ensures crisp face focus.",
+        "512-dimensional Euclidean-normalized unit embedding extraction.",
+        "Cosine threshold cos(θ) ≥ 0.68 authenticates individual enrollment identity.",
       ],
-      caution: "Guarantees zero database race conditions using PostgreSQL unique constraints.",
+      caution:
+        "Ephemeral In-Memory Verification: Raw image bytes are purged immediately after comparison (Zero-Knowledge biometric privacy).",
     },
     {
       step: 6,
-      title: "Attendance Outcome Classification",
-      shortTitle: "6. Outcome Result",
-      icon: CheckCircle,
-      color: "text-amber-700",
-      bgBadge: "bg-amber-100 text-amber-900 border-amber-300 font-bold",
-      desc: "Every record resolves into one of four mutually exclusive, transparent status states based on evidence thresholds.",
+      title: "Backend Neural Engine & 1-Attempt Policy",
+      shortTitle: "6. Decision Policy",
+      icon: ServerCog,
+      color: "text-orange-700",
+      bgBadge: "bg-orange-100 text-orange-900 border-orange-300 font-bold",
+      desc: "FastAPI server executes full multi-layer evaluation: Active liveness verified + ArcFace match + Classroom physical match + 1-attempt constraint per session.",
       actionDetails: [
-        "VERIFIED: All checks passed (Valid challenge + high similarity > 0.72).",
-        "UNCERTAIN: Evidence present but confidence marginal (similarity 0.50–0.71 or low light).",
-        "REJECTED: Explicit rule failure (expired token, duplicate submission, non-student).",
-        "PENDING REVIEW: Routed to instructor review queue for dispute resolution.",
+        "1. Active Liveness (Yaw Turn & Blink) | 2. ArcFace Biometric (≥0.68).",
+        "3. 180° Sweep Continuity (≥120°) | 4. Lecturer & Peer Presence (N≥1).",
+        "5. Anti-Empty-Room Defense | 6. Server Clock TTL | 7. Deduplication Constraint.",
       ],
-      caution: "Uncertain cases are NEVER automatically marked absent. Human discretion is preserved.",
+      caution: "1-Attempt Policy: Prevents replay brute-forcing; every submission is final and immutably audited.",
     },
     {
       step: 7,
-      title: "Teacher Review & Audit Record",
-      shortTitle: "7. Audit & Finalize",
+      title: "Lecturer Real-Time Radar & Excel Export",
+      shortTitle: "7. Audit & Export",
       icon: FileCheck2,
-      color: "text-amber-700",
-      bgBadge: "bg-amber-100 text-amber-900 border-amber-300 font-bold",
-      desc: "Instructor inspects unresolved cases in the review queue, evaluates student photos alongside capture timestamps, overrides if legitimate, and seals the finalized session.",
+      color: "text-emerald-700",
+      bgBadge: "bg-emerald-100 text-emerald-900 border-emerald-300 font-bold",
+      desc: "Faculty dashboard displays real-time live attendance ticker via WebSockets, enables review of flagged cases, and exports certified institutional Excel (.xlsx) spreadsheets.",
       actionDetails: [
-        "Full audit trail logs instructor ID, timestamp, and rationale note.",
-        "Synchronizes with university LMS / ERP export (CSV, JSON, PDF).",
-        "Closes session and terminates WebSocket broadcasting channels.",
+        "Real-time WebSocket radar pushes verified student entries within milliseconds.",
+        "Flagged review queue displays reason tags and key-frame evidence filmstrips.",
+        "One-click institutional Excel export (.xlsx) with colored KPI headers and audit ledger.",
       ],
-      caution: "Immutable audit log ensures accountability for all manual overrides.",
+      caution: "Every manual review action is logged with actor email, timestamp, and rationale in the immutable audit log.",
     },
   ];
 
@@ -226,24 +214,24 @@ export default function Section04Workflow() {
             </div>
           </div>
 
-          {/* Interactive Live Challenge Component if Step 2 */}
+          {/* Interactive Live 180 Sweep Gyro Component if Step 2 */}
           {activeStep === 2 && (
             <div className="bg-white p-4 rounded-xl border border-amber-300 font-mono text-xs space-y-2 shadow-sm">
               <div className="text-amber-800 flex justify-between font-bold">
-                <span>SIMULATED PROJECTOR DISPLAY:</span>
-                <span className="text-emerald-700 animate-pulse">● BROADCASTING</span>
+                <span>CONTINUOUS 180° SWEEP TRAJECTORY:</span>
+                <span className="text-emerald-700 animate-pulse">● TRACKING</span>
               </div>
-              <div className="text-2xl font-black text-slate-900 tracking-widest text-center py-2 bg-amber-50/60 rounded border border-amber-200">
-                {currentToken}
+              <div className="text-xl font-black text-slate-900 tracking-wider text-center py-2 bg-amber-50/60 rounded border border-amber-200">
+                Δyaw: {sweepYaw}° / 180° (Selfie → Audience → Stage)
               </div>
               <div className="flex justify-between items-center text-[11px] text-slate-700 pt-1 font-bold">
-                <span>Next Token Rotation in:</span>
-                <span className="text-orange-700 font-bold">{tokenCountdown}s</span>
+                <span>Monotonic Gyro Check:</span>
+                <span className="text-emerald-700 font-bold">PASS (Δ ≥ 120°)</span>
               </div>
               <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden">
                 <div
-                  className="bg-amber-500 h-full transition-all duration-1000"
-                  style={{ width: `${(tokenCountdown / 15) * 100}%` }}
+                  className="bg-amber-500 h-full transition-all duration-500"
+                  style={{ width: `${Math.min(100, (sweepYaw / 180) * 100)}%` }}
                 />
               </div>
             </div>

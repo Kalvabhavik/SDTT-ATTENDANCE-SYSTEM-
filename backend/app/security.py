@@ -111,3 +111,91 @@ def check_login_rate_limit(client_ip: str) -> None:
 
 def check_submit_rate_limit(student_id: str) -> None:
     check_rate_limit(f"submit:{student_id}", max_requests=RATE_LIMIT_SUBMIT_PER_MIN, window_seconds=60.0)
+
+
+# ── Active Liveness Dynamic Challenge Tokens & Replay Defense ─────────────────
+import uuid
+
+_consumed_challenge_nonces: set[str] = set()
+_submitted_image_hashes: set[str] = set()
+_submitted_phashes: list[str] = []
+
+
+def create_liveness_challenge_token(
+    session_id: str,
+    student_id: str,
+    challenges: list[str],
+    ttl_seconds: int = 90,
+) -> str:
+    """Issue a cryptographically signed HMAC-SHA256 challenge token."""
+    now = int(time.time())
+    nonce = str(uuid.uuid4())
+    payload = {
+        "sub": student_id,
+        "session_id": session_id,
+        "challenges": challenges,
+        "nonce": nonce,
+        "iat": now,
+        "exp": now + ttl_seconds,
+        "type": "liveness_challenge",
+    }
+    return pyjwt.encode(payload, ATTENDANCE_SECRET_KEY, algorithm="HS256")
+
+
+def verify_liveness_challenge_token(token: str) -> dict[str, Any]:
+    """Verify challenge token signature, type, and expiration."""
+    try:
+        payload = pyjwt.decode(token, ATTENDANCE_SECRET_KEY, algorithms=["HS256"])
+        if payload.get("type") != "liveness_challenge":
+            raise HTTPException(status_code=400, detail="Invalid token type; expected liveness challenge.")
+        return payload
+    except pyjwt.ExpiredSignatureError:
+        raise HTTPException(
+            status_code=400,
+            detail="Liveness challenge token has expired. Please obtain a fresh challenge.",
+        )
+    except pyjwt.InvalidTokenError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid or forged liveness challenge token: {exc}",
+        )
+
+
+def consume_challenge_nonce(nonce: str) -> bool:
+    """Ensure challenge token can only be redeemed once (single-use nonce)."""
+    if not nonce or nonce in _consumed_challenge_nonces:
+        return False
+    _consumed_challenge_nonces.add(nonce)
+    return True
+
+
+def check_and_record_image_replay(sha256_hash: str, phash: str) -> tuple[bool, str]:
+    """Check for exact SHA-256 byte replay or near-duplicate pHash presentation attack."""
+    if sha256_hash in _submitted_image_hashes:
+        return True, "Exact duplicate image replay detected (identical cryptographic SHA-256 digest)."
+
+    # pHash Hamming distance comparison
+    if phash and phash != "0" * 16:
+        try:
+            curr_val = int(phash, 16)
+            for prev in _submitted_phashes:
+                prev_val = int(prev, 16)
+                diff = bin(curr_val ^ prev_val).count("1")
+                if diff <= 3:
+                    return True, f"Perceptual image replay detected (pHash Hamming distance {diff} <= 3)."
+        except Exception:
+            pass
+
+    _submitted_image_hashes.add(sha256_hash)
+    if phash and phash != "0" * 16:
+        _submitted_phashes.append(phash)
+    return False, ""
+
+
+def reset_security_caches() -> None:
+    """Reset security caches for testing isolation."""
+    _consumed_challenge_nonces.clear()
+    _submitted_image_hashes.clear()
+    _submitted_phashes.clear()
+    reset_rate_limits()
+

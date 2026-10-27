@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -25,21 +26,81 @@ class ApiClient {
         if (accessToken != null) 'Authorization': 'Bearer $accessToken',
       };
 
-  Uri _endpoint(String suffix) {
-    final base = AppConfig.apiUri.path.endsWith('/')
-        ? AppConfig.apiUri.path.substring(0, AppConfig.apiUri.path.length - 1)
-        : AppConfig.apiUri.path;
-    return AppConfig.apiUri.replace(path: '$base$suffix');
+  Uri _endpoint(String suffix, [String? baseUrl]) {
+    final targetUrl = baseUrl ?? AppConfig.apiBaseUrl;
+    final baseUri = Uri.parse(targetUrl);
+    final base = baseUri.path.endsWith('/')
+        ? baseUri.path.substring(0, baseUri.path.length - 1)
+        : baseUri.path;
+    return baseUri.replace(path: '$base$suffix');
+  }
+
+  bool _isNetworkError(Object e) {
+    if (e is SocketException || e is http.ClientException || e is TimeoutException) {
+      return true;
+    }
+    final str = e.toString().toLowerCase();
+    return str.contains('socketexception') ||
+        str.contains('connection refused') ||
+        str.contains('failed host lookup') ||
+        str.contains('network is unreachable') ||
+        str.contains('connection timed out') ||
+        str.contains('clientexception');
+  }
+
+  Future<T> _executeWithFailover<T>(Future<T> Function(String baseUrl) action) async {
+    try {
+      return await action(AppConfig.apiBaseUrl);
+    } catch (e) {
+      if (e is ApiException) rethrow;
+      if (_isNetworkError(e)) {
+        final fallbackUrl = AppConfig.alternateUrl;
+        try {
+          final res = await action(fallbackUrl);
+          // Auto switch active url on successful fallback
+          AppConfig.apiBaseUrl = fallbackUrl;
+          return res;
+        } catch (inner) {
+          if (inner is ApiException) rethrow;
+          throw ApiException(
+            'Cannot connect to attendance server. Tested ${AppConfig.apiBaseUrl} and $fallbackUrl. Check your network or USB connection.',
+            statusCode: 0,
+          );
+        }
+      }
+      rethrow;
+    }
+  }
+
+  Future<bool> checkHealth([String? baseUrl]) async {
+    try {
+      final uri = _endpoint('/time', baseUrl ?? AppConfig.apiBaseUrl);
+      final resp = await _client.get(uri).timeout(const Duration(seconds: 3));
+      return resp.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<String> probeFastestServer() async {
+    if (await checkHealth(AppConfig.apiBaseUrl)) {
+      return AppConfig.apiBaseUrl;
+    }
+    if (await checkHealth(AppConfig.alternateUrl)) {
+      AppConfig.apiBaseUrl = AppConfig.alternateUrl;
+      return AppConfig.apiBaseUrl;
+    }
+    return AppConfig.apiBaseUrl;
   }
 
   Future<dynamic> _request(String method, String path,
       {Object? body, Map<String, String>? query}) async {
-    final uri = _endpoint(path).replace(queryParameters: query);
-    try {
+    return _executeWithFailover((baseUrl) async {
+      final uri = _endpoint(path, baseUrl).replace(queryParameters: query);
       final request = http.Request(method, uri)..headers.addAll(_headers);
       if (body != null) request.body = jsonEncode(body);
       final response =
-          await _client.send(request).timeout(const Duration(seconds: 18));
+          await _client.send(request).timeout(const Duration(seconds: 15));
       final text = await response.stream.bytesToString();
       dynamic decoded;
       if (text.trim().isNotEmpty) {
@@ -57,17 +118,7 @@ class ApiClient {
             statusCode: response.statusCode);
       }
       return decoded;
-    } on SocketException {
-      throw ApiException(
-          'Cannot reach attendance service. Check your network connection.');
-    } on http.ClientException {
-      throw ApiException('The attendance service is unavailable. Try again.');
-    } on ApiException {
-      rethrow;
-    } catch (_) {
-      throw ApiException(
-          'The request timed out. Check connection and retry.');
-    }
+    });
   }
 
   Future<AuthSession> login(String email, String password, {String? selectedRole}) async {
@@ -100,32 +151,34 @@ class ApiClient {
 
   Future<Map<String, dynamic>> enrollReferenceSelfie(
       List<int> imageBytes, bool consent) async {
-    final uri = _endpoint('/auth/enroll');
-    final req = http.MultipartRequest('POST', uri);
-    if (accessToken != null) {
-      req.headers['Authorization'] = 'Bearer $accessToken';
-    }
-    req.fields['consent'] = consent ? 'true' : 'false';
-    req.files.add(http.MultipartFile.fromBytes(
-      'photo',
-      imageBytes,
-      filename: 'reference_selfie.jpg',
-    ));
+    return _executeWithFailover((baseUrl) async {
+      final uri = _endpoint('/auth/enroll', baseUrl);
+      final req = http.MultipartRequest('POST', uri);
+      if (accessToken != null) {
+        req.headers['Authorization'] = 'Bearer $accessToken';
+      }
+      req.fields['consent'] = consent ? 'true' : 'false';
+      req.files.add(http.MultipartFile.fromBytes(
+        'photo',
+        imageBytes,
+        filename: 'reference_selfie.jpg',
+      ));
 
-    final streamed = await _client.send(req).timeout(const Duration(seconds: 25));
-    final text = await streamed.stream.bytesToString();
-    dynamic decoded;
-    try {
-      decoded = jsonDecode(text);
-    } catch (_) {
-      decoded = text;
-    }
-    if (streamed.statusCode != 200) {
-      final msg = decoded is Map ? (decoded['detail'] ?? decoded['message']) : null;
-      throw ApiException(msg?.toString() ?? 'Enrollment failed (${streamed.statusCode}).',
-          statusCode: streamed.statusCode);
-    }
-    return Map<String, dynamic>.from(decoded as Map);
+      final streamed = await _client.send(req).timeout(const Duration(seconds: 30));
+      final text = await streamed.stream.bytesToString();
+      dynamic decoded;
+      try {
+        decoded = jsonDecode(text);
+      } catch (_) {
+        decoded = text;
+      }
+      if (streamed.statusCode != 200) {
+        final msg = decoded is Map ? (decoded['detail'] ?? decoded['message']) : null;
+        throw ApiException(msg?.toString() ?? 'Enrollment failed (${streamed.statusCode}).',
+            statusCode: streamed.statusCode);
+      }
+      return Map<String, dynamic>.from(decoded as Map);
+    });
   }
 
   Future<List<Classroom>> classes() async {
@@ -157,42 +210,53 @@ class ApiClient {
     return AttendanceSession.fromJson(Map<String, dynamic>.from(data as Map));
   }
 
+  Future<Map<String, dynamic>> setSessionReference(String sessionId, String photoBase64) async {
+    final data = await _request(
+      'POST',
+      '/sessions/$sessionId/reference',
+      body: {'room_photo': photoBase64},
+    );
+    return Map<String, dynamic>.from(data as Map);
+  }
+
   Future<Map<String, dynamic>> checkinSweep({
     required String sessionId,
     required String attemptId,
     required List<Map<String, dynamic>> metadata,
     required List<List<int>> frameBytesList,
   }) async {
-    final uri = _endpoint('/sessions/$sessionId/checkin');
-    final req = http.MultipartRequest('POST', uri);
-    if (accessToken != null) {
-      req.headers['Authorization'] = 'Bearer $accessToken';
-    }
-    req.fields['attempt_id'] = attemptId;
-    req.fields['metadata'] = jsonEncode(metadata);
+    return _executeWithFailover((baseUrl) async {
+      final uri = _endpoint('/sessions/$sessionId/checkin', baseUrl);
+      final req = http.MultipartRequest('POST', uri);
+      if (accessToken != null) {
+        req.headers['Authorization'] = 'Bearer $accessToken';
+      }
+      req.fields['attempt_id'] = attemptId;
+      req.fields['metadata'] = jsonEncode(metadata);
 
-    for (int i = 0; i < frameBytesList.length; i++) {
-      req.files.add(http.MultipartFile.fromBytes(
-        'frames',
-        frameBytesList[i],
-        filename: 'frame_$i.jpg',
-      ));
-    }
+      for (int i = 0; i < frameBytesList.length; i++) {
+        req.files.add(http.MultipartFile.fromBytes(
+          'frames',
+          frameBytesList[i],
+          filename: 'frame_$i.jpg',
+        ));
+      }
 
-    final streamed = await _client.send(req).timeout(const Duration(seconds: 40));
-    final text = await streamed.stream.bytesToString();
-    dynamic decoded;
-    try {
-      decoded = jsonDecode(text);
-    } catch (_) {
-      decoded = text;
-    }
-    if (streamed.statusCode != 200) {
-      final msg = decoded is Map ? (decoded['detail'] ?? decoded['message']) : null;
-      throw ApiException(msg?.toString() ?? 'Sweep checkin failed (${streamed.statusCode}).',
-          statusCode: streamed.statusCode);
-    }
-    return Map<String, dynamic>.from(decoded as Map);
+      final streamed = await _client.send(req).timeout(const Duration(seconds: 35));
+      final text = await streamed.stream.bytesToString();
+      dynamic decoded;
+      try {
+        decoded = jsonDecode(text);
+      } catch (_) {
+        decoded = text;
+      }
+      if (streamed.statusCode != 200) {
+        final msg = decoded is Map ? (decoded['detail'] ?? decoded['message']) : null;
+        throw ApiException(msg?.toString() ?? 'Sweep checkin failed (${streamed.statusCode}).',
+            statusCode: streamed.statusCode);
+      }
+      return Map<String, dynamic>.from(decoded as Map);
+    });
   }
 
   Future<List<CheckinReviewItem>> reviewQueue(String sessionId) async {
@@ -276,26 +340,50 @@ class ApiClient {
     String sessionId, {
     required List<int> faceBytes,
     List<int>? roomBytes,
+    List<int>? faceLeftBytes,
+    List<int>? faceRightBytes,
+    List<int>? faceBlinkBytes,
   }) async {
-    final uri = _endpoint('/sessions/$sessionId/verify-attendance');
-    final req = http.MultipartRequest('POST', uri);
-    if (accessToken != null) {
-      req.headers['Authorization'] = 'Bearer $accessToken';
-    }
-    req.files.add(http.MultipartFile.fromBytes(
-      'face_image',
-      faceBytes,
-      filename: 'live_face.jpg',
-    ));
-    if (roomBytes != null && roomBytes.isNotEmpty) {
+    return _executeWithFailover((baseUrl) async {
+      final uri = _endpoint('/sessions/$sessionId/verify-attendance', baseUrl);
+      final req = http.MultipartRequest('POST', uri);
+      if (accessToken != null) {
+        req.headers['Authorization'] = 'Bearer $accessToken';
+      }
       req.files.add(http.MultipartFile.fromBytes(
-        'classroom_image',
-        roomBytes,
-        filename: 'classroom_room.jpg',
+        'face_image',
+        faceBytes,
+        filename: 'live_face.jpg',
       ));
-    }
+      if (roomBytes != null && roomBytes.isNotEmpty) {
+        req.files.add(http.MultipartFile.fromBytes(
+          'classroom_image',
+          roomBytes,
+          filename: 'classroom_room.jpg',
+        ));
+      }
+      if (faceLeftBytes != null && faceLeftBytes.isNotEmpty) {
+        req.files.add(http.MultipartFile.fromBytes(
+          'face_left',
+          faceLeftBytes,
+          filename: 'face_left.jpg',
+        ));
+      }
+      if (faceRightBytes != null && faceRightBytes.isNotEmpty) {
+        req.files.add(http.MultipartFile.fromBytes(
+          'face_right',
+          faceRightBytes,
+          filename: 'face_right.jpg',
+        ));
+      }
+      if (faceBlinkBytes != null && faceBlinkBytes.isNotEmpty) {
+        req.files.add(http.MultipartFile.fromBytes(
+          'face_blink',
+          faceBlinkBytes,
+          filename: 'face_blink.jpg',
+        ));
+      }
 
-    try {
       final streamed = await req.send().timeout(const Duration(seconds: 25));
       final resp = await http.Response.fromStream(streamed);
       final body = resp.body.isNotEmpty ? jsonDecode(resp.body) : {};
@@ -304,9 +392,39 @@ class ApiClient {
         throw ApiException(detail?.toString() ?? 'Verification failed', statusCode: resp.statusCode);
       }
       return AttendanceVerifyResult.fromJson(Map<String, dynamic>.from(body as Map));
-    } on SocketException {
-      throw ApiException('Unable to reach the attendance server.', statusCode: 0);
-    }
+    });
+  }
+
+  Future<bool> getRegistrationWindow() async {
+    final data = await _request('GET', '/controller/registration-window');
+    return data is Map && data['is_open'] == true;
+  }
+
+  Future<void> setRegistrationWindow(bool isOpen) async {
+    await _request('POST', '/controller/registration-window', body: {'is_open': isOpen});
+  }
+
+  Future<Map<String, dynamic>> importRegistryCsv(List<int> csvBytes) async {
+    return _executeWithFailover((baseUrl) async {
+      final uri = _endpoint('/controller/registry/import', baseUrl);
+      final req = http.MultipartRequest('POST', uri);
+      if (accessToken != null) {
+        req.headers['Authorization'] = 'Bearer $accessToken';
+      }
+      req.files.add(http.MultipartFile.fromBytes(
+        'file',
+        csvBytes,
+        filename: 'registry.csv',
+      ));
+      final streamed = await req.send().timeout(const Duration(seconds: 25));
+      final resp = await http.Response.fromStream(streamed);
+      final body = resp.body.isNotEmpty ? jsonDecode(resp.body) : {};
+      if (resp.statusCode >= 400) {
+        final detail = body is Map ? body['detail'] : resp.body;
+        throw ApiException(detail?.toString() ?? 'Import failed', statusCode: resp.statusCode);
+      }
+      return Map<String, dynamic>.from(body as Map);
+    });
   }
 
   Future<List<Classroom>> controllerClasses() async {
@@ -322,6 +440,8 @@ class ApiClient {
     required String code,
     String? section,
     String? roomNumber,
+    int? capacity,
+    String? hallType,
     String? roomPhoto,
     String? teacherId,
   }) async {
@@ -333,11 +453,52 @@ class ApiClient {
         'code': code,
         'section': section,
         'room_number': roomNumber,
+        'capacity': capacity,
+        'hall_type': hallType,
         'room_photo': roomPhoto,
         'teacher_id': teacherId,
       },
     );
     return Classroom.fromJson(Map<String, dynamic>.from(data as Map));
+  }
+
+  Future<Map<String, dynamic>> controllerCaptureRoom({
+    required String classId,
+    required List<int> photoBytes,
+    int? capacity,
+    String? hallType,
+    String? roomNumber,
+  }) async {
+    return _executeWithFailover((baseUrl) async {
+      final uri = _endpoint('/controller/classes/$classId/capture-room', baseUrl);
+      final req = http.MultipartRequest('POST', uri);
+      if (accessToken != null) {
+        req.headers['Authorization'] = 'Bearer $accessToken';
+      }
+      if (capacity != null) req.fields['capacity'] = capacity.toString();
+      if (hallType != null) req.fields['hall_type'] = hallType;
+      if (roomNumber != null) req.fields['room_number'] = roomNumber;
+      req.files.add(http.MultipartFile.fromBytes(
+        'photo',
+        photoBytes,
+        filename: 'room_reference.jpg',
+      ));
+
+      final streamed = await _client.send(req).timeout(const Duration(seconds: 30));
+      final text = await streamed.stream.bytesToString();
+      dynamic decoded;
+      try {
+        decoded = jsonDecode(text);
+      } catch (_) {
+        decoded = text;
+      }
+      if (streamed.statusCode != 200) {
+        final msg = decoded is Map ? (decoded['detail'] ?? decoded['message']) : null;
+        throw ApiException(msg?.toString() ?? 'Capture failed (${streamed.statusCode}).',
+            statusCode: streamed.statusCode);
+      }
+      return Map<String, dynamic>.from(decoded as Map);
+    });
   }
 
   Future<List<ControllerStudent>> controllerStudents() async {
