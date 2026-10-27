@@ -6,9 +6,9 @@
     "test_fixture": "Live student with matching reference and completed active challenges",
     "decision": "PASSED_PRESENT",
     "confidence": 1.0,
-    "latency_ms": 149.97,
+    "latency_ms": 197.55,
     "evidence": "Status: present, Liveness: True, Confidence: 1.0",
-    "timestamp": "2026-10-27T19:56:42Z"
+    "timestamp": "2026-10-27T20:30:00Z"
   },
   {
     "test_id": "ADV-02",
@@ -17,9 +17,9 @@
     "test_fixture": "Live participant performing actions whose face does not match registered biometric template",
     "decision": "BLOCKED_BIOMETRIC_MISMATCH",
     "confidence": 0.048,
-    "latency_ms": 76.68,
+    "latency_ms": 80.15,
     "evidence": "Status: absent, Liveness: True, Match: False",
-    "timestamp": "2026-10-27T19:56:42Z"
+    "timestamp": "2026-10-27T20:30:00Z"
   },
   {
     "test_id": "ADV-03",
@@ -28,9 +28,9 @@
     "test_fixture": "Printed photo presentation with desaturated paper chrominance",
     "decision": "BLOCKED_PRINT_ATTACK",
     "confidence": 0.65,
-    "latency_ms": 3.26,
+    "latency_ms": 3.22,
     "evidence": "PAD Reasons: Low chrominance variance indicative of grayscale or printed attack [PRINT_ATTACK_DETECTED], Spoof Score: 0.65",
-    "timestamp": "2026-10-27T19:56:42Z"
+    "timestamp": "2026-10-27T20:30:00Z"
   },
   {
     "test_id": "ADV-04",
@@ -39,9 +39,9 @@
     "test_fixture": "Digital display screen showing face with high-frequency raster pattern",
     "decision": "BLOCKED_SCREEN_REPLAY",
     "confidence": 1.0,
-    "latency_ms": 1.75,
+    "latency_ms": 2.0,
     "evidence": "PAD Reasons: Low chrominance variance indicative of grayscale or printed attack [PRINT_ATTACK_DETECTED] High-frequency spectral spike indicative of digital screen moir\u00e9 grid [SCREEN_MOIRE_DETECTED], Spoof Score: 1.0",
-    "timestamp": "2026-10-27T19:56:42Z"
+    "timestamp": "2026-10-27T20:30:00Z"
   },
   {
     "test_id": "ADV-05",
@@ -50,9 +50,9 @@
     "test_fixture": "Identical static frame replayed across challenge slots without movement",
     "decision": "BLOCKED_VIDEO_REPLAY",
     "confidence": null,
-    "latency_ms": 10.86,
+    "latency_ms": 9.88,
     "evidence": "Reason: STATIC_IMAGE_REPLAY_ACROSS_CHALLENGES, Msg: Static photo bypass detected: left challenge frame is identical to frontal scan.",
-    "timestamp": "2026-10-27T19:56:42Z"
+    "timestamp": "2026-10-27T20:30:00Z"
   },
   {
     "test_id": "ADV-06",
@@ -61,9 +61,9 @@
     "test_fixture": "Replay of exact cryptographic SHA-256 and pHash image bytes from prior attempt",
     "decision": "BLOCKED_REPLAY_ATTACK",
     "confidence": null,
-    "latency_ms": 80.29,
+    "latency_ms": 71.77,
     "evidence": "HTTP 400, Header: REPLAY_ATTACK_DETECTED",
-    "timestamp": "2026-10-27T19:56:42Z"
+    "timestamp": "2026-10-27T20:30:00Z"
   },
   {
     "test_id": "ADV-07",
@@ -72,9 +72,9 @@
     "test_fixture": "Synthesized blurry, underexposed, and tiny face crops",
     "decision": "BLOCKED_QUALITY_FAILED",
     "confidence": null,
-    "latency_ms": 4.75,
+    "latency_ms": 4.04,
     "evidence": "Blur: IMAGE_QUALITY_BLURRY, Dark: IMAGE_QUALITY_UNDEREXPOSED, Small: IMAGE_QUALITY_LOW_CONTRAST",
-    "timestamp": "2026-10-27T19:56:42Z"
+    "timestamp": "2026-10-27T20:30:00Z"
   },
   {
     "test_id": "ADV-08",
@@ -85,7 +85,7 @@
     "confidence": null,
     "latency_ms": 0.01,
     "evidence": "Error code: MULTIPLE_FACES, Msg: Multiple faces (2) detected. Please ensure only you are visible in the camera frame.",
-    "timestamp": "2026-10-27T19:56:42Z"
+    "timestamp": "2026-10-27T20:30:00Z"
   },
   {
     "test_id": "ADV-09",
@@ -94,9 +94,9 @@
     "test_fixture": "Negative TTL token and double nonce consumption attempt",
     "decision": "BLOCKED_NONCE_REUSE_AND_EXPIRY",
     "confidence": null,
-    "latency_ms": 0.33,
+    "latency_ms": 0.41,
     "evidence": "Expired exception caught; first nonce=True, second nonce=False",
-    "timestamp": "2026-10-27T19:56:42Z"
+    "timestamp": "2026-10-27T20:30:00Z"
   },
   {
     "test_id": "ADV-10",
@@ -105,9 +105,9 @@
     "test_fixture": "Client turned head right (+25 yaw) when server challenge demanded left turn",
     "decision": "BLOCKED_ACTION_MISMATCH",
     "confidence": null,
-    "latency_ms": 20.21,
+    "latency_ms": 23.17,
     "evidence": "Liveness: False, Left detected: False",
-    "timestamp": "2026-10-27T19:56:42Z"
+    "timestamp": "2026-10-27T20:30:00Z"
   },
   {
     "test_id": "ADV-11",
@@ -116,8 +116,8 @@
     "test_fixture": "Simulated OpenCV DNN engine runtime timeout; client-supplied bypass ignored",
     "decision": "FAILED_CLOSED_503",
     "confidence": null,
-    "latency_ms": 66.8,
+    "latency_ms": 62.63,
     "evidence": "HTTP 503 received with X-Error-Code: MODEL_UNAVAILABLE",
-    "timestamp": "2026-10-27T19:56:42Z"
+    "timestamp": "2026-10-27T20:30:01Z"
   }
 ]

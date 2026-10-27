@@ -195,20 +195,23 @@ class _LoginScreenState extends State<LoginScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Row(
-                          children: [
-                            Icon(Icons.bolt_rounded, size: 16, color: AppColors.amber),
-                            SizedBox(width: 4),
-                            Text(
-                              'Instant 1-Tap Demo Logins:',
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w800,
-                                color: AppColors.slate,
-                                letterSpacing: 0.3,
+                        const FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Row(
+                            children: [
+                              Icon(Icons.bolt_rounded, size: 16, color: AppColors.amber),
+                              SizedBox(width: 4),
+                              Text(
+                                'Instant 1-Tap Demo Logins:',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w800,
+                                  color: AppColors.slate,
+                                  letterSpacing: 0.3,
+                                ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                         const SizedBox(height: 8),
                         Row(
@@ -377,13 +380,16 @@ class _LoginScreenState extends State<LoginScreen> {
                                         valueColor: AlwaysStoppedAnimation(Colors.white),
                                       ),
                                     )
-                                  : Text(
-                                      'Authenticate as $roleLabel',
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.w800,
-                                        fontSize: 15.5,
-                                        letterSpacing: -0.2,
+                                  : FittedBox(
+                                      fit: BoxFit.scaleDown,
+                                      child: Text(
+                                        'Authenticate as $roleLabel',
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.w800,
+                                          fontSize: 15.5,
+                                          letterSpacing: -0.2,
+                                        ),
                                       ),
                                     ),
                             ),
@@ -492,12 +498,15 @@ class _DemoRoleChip extends StatelessWidget {
           ),
         ),
         child: Center(
-          child: Text(
-            label,
-            style: TextStyle(
-              fontSize: 11.5,
-              fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
-              color: isSelected ? Colors.white : AppColors.slate,
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              label,
+              style: TextStyle(
+                fontSize: 11.5,
+                fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                color: isSelected ? Colors.white : AppColors.slate,
+              ),
             ),
           ),
         ),

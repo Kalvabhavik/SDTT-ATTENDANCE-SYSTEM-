@@ -29,6 +29,8 @@
 | `SEC-018` | Cross-Teacher Audit Log & Analytics Information Disclosure (Horizontal IDOR) | **HIGH** | `backend/app/main.py` | **RESOLVED** | `TC-SEC-008`, `TC-SEC-009` |
 | `SEC-019` | Unbounded Request Payload and DoS Risk | **HIGH** | `backend/app/main.py` | **RESOLVED** | `TC-SEC-017` |
 | `SEC-020` | Unhandled Internal Server Error Information Leakage | **MEDIUM** | `backend/app/main.py` | **RESOLVED** | `TC-SEC-020` |
+| `SEC-021` | Incomplete Audit Metadata Sensitive Key Scrubbing | **MEDIUM** | `backend/app/main.py` | **RESOLVED** | `TC-UNIT-015` |
+| `SEC-022` | Accessibility Text Scaler Layout Overflows | **LOW** | `apps/mobile/lib/screens/` | **RESOLVED** | `Category 12 Mobile Suite` |
 
 ---
 
@@ -342,6 +344,36 @@
 - **Actual Behaviour (Pre-Fix):** Raw exception details could leak in responses or crash handlers.
 - **Remediation:** Registered a global ASGI exception shield `@app.exception_handler(Exception)` catching all unhandled exceptions. It logs the full traceback internally for DevOps while returning a clean, sanitized HTTP 500 response: `{"detail": "Internal server error occurred. Please contact system administrator.", "error_code": "INTERNAL_SERVER_ERROR"}`.
 - **Retest Result:** **RESOLVED** — Verified via `TC-SEC-020`.
+
+---
+
+### SEC-021: Incomplete Audit Metadata Sensitive Key Scrubbing
+- **Finding ID:** `SEC-021`
+- **Severity:** **MEDIUM** (CVSS 5.3: AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N, CWE-532)
+- **Rationale:** `_sanitize_audit_metadata` in `backend/app/main.py` originally checked `k.lower() in sensitive_keys` using exact string set equality. Compound metadata dictionary keys such as `jwt_secret`, `db_password`, or `user_token` were not scrubbed because they did not equal the exact bare word (`jwt`, `password`, `token`).
+- **Affected Component:** `backend/app/main.py` (`_sanitize_audit_metadata`).
+- **Reproduction Steps:**
+  1. Trigger an audited action with metadata containing compound keys: `{"jwt_secret": "my-secret", "db_password": "pass", "user_token": "token123"}`.
+  2. Inspect sanitized metadata returned by `_sanitize_audit_metadata`.
+- **Expected Behaviour:** Any key containing sensitive substring terms (`password`, `token`, `secret`, `jwt`, `key`, `credential`, `embedding`) is scrubbed.
+- **Actual Behaviour (Pre-Fix):** Compound keys bypassed exact set matching and retained sensitive plaintext values.
+- **Remediation:** Refactored `_sanitize_audit_metadata` to use substring checking: `any(word in k_lower for word in sensitive_words)`. Any key containing sensitive substrings is replaced with `"[REDACTED]"`.
+- **Retest Result:** **RESOLVED** — Verified via `test_unit_audit_metadata_scrubbing_credentials_and_vectors` in `backend/tests/test_backend_unit_math_and_crypto.py`.
+
+---
+
+### SEC-022: Accessibility Text Scaler Layout Overflows
+- **Finding ID:** `SEC-022`
+- **Severity:** **LOW** (Accessibility & Usability, WCAG 1.4.4 Resize Text)
+- **Rationale:** When visually impaired users enabled high font scaling (1.5x or 2.0x text scaling) in device accessibility settings, fixed horizontal rows in `RoleSelectionScreen` (server switcher pill) and `LoginScreen` (demo role chips, CTA buttons) overflowed their parent `RenderFlex` containers, breaking visual legibility.
+- **Affected Component:** `apps/mobile/lib/screens/role_selection_screen.dart`, `apps/mobile/lib/screens/login_screen.dart`.
+- **Reproduction Steps:**
+  1. Render `RoleSelectionScreen` or `LoginScreen` with `TextScaler.linear(1.5)` or `2.0`.
+  2. Observe RenderFlex overflow error (`A RenderFlex overflowed by 18 pixels on the right`).
+- **Expected Behaviour:** All UI controls scale gracefully or wrap without unhandled layout overflow exceptions.
+- **Actual Behaviour (Pre-Fix):** RenderFlex threw layout overflow exceptions on 1.5x and 2.0x scaling.
+- **Remediation:** Wrapped server toggle pill, demo account chips, and authentication CTA buttons with `FittedBox(fit: BoxFit.scaleDown)` and `SingleChildScrollView(scrollDirection: Axis.horizontal)`.
+- **Retest Result:** **RESOLVED** — Verified via `apps/mobile/test/accessibility_and_screens_test.dart` (16 / 16 tests passing across all 4 screen sizes and 2.0x scaler).
 
 
 

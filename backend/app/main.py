@@ -399,14 +399,15 @@ def _sanitize_audit_metadata(metadata: Optional[dict[str, Any]]) -> dict[str, An
     """Ensure raw biometric arrays, landmark tuples, image buffers, tokens, or credentials are never written to audit logs."""
     if not metadata:
         return {}
-    sensitive_keys = {
+    sensitive_words = {
         "embedding", "landmarks", "raw_image", "face_bytes", "vector", "face_landmarks",
         "password", "token", "secret", "authorization", "raw_token", "jwt", "cookie",
         "access_token", "refresh_token", "encrypted_embedding", "biometric_template", "credentials",
     }
     sanitized: dict[str, Any] = {}
     for k, v in metadata.items():
-        if k.lower() in sensitive_keys:
+        k_lower = k.lower()
+        if any(word in k_lower for word in sensitive_words):
             continue
         if isinstance(v, (np.ndarray, list)) and len(v) > 20:
             continue

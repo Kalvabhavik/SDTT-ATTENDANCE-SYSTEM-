@@ -194,29 +194,32 @@ class RoleSelectionScreen extends StatelessWidget {
                                     ),
                                   ],
                                 ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Container(
-                                      width: 8,
-                                      height: 8,
-                                      decoration: const BoxDecoration(
-                                        color: AppColors.primary,
-                                        shape: BoxShape.circle,
+                                child: FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Container(
+                                        width: 8,
+                                        height: 8,
+                                        decoration: const BoxDecoration(
+                                          color: AppColors.primary,
+                                          shape: BoxShape.circle,
+                                        ),
                                       ),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Text(
-                                      'Server: ${isLan ? "Wi-Fi LAN" : "USB Host"}',
-                                      style: const TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w700,
-                                        color: AppColors.ink,
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        'Server: ${isLan ? "Wi-Fi LAN" : "USB Host"}',
+                                        style: const TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w700,
+                                          color: AppColors.ink,
+                                        ),
                                       ),
-                                    ),
-                                    const SizedBox(width: 6),
-                                    const Icon(Icons.swap_horiz_rounded, size: 16, color: AppColors.slate),
-                                  ],
+                                      const SizedBox(width: 6),
+                                      const Icon(Icons.swap_horiz_rounded, size: 16, color: AppColors.slate),
+                                    ],
+                                  ),
                                 ),
                               ),
                             );

@@ -4,6 +4,7 @@ __pycache__/
 .venv/
 venv/
 .pytest_cache/
+.coverage
 *.db
 *.sqlite*
 
@@ -15,7 +16,8 @@ venv/
 # Node
 node_modules/
 dist/
-coverage/
+/coverage/
+!proof/reports/coverage/**
 
 # Flutter / Dart
 .dart_tool/
