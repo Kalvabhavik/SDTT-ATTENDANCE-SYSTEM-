@@ -1543,6 +1543,18 @@ class _StudentHomeState extends State<StudentHome> {
 
           const SizedBox(height: 24),
 
+          if (state.error != null) ...[
+            FadeSlideIn(
+              child: Padding(
+                padding: const EdgeInsets.only(bottom: 18),
+                child: ErrorPanel(
+                  message: state.error!,
+                  onRetry: () => state.retryHome(),
+                ),
+              ),
+            ),
+          ],
+
           // ── Today's Summary Section (College Next Lecture) ───────────────────────
           FadeSlideIn(
             delay: const Duration(milliseconds: 40),

@@ -334,6 +334,108 @@
 
 ---
 
+### TC-MOB-003: Loading State Widget Multi-Step Verification
+- **Category:** Category E — Mobile Application Tests
+- **Objective:** Verify `LoadingStateView` renders institutional spinner, headline title, descriptive body, and sequential step indicators without layout clipping.
+- **Preconditions:** Flutter test environment.
+- **Inputs & Setup:** `LoadingStateView` with 3 verification step strings.
+- **Execution Steps:**
+  1. Pump `LoadingStateView` inside widget tester.
+  2. Assert headline, message, step icons, and CircularProgressIndicator.
+- **Expected Result:** All elements render with contrast and zero RenderFlex overflow.
+- **Actual Result:** Passed cleanly with 0 layout overflow.
+- **Pass/Fail Criteria:** Pass if all step indicators render and match expected text.
+- **Status:** PASS
+- **Evidence:** `apps/mobile/test/ui_states_test.dart`, `proof/screenshots/02_ui_redesign/05_verification_loading_state.png`
+- **Defect Reference:** N/A
+
+---
+
+### TC-MOB-004: Biometric Success State & Metrics Card
+- **Category:** Category E — Mobile Application Tests
+- **Objective:** Verify `SuccessStateView` displays emerald verified badge, title, subtitle, metrics breakdown table, and executes primary action callback.
+- **Preconditions:** Flutter test environment.
+- **Inputs & Setup:** `SuccessStateView` with 5 metrics key-value pairs.
+- **Execution Steps:**
+  1. Pump `SuccessStateView` with onAction callback.
+  2. Verify all metric entries render and action button tap triggers callback.
+- **Expected Result:** All metrics render with high contrast and action fires on tap.
+- **Actual Result:** Passed cleanly; metrics values use `Expanded` to prevent overflow on compact screens.
+- **Pass/Fail Criteria:** Pass if metrics table renders without clipping and tap callback is registered.
+- **Status:** PASS
+- **Evidence:** `apps/mobile/test/ui_states_test.dart`, `proof/screenshots/02_ui_redesign/06_verification_success_state.png`
+- **Defect Reference:** N/A
+
+---
+
+### TC-MOB-005: Rejection State & Anti-Proxy Explanations
+- **Category:** Category E — Mobile Application Tests
+- **Objective:** Verify `RejectionStateView` presents clear failure reason, retry action, and manual faculty override button.
+- **Preconditions:** Flutter test environment.
+- **Inputs & Setup:** Rejection reason string, onRetry callback, onManualOption callback.
+- **Execution Steps:**
+  1. Pump `RejectionStateView` in tester.
+  2. Verify plain-language reason is visible and both buttons respond to tap.
+- **Expected Result:** Plain-language security reason clearly explained; both callbacks executed.
+- **Actual Result:** Rejection card renders rose accent container and dispatches tap events.
+- **Pass/Fail Criteria:** Pass if rejection explanation is readable and retry triggers cleanly.
+- **Status:** PASS
+- **Evidence:** `apps/mobile/test/ui_states_test.dart`, `proof/screenshots/02_ui_redesign/07_verification_rejection_state.png`
+- **Defect Reference:** N/A
+
+---
+
+### TC-MOB-006: Diagnostic Retry State & Network Resilience
+- **Category:** Category E — Mobile Application Tests
+- **Objective:** Verify `RetryStateCard` renders error/permission state with actionable recovery action.
+- **Preconditions:** Flutter test environment.
+- **Inputs & Setup:** `RetryStateCard` with network disconnect icon and onRetry callback.
+- **Execution Steps:**
+  1. Pump `RetryStateCard` in widget tester.
+  2. Tap 'Retry Connection' button and verify callback invocation.
+- **Expected Result:** Tap increments callback counter; card displays consistent bordered surface.
+- **Actual Result:** Passed cleanly; retry action fired.
+- **Pass/Fail Criteria:** Pass if actionable recovery prompt renders and triggers action.
+- **Status:** PASS
+- **Evidence:** `apps/mobile/test/ui_states_test.dart`, `proof/screenshots/02_ui_redesign/08_error_and_empty_states.png`
+- **Defect Reference:** N/A
+
+---
+
+### TC-MOB-007: Comprehensive Semantic Status Chip Coverage
+- **Category:** Category E — Mobile Application Tests
+- **Objective:** Verify `StatusChip` renders all discrete system attendance states: `present`, `verified`, `absent`, `rejected`, `pending`, `flagged`, `finalized`, `open`.
+- **Preconditions:** Flutter test environment.
+- **Inputs & Setup:** StatusChip variants rendered inside a Column.
+- **Execution Steps:**
+  1. Pump all 8 status chip variants.
+  2. Assert correct color coding, dot indicators, and capitalized uppercase status labels.
+- **Expected Result:** All chips render with designated emerald, rose, amber, and slate color tokens.
+- **Actual Result:** All 8 status variants rendered with high contrast and zero layout errors.
+- **Pass/Fail Criteria:** Pass if all status chips render expected label and style tokens.
+- **Status:** PASS
+- **Evidence:** `apps/mobile/test/ui_states_test.dart`
+- **Defect Reference:** N/A
+
+---
+
+### TC-MOB-008: Anti-Double-Tap Debounced Button Guard
+- **Category:** Category E — Mobile Application Tests
+- **Objective:** Verify `AppDebouncedButton` enforces lock duration preventing rapid double taps and duplicate submission events.
+- **Preconditions:** Flutter test environment.
+- **Inputs & Setup:** `AppDebouncedButton` with 500ms debounce duration.
+- **Execution Steps:**
+  1. Rapidly tap button 3 times within 100ms.
+  2. Advance clock past 500ms and tap once more.
+- **Expected Result:** Exactly 1 invocation during initial burst, exactly 1 additional invocation after debounce window expires (total: 2).
+- **Actual Result:** Invocation count was exactly 1 after burst, and exactly 2 after cooldown.
+- **Pass/Fail Criteria:** Pass if rapid duplicate clicks are dropped.
+- **Status:** PASS
+- **Evidence:** `apps/mobile/test/ui_states_test.dart`
+- **Defect Reference:** N/A
+
+---
+
 ## Category F — Performance & Concurrency
 
 ### TC-PERF-001: Face Detection, Embedding & Verification Latency
@@ -385,7 +487,7 @@
 | Category B: Edge Cases | 4 | 4 | 0 | 0 | 0 | 100% |
 | Category C: Liveness & Spoofing | 4 | 4 | 0 | 0 | 0 | 100% |
 | Category D: API Security | 5 | 5 | 0 | 0 | 0 | 100% |
-| Category E: Mobile Application | 2 | 2 | 0 | 0 | 0 | 100% |
+| Category E: Mobile Application | 8 | 8 | 0 | 0 | 0 | 100% |
 | Category F: Performance & Latency | 1 | 1 | 0 | 0 | 0 | 100% |
 | Category G: Accuracy & Limits | 1 | 1 | 0 | 0 | 0 | 100% |
-| **TOTAL** | **20** | **20** | **0** | **0** | **0** | **100%** |
+| **TOTAL** | **26** | **26** | **0** | **0** | **0** | **100%** |

@@ -63,10 +63,10 @@ npm --prefix presentation/attendrix run build
 | **Category B: Image Quality & Edge Cases** | 4 | 4 | 0 | 0 | 100% | `proof/reports/junit/results.xml` |
 | **Category C: Presentation Attack & PAD** | 4 | 4 | 0 | 0 | 100% | `proof/reports/junit/results.xml` |
 | **Category D: API Security & Concurrency** | 5 | 5 | 0 | 0 | 100% | `proof/reports/junit/results.xml` |
-| **Category E: Mobile Application Tests** | 2 | 2 | 0 | 0 | 100% | `proof/logs/test_runner/flutter_test.log` |
+| **Category E: Mobile Application Tests** | 8 | 8 | 0 | 0 | 100% | `proof/logs/test_runner/flutter_test.log`, `proof/screenshots/02_ui_redesign/` |
 | **Category F: Performance & Latency** | 1 | 1 | 0 | 0 | 100% | `proof/PERFORMANCE_RESULTS.md` |
 | **Category G: Accuracy & Model Limits** | 1 | 1 | 0 | 0 | 100% | `proof/ACCURACY_AND_LIMITATIONS.md` |
-| **Total** | **20** | **20** | **0** | **0** | **100%** | |
+| **Total** | **26** | **26** | **0** | **0** | **100%** | |
 
 ---
 

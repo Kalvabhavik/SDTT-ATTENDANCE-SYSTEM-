@@ -3,81 +3,127 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-/// Clean Forest-Green Minimal Design Palette (Matching Image 2)
+/// Premium Academic Technology Design Palette
 class AppColors {
   AppColors._();
 
-  // Primary & Accents (Rich Forest Green from Reference)
-  static const primary = Color(0xFF0D7A5F); // Forest Green
-  static const primaryDark = Color(0xFF084E3A);
-  static const primaryLight = Color(0xFF109575);
-  static const secondary = Color(0xFF006B4D); // Deep Green
-  static const secondaryDark = Color(0xFF004D37);
+  // Primary & Accents (Restrained Indigo & Navy)
+  static const primary = Color(0xFF4F46E5); // Indigo 600
+  static const primaryDark = Color(0xFF3730A3); // Indigo 800
+  static const primaryLight = Color(0xFF6366F1); // Indigo 500
+  static const secondary = Color(0xFF1E293B); // Navy Slate 800
+  static const secondaryDark = Color(0xFF0F172A); // Navy Slate 900
+  static const accentIndigo = Color(0xFF4338CA); // Indigo 700
+  static const accentIndigoBg = Color(0xFFEEF2FF); // Indigo 50
+  static const accentIndigoBorder = Color(0xFFC7D2FE); // Indigo 200
 
-  // Status Colors (Soft pastels and clean badges)
-  static const emerald = Color(0xFF0D7A5F); // Present / Success
-  static const emeraldBg = Color(0xFFE8F8F0);
+  // Status Colors (Clear present, absent, pending, rejected, and verified status indicators)
+  static const emerald = Color(0xFF059669); // Present / Verified (Emerald 600)
+  static const emeraldBg = Color(0xFFECFDF5);
   static const emeraldBorder = Color(0xFFA7F3D0);
 
-  static const rose = Color(0xFFDC2626); // Absent / Alert
-  static const roseBg = Color(0xFFFEE2E2);
-  static const roseBorder = Color(0xFFFECACA);
+  static const rose = Color(0xFFE11D48); // Absent / Rejected / Error (Rose 600)
+  static const roseBg = Color(0xFFFFF1F2);
+  static const roseBorder = Color(0xFFFECDD3);
 
-  static const amber = Color(0xFFD97706); // Pending / Warning
-  static const amberBg = Color(0xFFFEF3E2);
+  static const amber = Color(0xFFD97706); // Pending / Flagged / Warning (Amber 600)
+  static const amberBg = Color(0xFFFFFBEB);
   static const amberBorder = Color(0xFFFDE68A);
 
   // Surfaces & Backgrounds
-  static const background = Color(0xFFF9F9FB); // Clean soft canvas
-  static const card = Color(0xFFFFFFFF);
-  static const cardSubtle = Color(0xFFF3F4F6);
+  static const background = Color(0xFFF8FAFC); // Clean neutral slate canvas
+  static const card = Color(0xFFFFFFFF); // Pure white card
+  static const cardSubtle = Color(0xFFF1F5F9); // Slate 100
 
-  // Typography
-  static const ink = Color(0xFF111827); // Charcoal Ink (Non-neon)
-  static const slate = Color(0xFF4B5563); // Mid-tone Gray
-  static const muted = Color(0xFF9CA3AF); // Muted Label Gray
-  static const border = Color(0xFFECEEF1); // Subtle divider
+  // Typography (Deep Navy Ink with accessible contrast)
+  static const ink = Color(0xFF0F172A); // Charcoal Navy Slate 900
+  static const slate = Color(0xFF334155); // High-contrast Slate 700
+  static const muted = Color(0xFF64748B); // Slate 500
+  static const border = Color(0xFFE2E8F0); // Thin clean divider
   static const line = border;
-  static const borderHighlight = Color(0xFFD1D5DB);
+  static const borderHighlight = Color(0xFFCBD5E1);
 
   // Pastel Chips
-  static const tagBacklogBg = Color(0xFFF1F3F5);
-  static const tagBacklogText = Color(0xFF495057);
-  static const tagProgressBg = Color(0xFFFEF3E2);
+  static const tagBacklogBg = Color(0xFFF1F5F9);
+  static const tagBacklogText = Color(0xFF475569);
+  static const tagProgressBg = Color(0xFFFFFBEB);
   static const tagProgressText = Color(0xFFD97706);
-  static const tagHoldBg = Color(0xFFFEE2E2);
-  static const tagHoldText = Color(0xFFDC2626);
-  static const tagApprovedBg = Color(0xFFE8F8F0);
-  static const tagApprovedText = Color(0xFF0D7A5F);
+  static const tagHoldBg = Color(0xFFFFF1F2);
+  static const tagHoldText = Color(0xFFE11D48);
+  static const tagApprovedBg = Color(0xFFECFDF5);
+  static const tagApprovedText = Color(0xFF059669);
 
-  // Gradients (Clean and organic, matching reference)
+  // Gradients (Clean academic navy & indigo)
   static const primaryGradient = LinearGradient(
-    colors: [Color(0xFF109575), Color(0xFF0D7A5F)],
+    colors: [Color(0xFF4F46E5), Color(0xFF3730A3)],
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
   );
 
   static const studentHeroGradient = LinearGradient(
-    colors: [Color(0xFF0D7A5F), Color(0xFF084E3A)],
+    colors: [Color(0xFF1E293B), Color(0xFF0F172A)],
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
   );
 
   static const teacherHeroGradient = LinearGradient(
-    colors: [Color(0xFF0D7A5F), Color(0xFF064E3B)],
+    colors: [Color(0xFF312E81), Color(0xFF1E1B4B)],
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
   );
 
   static const accentGradient = LinearGradient(
-    colors: [Color(0xFF109575), Color(0xFF059669)],
+    colors: [Color(0xFF6366F1), Color(0xFF4F46E5)],
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
   );
 }
 
-/// App theme with modern typography, smooth shapes, and crisp contrast
-ThemeData buildTheme() {
+/// App theme with Inter typography, smooth shapes, and crisp academic contrast
+ThemeData buildTheme({bool isTest = false}) {
+  const baseTextTheme = TextTheme(
+    headlineLarge: TextStyle(
+      fontSize: 30,
+      fontWeight: FontWeight.w900,
+      color: AppColors.ink,
+      letterSpacing: -0.8,
+      height: 1.15,
+    ),
+    headlineMedium: TextStyle(
+      fontSize: 24,
+      fontWeight: FontWeight.w800,
+      color: AppColors.ink,
+      letterSpacing: -0.5,
+    ),
+    titleLarge: TextStyle(
+      fontSize: 18,
+      fontWeight: FontWeight.w800,
+      color: AppColors.ink,
+      letterSpacing: -0.3,
+    ),
+    titleMedium: TextStyle(
+      fontSize: 15.5,
+      fontWeight: FontWeight.w700,
+      color: AppColors.ink,
+    ),
+    bodyLarge: TextStyle(
+      fontSize: 15,
+      height: 1.5,
+      color: AppColors.slate,
+    ),
+    bodyMedium: TextStyle(
+      fontSize: 13.5,
+      height: 1.45,
+      color: AppColors.slate,
+    ),
+    labelSmall: TextStyle(
+      fontSize: 11.5,
+      fontWeight: FontWeight.w600,
+      color: AppColors.muted,
+      letterSpacing: 0.3,
+    ),
+  );
+
   return ThemeData(
     useMaterial3: true,
     scaffoldBackgroundColor: AppColors.background,
@@ -96,55 +142,12 @@ ThemeData buildTheme() {
       iconTheme: IconThemeData(color: AppColors.ink),
       titleTextStyle: TextStyle(
         color: AppColors.ink,
-        fontSize: 22,
+        fontSize: 20,
         fontWeight: FontWeight.w800,
-        letterSpacing: -0.5,
+        letterSpacing: -0.4,
       ),
     ),
-    textTheme: GoogleFonts.plusJakartaSansTextTheme(
-      const TextTheme(
-        headlineLarge: TextStyle(
-          fontSize: 32,
-          fontWeight: FontWeight.w900,
-          color: AppColors.ink,
-          letterSpacing: -0.8,
-          height: 1.15,
-        ),
-        headlineMedium: TextStyle(
-          fontSize: 24,
-          fontWeight: FontWeight.w800,
-          color: AppColors.ink,
-          letterSpacing: -0.5,
-        ),
-        titleLarge: TextStyle(
-          fontSize: 19,
-          fontWeight: FontWeight.w800,
-          color: AppColors.ink,
-          letterSpacing: -0.3,
-        ),
-        titleMedium: TextStyle(
-          fontSize: 16,
-          fontWeight: FontWeight.w700,
-          color: AppColors.ink,
-        ),
-        bodyLarge: TextStyle(
-          fontSize: 15,
-          height: 1.5,
-          color: AppColors.slate,
-        ),
-        bodyMedium: TextStyle(
-          fontSize: 13.5,
-          height: 1.45,
-          color: AppColors.slate,
-        ),
-        labelSmall: TextStyle(
-          fontSize: 11.5,
-          fontWeight: FontWeight.w600,
-          color: AppColors.muted,
-          letterSpacing: 0.3,
-        ),
-      ),
-    ),
+    textTheme: isTest ? baseTextTheme : GoogleFonts.interTextTheme(baseTextTheme),
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
       fillColor: Colors.white,
@@ -202,7 +205,7 @@ ThemeData buildTheme() {
     ),
     navigationBarTheme: NavigationBarThemeData(
       backgroundColor: Colors.white,
-      elevation: 3,
+      elevation: 2,
       shadowColor: Colors.black12,
       height: 68,
       indicatorColor: AppColors.primary.withValues(alpha: 0.12),
@@ -227,6 +230,33 @@ ThemeData buildTheme() {
         return const IconThemeData(color: AppColors.slate, size: 24);
       }),
     ),
+  );
+}
+
+/// Optional consistent dark theme for Attendrix
+ThemeData buildDarkTheme() {
+  return ThemeData(
+    useMaterial3: true,
+    scaffoldBackgroundColor: const Color(0xFF090D16),
+    colorScheme: ColorScheme.fromSeed(
+      seedColor: AppColors.primary,
+      brightness: Brightness.dark,
+      primary: AppColors.primaryLight,
+      secondary: const Color(0xFF334155),
+      surface: const Color(0xFF0F172A),
+    ),
+    appBarTheme: const AppBarTheme(
+      backgroundColor: Color(0xFF090D16),
+      elevation: 0,
+      centerTitle: false,
+      iconTheme: IconThemeData(color: Colors.white),
+      titleTextStyle: TextStyle(
+        color: Colors.white,
+        fontSize: 20,
+        fontWeight: FontWeight.w800,
+      ),
+    ),
+    textTheme: GoogleFonts.interTextTheme(ThemeData.dark().textTheme),
   );
 }
 
@@ -416,11 +446,29 @@ class StatusChip extends StatelessWidget {
         text = AppColors.emerald;
         icon = Icons.check_circle_rounded;
         break;
+      case 'verified':
+        bg = AppColors.emeraldBg;
+        border = AppColors.emeraldBorder;
+        text = AppColors.emerald;
+        icon = Icons.verified_user_rounded;
+        break;
       case 'absent':
         bg = AppColors.roseBg;
         border = AppColors.roseBorder;
         text = AppColors.rose;
         icon = Icons.cancel_rounded;
+        break;
+      case 'rejected':
+        bg = AppColors.roseBg;
+        border = AppColors.roseBorder;
+        text = AppColors.rose;
+        icon = Icons.gpp_bad_rounded;
+        break;
+      case 'flagged':
+        bg = AppColors.amberBg;
+        border = AppColors.amberBorder;
+        text = AppColors.amber;
+        icon = Icons.warning_amber_rounded;
         break;
       case 'finalized':
         bg = const Color(0xFFF1F5F9);
@@ -429,8 +477,8 @@ class StatusChip extends StatelessWidget {
         icon = Icons.lock_clock_rounded;
         break;
       case 'open':
-        bg = const Color(0xFFEFF6FF);
-        border = const Color(0xFFBFDBFE);
+        bg = AppColors.accentIndigoBg;
+        border = AppColors.accentIndigoBorder;
         text = AppColors.primary;
         icon = Icons.radio_button_checked_rounded;
         break;
@@ -863,6 +911,499 @@ class AppTextField extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Explicit Loading State View with academic styling and step indicators
+class LoadingStateView extends StatelessWidget {
+  const LoadingStateView({
+    super.key,
+    this.title = 'Processing Verification',
+    this.message = 'Cross-referencing biometric features with the academic server...',
+    this.steps,
+  });
+
+  final String title;
+  final String message;
+  final List<String>? steps;
+
+  @override
+  Widget build(BuildContext context) {
+    return AppCard(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 64,
+              height: 64,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: AppColors.accentIndigoBg,
+                shape: BoxShape.circle,
+                border: Border.all(color: AppColors.accentIndigoBorder),
+              ),
+              child: const CircularProgressIndicator(
+                strokeWidth: 3.5,
+                valueColor: AlwaysStoppedAnimation(AppColors.primary),
+              ),
+            ),
+            const SizedBox(height: 20),
+            Text(
+              title,
+              style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+                color: AppColors.ink,
+                letterSpacing: -0.3,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              message,
+              style: const TextStyle(
+                fontSize: 13.5,
+                color: AppColors.slate,
+                height: 1.4,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            if (steps != null && steps!.isNotEmpty) ...[
+              const SizedBox(height: 20),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                decoration: BoxDecoration(
+                  color: AppColors.cardSubtle,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppColors.border),
+                ),
+                child: Column(
+                  children: steps!.map((step) {
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.check_circle_rounded, size: 16, color: AppColors.primary),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              step,
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: AppColors.slate,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Explicit Verified Success State View
+class SuccessStateView extends StatelessWidget {
+  const SuccessStateView({
+    super.key,
+    this.title = 'Attendance Verified Present',
+    this.message = 'Your presence and active liveness have been verified by the institutional engine.',
+    this.metrics,
+    this.actionLabel = 'Return to Dashboard',
+    this.onAction,
+  });
+
+  final String title;
+  final String message;
+  final Map<String, String>? metrics;
+  final String actionLabel;
+  final VoidCallback? onAction;
+
+  @override
+  Widget build(BuildContext context) {
+    return AppCard(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 30),
+      backgroundColor: Colors.white,
+      borderColor: AppColors.emeraldBorder,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Center(
+            child: Container(
+              width: 68,
+              height: 68,
+              decoration: const BoxDecoration(
+                color: AppColors.emeraldBg,
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.verified_user_rounded,
+                color: AppColors.emerald,
+                size: 38,
+              ),
+            ),
+          ),
+          const SizedBox(height: 18),
+          Text(
+            title,
+            style: const TextStyle(
+              fontSize: 18.5,
+              fontWeight: FontWeight.w900,
+              color: AppColors.ink,
+              letterSpacing: -0.3,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            message,
+            style: const TextStyle(
+              fontSize: 13.5,
+              color: AppColors.slate,
+              height: 1.4,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          if (metrics != null && metrics!.isNotEmpty) ...[
+            const SizedBox(height: 18),
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: AppColors.cardSubtle,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: AppColors.border),
+              ),
+              child: Column(
+                children: metrics!.entries.map((entry) {
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          entry.key,
+                          style: const TextStyle(
+                            fontSize: 12.5,
+                            color: AppColors.muted,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            entry.value,
+                            textAlign: TextAlign.end,
+                            style: const TextStyle(
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w800,
+                              color: AppColors.ink,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }).toList(),
+              ),
+            ),
+          ],
+          if (onAction != null) ...[
+            const SizedBox(height: 22),
+            FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: AppColors.emerald,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              ),
+              onPressed: onAction,
+              child: Text(
+                actionLabel,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 14.5,
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Explicit Verification Rejection / Failure State View
+class RejectionStateView extends StatelessWidget {
+  const RejectionStateView({
+    super.key,
+    this.title = 'Verification Rejected',
+    this.message = 'The submission could not be verified against the classroom attendance criteria.',
+    this.reason,
+    this.retryLabel = 'Try Verification Again',
+    required this.onRetry,
+    this.onManualOption,
+    this.manualLabel = 'Use Manual Roll Call',
+  });
+
+  final String title;
+  final String message;
+  final String? reason;
+  final String retryLabel;
+  final VoidCallback onRetry;
+  final VoidCallback? onManualOption;
+  final String manualLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    return AppCard(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 30),
+      backgroundColor: Colors.white,
+      borderColor: AppColors.roseBorder,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Center(
+            child: Container(
+              width: 68,
+              height: 68,
+              decoration: const BoxDecoration(
+                color: AppColors.roseBg,
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.gpp_bad_rounded,
+                color: AppColors.rose,
+                size: 38,
+              ),
+            ),
+          ),
+          const SizedBox(height: 18),
+          Text(
+            title,
+            style: const TextStyle(
+              fontSize: 18.5,
+              fontWeight: FontWeight.w900,
+              color: AppColors.rose,
+              letterSpacing: -0.3,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            message,
+            style: const TextStyle(
+              fontSize: 13.5,
+              color: AppColors.slate,
+              height: 1.4,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          if (reason != null && reason!.isNotEmpty) ...[
+            const SizedBox(height: 14),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: BoxDecoration(
+                color: AppColors.roseBg,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppColors.roseBorder),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.info_outline_rounded, color: AppColors.rose, size: 18),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      reason!,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.rose,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          const SizedBox(height: 22),
+          FilledButton.icon(
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.rose,
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+            ),
+            onPressed: onRetry,
+            icon: const Icon(Icons.refresh_rounded, size: 18),
+            label: Text(
+              retryLabel,
+              style: const TextStyle(
+                fontWeight: FontWeight.w800,
+                fontSize: 14.5,
+              ),
+            ),
+          ),
+          if (onManualOption != null) ...[
+            const SizedBox(height: 8),
+            TextButton(
+              onPressed: onManualOption,
+              child: Text(
+                manualLabel,
+                style: const TextStyle(
+                  color: AppColors.slate,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13,
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Explicit Retry State Card for network errors, permission blocks, or timeouts
+class RetryStateCard extends StatelessWidget {
+  const RetryStateCard({
+    super.key,
+    required this.title,
+    required this.message,
+    required this.onRetry,
+    this.icon = Icons.refresh_rounded,
+    this.buttonLabel = 'Try Again',
+  });
+
+  final String title;
+  final String message;
+  final VoidCallback onRetry;
+  final IconData icon;
+  final String buttonLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    return AppCard(
+      padding: const EdgeInsets.all(20),
+      backgroundColor: Colors.white,
+      borderColor: AppColors.borderHighlight,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppColors.accentIndigoBg,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(icon, color: AppColors.primary, size: 22),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  title,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 15,
+                    color: AppColors.ink,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            message,
+            style: const TextStyle(
+              fontSize: 13,
+              color: AppColors.slate,
+              height: 1.4,
+            ),
+          ),
+          const SizedBox(height: 16),
+          FilledButton.icon(
+            onPressed: onRetry,
+            style: FilledButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
+              backgroundColor: AppColors.primary,
+            ),
+            icon: const Icon(Icons.refresh_rounded, size: 16),
+            label: Text(buttonLabel),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Debounced Button to prevent duplicate taps and duplicate capture submissions
+class AppDebouncedButton extends StatefulWidget {
+  const AppDebouncedButton({
+    super.key,
+    required this.child,
+    required this.onPressed,
+    this.style,
+    this.debounceDuration = const Duration(milliseconds: 1000),
+    this.isBusy = false,
+  });
+
+  final Widget child;
+  final VoidCallback? onPressed;
+  final ButtonStyle? style;
+  final Duration debounceDuration;
+  final bool isBusy;
+
+  @override
+  State<AppDebouncedButton> createState() => _AppDebouncedButtonState();
+}
+
+class _AppDebouncedButtonState extends State<AppDebouncedButton> {
+  bool _locked = false;
+  async.Timer? _debounceTimer;
+
+  @override
+  void dispose() {
+    _debounceTimer?.cancel();
+    super.dispose();
+  }
+
+  void _handleTap() {
+    if (_locked || widget.isBusy || widget.onPressed == null) return;
+    setState(() => _locked = true);
+    widget.onPressed!();
+    _debounceTimer?.cancel();
+    _debounceTimer = async.Timer(widget.debounceDuration, () {
+      if (mounted) setState(() => _locked = false);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = !_locked && !widget.isBusy && widget.onPressed != null;
+    return FilledButton(
+      style: widget.style,
+      onPressed: enabled ? _handleTap : null,
+      child: widget.isBusy
+          ? const SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(
+                strokeWidth: 2.2,
+                valueColor: AlwaysStoppedAnimation(Colors.white),
+              ),
+            )
+          : widget.child,
     );
   }
 }

@@ -41,7 +41,7 @@ class LiveFaceVerificationScreen extends StatefulWidget {
 
 class _LiveFaceVerificationScreenState
     extends State<LiveFaceVerificationScreen>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   CameraController? _cameraController;
   List<CameraDescription> _cameras = [];
   int _selectedCameraIndex = 0;
@@ -58,9 +58,10 @@ class _LiveFaceVerificationScreenState
   XFile? _faceBlink;    // Eye blink
   XFile? _roomPhoto;
 
-  // Liveness animation state
+  // Liveness animation and verification state
   late AnimationController _scannerAnim;
-  bool _livenessPassed = false;
+  bool _challengeRecorded = false; // Client pose actions captured
+  bool _livenessPassed = false;    // Genuine backend verification result ONLY
   bool _isProcessing = false;
   String? _errorMessage;
   AttendanceVerifyResult? _result;
@@ -89,6 +90,7 @@ class _LiveFaceVerificationScreenState
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _scannerAnim = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1800),
@@ -107,7 +109,7 @@ class _LiveFaceVerificationScreenState
       }
       if (_secondsLeft <= 1) {
         t.cancel();
-        if (_currentStep == VerificationStep.liveFace && !_livenessPassed && !_isProcessing) {
+        if (_currentStep == VerificationStep.liveFace && !_challengeRecorded && !_isProcessing) {
           _advanceLivenessStage();
         }
       } else {
@@ -186,12 +188,36 @@ class _LiveFaceVerificationScreenState
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState appState) {
+    final cameraController = _cameraController;
+    if (cameraController == null || !cameraController.value.isInitialized) {
+      return;
+    }
+    if (appState == AppLifecycleState.inactive || appState == AppLifecycleState.paused) {
+      _cameraController?.dispose();
+      _cameraController = null;
+      if (mounted) {
+        setState(() => _isCameraInitialized = false);
+      }
+    } else if (appState == AppLifecycleState.resumed) {
+      if (_cameras.isNotEmpty) {
+        _setupCameraController(_cameras[_selectedCameraIndex]);
+      } else {
+        _initCamera();
+      }
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _gyroSubscription?.cancel();
     _accelSubscription?.cancel();
     _countdownTimer?.cancel();
     _scannerAnim.dispose();
     _cameraController?.dispose();
+    _cameraController = null;
+    _isCameraInitialized = false;
     super.dispose();
   }
 
@@ -261,11 +287,11 @@ class _LiveFaceVerificationScreenState
 
         setState(() {
           _livenessStage = LivenessStage.completed;
-          _livenessPassed = true;
+          _challengeRecorded = true;
           _isProcessing = false;
         });
 
-        // Show brief success checkmark, then advance to classroom panorama step
+        // Advance to classroom panorama step
         await Future.delayed(const Duration(milliseconds: 700));
 
         if (mounted) {
@@ -536,6 +562,7 @@ class _LiveFaceVerificationScreenState
       if (mounted) {
         setState(() {
           _result = res;
+          _livenessPassed = res.livenessPassed && res.isPresent;
           _currentStep = VerificationStep.result;
           _isProcessing = false;
         });
@@ -838,8 +865,8 @@ class _LiveFaceVerificationScreenState
                   CustomPaint(
                     size: Size(boxWidth, boxHeight),
                     painter: _CornerBracketPainter(
-                      color: _livenessPassed
-                          ? AppColors.emerald
+                      color: _challengeRecorded
+                          ? AppColors.primaryLight
                           : (_livenessStage == LivenessStage.turnLeft || _livenessStage == LivenessStage.turnRight)
                               ? Colors.white
                               : _livenessStage == LivenessStage.blink
@@ -999,7 +1026,7 @@ class _LiveFaceVerificationScreenState
                   ],
 
                   // Animated Scanner Line
-                  if (!_livenessPassed)
+                  if (!_challengeRecorded)
                     AnimatedBuilder(
                       animation: _scannerAnim,
                       builder: (context, _) {
@@ -1031,19 +1058,19 @@ class _LiveFaceVerificationScreenState
                       },
                     ),
 
-                  // Verification Checkmark if captured
-                  if (_livenessPassed)
+                  // Challenge Recorded Indicator (Awaiting backend neural verification)
+                  if (_challengeRecorded)
                     Container(
-                      width: 72,
-                      height: 72,
+                      width: 68,
+                      height: 68,
                       decoration: const BoxDecoration(
-                        color: AppColors.emerald,
+                        color: AppColors.primary,
                         shape: BoxShape.circle,
                       ),
                       child: const Icon(
-                        Icons.check_rounded,
+                        Icons.hourglass_top_rounded,
                         color: Colors.white,
-                        size: 48,
+                        size: 34,
                       ),
                     ),
                 ],
@@ -1058,8 +1085,8 @@ class _LiveFaceVerificationScreenState
                 color: Colors.black.withValues(alpha: 0.82),
                 borderRadius: BorderRadius.circular(999),
                 border: Border.all(
-                  color: _livenessPassed
-                      ? AppColors.emerald
+                  color: _challengeRecorded
+                      ? AppColors.primaryLight
                       : Colors.white24,
                 ),
                 boxShadow: [
@@ -1072,7 +1099,7 @@ class _LiveFaceVerificationScreenState
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  if (!_livenessPassed)
+                  if (!_challengeRecorded)
                     Container(
                       width: 22,
                       height: 22,
@@ -1094,11 +1121,11 @@ class _LiveFaceVerificationScreenState
                   else
                     const Padding(
                       padding: EdgeInsets.only(right: 8),
-                      child: Icon(Icons.verified_rounded, color: AppColors.emerald, size: 18),
+                      child: Icon(Icons.sync_rounded, color: AppColors.primaryLight, size: 18),
                     ),
                   Text(
-                    _livenessPassed
-                        ? 'Liveness Motion Confirmed ✓'
+                    _challengeRecorded
+                        ? 'Challenges Recorded • Switching to Room Sweep'
                         : _livenessStage == LivenessStage.center
                             ? 'Step 1/4: Looking straight ahead...'
                             : _livenessStage == LivenessStage.turnLeft
@@ -1676,6 +1703,43 @@ class _LiveFaceVerificationScreenState
               ),
             ),
 
+            if (!isPresent) ...[
+              const SizedBox(height: 10),
+              OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.white,
+                  side: const BorderSide(color: Colors.white30),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                ),
+                onPressed: () {
+                  setState(() {
+                    _currentStep = VerificationStep.liveFace;
+                    _livenessStage = LivenessStage.center;
+                    _challengeRecorded = false;
+                    _livenessPassed = false;
+                    _isProcessing = false;
+                    _errorMessage = null;
+                    _result = null;
+                    _facePhoto = null;
+                    _faceLeft = null;
+                    _faceRight = null;
+                    _faceBlink = null;
+                    _roomPhoto = null;
+                    _sweepProgress = 0.0;
+                    _accumulatedDegrees = 0.0;
+                    _secondsLeft = 3;
+                  });
+                  _startAutoScanCountdown();
+                },
+                icon: const Icon(Icons.refresh_rounded, size: 18),
+                label: const Text(
+                  'Retry Verification Attempt',
+                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14.5),
+                ),
+              ),
+            ],
+
             const SizedBox(height: 12),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
@@ -1719,14 +1783,14 @@ class _LiveFaceVerificationScreenState
                   ? 'Tap to capture right angle'
                   : _livenessStage == LivenessStage.blink
                       ? 'Tap to capture blink'
-                      : 'Liveness confirmed';
+                      : 'Challenges recorded';
 
       return Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             GestureDetector(
-              onTap: (_isProcessing || _livenessPassed) ? null : _captureFace,
+              onTap: (_isProcessing || _challengeRecorded) ? null : _captureFace,
               child: Container(
                 width: 76,
                 height: 76,
@@ -1752,8 +1816,8 @@ class _LiveFaceVerificationScreenState
             ),
             const SizedBox(height: 10),
             Text(
-              _livenessPassed
-                  ? 'Face scan verified'
+              _challengeRecorded
+                  ? 'Motion challenges recorded • Preparing Room Sweep'
                   : 'Auto-scan in ${_secondsLeft}s • $actionLabel',
               style: const TextStyle(
                 color: Colors.white70,

@@ -50,6 +50,8 @@ class _AttendanceAppState extends State<AttendanceApp> {
           },
         ),
       ),
+      darkTheme: buildDarkTheme(),
+      themeMode: ThemeMode.light,
       home: AnimatedSwitcher(
         duration: const Duration(milliseconds: 350),
         switchInCurve: Curves.easeOutCubic,

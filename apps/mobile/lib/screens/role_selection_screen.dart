@@ -35,27 +35,27 @@ class RoleSelectionScreen extends StatelessWidget {
                     children: [
                       const SizedBox(height: 16),
 
-                      // Brand Monogram & Minimal Organic Badge
+                      // Brand Monogram & Minimal Academic Technology Badge
                       Center(
                         child: Container(
-                          width: 64,
-                          height: 64,
+                          width: 68,
+                          height: 68,
                           decoration: BoxDecoration(
                             gradient: AppColors.primaryGradient,
-                            borderRadius: BorderRadius.circular(20),
+                            borderRadius: BorderRadius.circular(22),
                             boxShadow: [
                               BoxShadow(
-                                color: AppColors.primary.withValues(alpha: 0.28),
-                                blurRadius: 18,
-                                offset: const Offset(0, 6),
+                                color: AppColors.primary.withValues(alpha: 0.32),
+                                blurRadius: 20,
+                                offset: const Offset(0, 8),
                               ),
                             ],
                           ),
                           child: const Center(
                             child: Icon(
-                              Icons.spa_rounded,
+                              Icons.school_rounded,
                               color: Colors.white,
-                              size: 30,
+                              size: 34,
                             ),
                           ),
                         ),
@@ -65,11 +65,11 @@ class RoleSelectionScreen extends StatelessWidget {
                       // Tagline chip
                       Center(
                         child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
                           decoration: BoxDecoration(
-                            color: AppColors.emeraldBg,
+                            color: AppColors.accentIndigoBg,
                             borderRadius: BorderRadius.circular(20),
-                            border: Border.all(color: AppColors.emeraldBorder),
+                            border: Border.all(color: AppColors.accentIndigoBorder),
                           ),
                           child: const Text(
                             'ATTENDRIX BIOMETRICS v2.4',
@@ -77,7 +77,7 @@ class RoleSelectionScreen extends StatelessWidget {
                               fontSize: 10.5,
                               fontWeight: FontWeight.w800,
                               color: AppColors.primary,
-                              letterSpacing: 1.0,
+                              letterSpacing: 1.1,
                             ),
                           ),
                         ),
@@ -122,12 +122,12 @@ class RoleSelectionScreen extends StatelessWidget {
                       // 1. Student Card
                       _RoleCard(
                         title: 'Student Portal',
-                        badge: 'ACTIVE LIVENESS & RADAR',
+                        badge: 'ACTIVE LIVENESS',
                         description: 'Self-verify presence with 4-step head pose & blink liveness plus 180° classroom sweep.',
                         icon: Icons.face_retouching_natural_rounded,
-                        iconBg: AppColors.emeraldBg,
+                        iconBg: AppColors.accentIndigoBg,
                         iconColor: AppColors.primary,
-                        badgeBg: AppColors.emeraldBg,
+                        badgeBg: AppColors.accentIndigoBg,
                         badgeColor: AppColors.primary,
                         onTap: () => _chooseRole(context, 'student'),
                       ),
@@ -136,13 +136,13 @@ class RoleSelectionScreen extends StatelessWidget {
                       // 2. Lecturer Card
                       _RoleCard(
                         title: 'Faculty / Lecturer',
-                        badge: 'LIVE CLASSROOM CONSOLE',
+                        badge: 'FACULTY CONSOLE',
                         description: 'Launch timed attendance sessions, monitor live check-in feed, and review anti-proxy flags.',
                         icon: Icons.co_present_rounded,
-                        iconBg: const Color(0xFFE6F4F1),
-                        iconColor: AppColors.primaryDark,
-                        badgeBg: const Color(0xFFE6F4F1),
-                        badgeColor: AppColors.primaryDark,
+                        iconBg: const Color(0xFFF1F5F9),
+                        iconColor: AppColors.secondary,
+                        badgeBg: const Color(0xFFF1F5F9),
+                        badgeColor: AppColors.secondary,
                         onTap: () => _chooseRole(context, 'lecturer'),
                       ),
                       const SizedBox(height: 12),
@@ -150,13 +150,13 @@ class RoleSelectionScreen extends StatelessWidget {
                       // 3. Controller Card
                       _RoleCard(
                         title: 'Academic Controller',
-                        badge: 'INSTITUTIONAL INTEGRITY',
+                        badge: 'AUDIT & ROSTER',
                         description: 'Configure classroom templates, verify registered rosters, and export official audit reports.',
                         icon: Icons.admin_panel_settings_rounded,
-                        iconBg: const Color(0xFFF1F5F9),
-                        iconColor: const Color(0xFF334155),
-                        badgeBg: const Color(0xFFF1F5F9),
-                        badgeColor: const Color(0xFF334155),
+                        iconBg: const Color(0xFFF8FAFC),
+                        iconColor: AppColors.slate,
+                        badgeBg: const Color(0xFFF8FAFC),
+                        badgeColor: AppColors.slate,
                         onTap: () => _chooseRole(context, 'controller'),
                       ),
 
@@ -207,7 +207,7 @@ class RoleSelectionScreen extends StatelessWidget {
                                     ),
                                     const SizedBox(width: 8),
                                     Text(
-                                      'Backend: ${isLan ? "Wi-Fi (10.0.4.99:8000)" : "USB (localhost:8000)"}',
+                                      'Server: ${isLan ? "Wi-Fi LAN" : "USB Host"}',
                                       style: const TextStyle(
                                         fontSize: 12,
                                         fontWeight: FontWeight.w700,
@@ -305,25 +305,23 @@ class _RoleCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                        decoration: BoxDecoration(
-                          color: badgeBg,
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Text(
-                          badge,
-                          style: TextStyle(
-                            fontSize: 9.5,
-                            fontWeight: FontWeight.w800,
-                            color: badgeColor,
-                            letterSpacing: 0.5,
-                          ),
-                        ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: badgeBg,
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      badge,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 9.5,
+                        fontWeight: FontWeight.w800,
+                        color: badgeColor,
+                        letterSpacing: 0.5,
                       ),
-                    ],
+                    ),
                   ),
                   const SizedBox(height: 6),
                   Text(

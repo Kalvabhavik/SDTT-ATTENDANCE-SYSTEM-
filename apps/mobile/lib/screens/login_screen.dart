@@ -63,6 +63,7 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _login() async {
+    if (widget.state.busy) return;
     if (!formKey.currentState!.validate()) return;
     widget.state.setRole(currentRole);
     final success = await widget.state.login(

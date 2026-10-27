@@ -45,6 +45,7 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
   }
 
   Future<void> _submitEnrollment() async {
+    if (isEnrolling) return;
     if (!consentAgreed) {
       setState(() => enrollmentError = 'Please accept the consent terms to proceed.');
       return;

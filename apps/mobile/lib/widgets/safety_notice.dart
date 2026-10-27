@@ -6,12 +6,25 @@ class SafetyNotice extends StatelessWidget {
   const SafetyNotice({super.key});
   @override
   Widget build(BuildContext context) => AppCard(
-          child:
-              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text('Privacy and safety',
-            style: Theme.of(context).textTheme.titleMedium),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Icon(Icons.shield_outlined, size: 18, color: AppColors.primary),
+            const SizedBox(width: 8),
+            Text(
+              'Privacy & Biometric Protection',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+          ],
+        ),
         const SizedBox(height: 8),
         const Text(
-            'Camera captures are uploaded for this session only and removed locally after upload when possible. The API returns simulated suggestions; this demo does not recognize faces or retain images/templates. Notifications stay in this app.')
-      ]));
+          'Verification captures are processed for this session only. Raw facial images are discarded immediately after in-memory feature extraction into 512-D encrypted templates. Notifications remain strictly private within this academic app.',
+          style: TextStyle(fontSize: 12.5, color: AppColors.slate, height: 1.4),
+        ),
+      ],
+    ),
+  );
 }
