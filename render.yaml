@@ -1,0 +1,29 @@
+services:
+  - type: web
+    name: attendrix-backend
+    runtime: python
+    region: oregon # or frankfurt, singapore, ohio
+    plan: free # or starter
+    rootDir: backend
+    buildCommand: pip install --upgrade pip && pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    envVars:
+      - key: ATTENDANCE_ENV
+        value: production
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: SUPABASE_JWT_SECRET
+        sync: false
+      - key: ATTENDANCE_BIOMETRIC_ENCRYPTION_KEY
+        generateValue: false # Set in Render dashboard
+      - key: ATTENDANCE_CORS_ORIGINS
+        value: "*" # Set to your frontend URL in production
+      - key: ATTENDANCE_TOKEN_TTL_SECONDS
+        value: "28800"
+      - key: ATTENDANCE_MAX_CAPTURE_BYTES
+        value: "10485760"

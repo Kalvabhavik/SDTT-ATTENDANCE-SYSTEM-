@@ -3,12 +3,13 @@ import 'package:flutter/foundation.dart';
 class AppConfig {
   AppConfig._();
 
+  static const String cloudBaseUrl = 'https://attendrix-backend-egww.onrender.com/api';
   static const String usbBaseUrl = 'http://localhost:8000/api';
   static const String lanBaseUrl = 'http://10.0.4.99:8000/api';
 
   static String _apiBaseUrl = const String.fromEnvironment(
     'API_BASE_URL',
-    defaultValue: usbBaseUrl,
+    defaultValue: cloudBaseUrl,
   );
 
   static final ValueNotifier<String> activeUrlNotifier = ValueNotifier<String>(_apiBaseUrl);
@@ -23,15 +24,23 @@ class AppConfig {
   }
 
   static String get alternateUrl {
+    if (_apiBaseUrl.contains('onrender.com')) {
+      return usbBaseUrl;
+    }
     if (_apiBaseUrl.contains('localhost') || _apiBaseUrl.contains('127.0.0.1')) {
       return lanBaseUrl;
     }
-    return usbBaseUrl;
+    return cloudBaseUrl;
   }
 
-  static bool get isUsingLan => !_apiBaseUrl.contains('localhost') && !_apiBaseUrl.contains('127.0.0.1');
+  static bool get isUsingLan => _apiBaseUrl.contains('10.0.4.99');
+  static bool get isUsingCloud => _apiBaseUrl.contains('onrender.com');
 
-  static String get connectionModeLabel => isUsingLan ? 'Wi-Fi (10.0.4.99)' : 'USB (localhost)';
+  static String get connectionModeLabel {
+    if (isUsingCloud) return 'Cloud (Render)';
+    if (isUsingLan) return 'Wi-Fi (10.0.4.99)';
+    return 'USB (localhost)';
+  }
 
   static void toggleServerUrl() {
     apiBaseUrl = alternateUrl;

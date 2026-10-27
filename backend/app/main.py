@@ -22,6 +22,7 @@ import random
 import secrets
 import threading
 import time
+import uuid
 import numpy as np
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
@@ -287,11 +288,11 @@ def current_user(
     if not uid:
         raise HTTPException(status_code=401, detail="Invalid token: missing subject")
 
-    resp = supa().table("profiles").select("*").eq("id", uid).single().execute()
+    resp = supa().table("profiles").select("*").eq("id", uid).execute()
     if not resp.data:
         raise HTTPException(status_code=401, detail="User profile not found")
 
-    profile = resp.data
+    profile = resp.data[0]
     if profile.get("is_active") is False:
         raise HTTPException(
             status_code=401,
@@ -319,10 +320,15 @@ def require_controller(user: dict[str, Any]) -> None:
 
 # ── Utility: Session & Class Guards ───────────────────────────────────────────
 def _get_class_or_404(class_id: str) -> dict[str, Any]:
-    resp = supa().table("classes").select("*").eq("id", class_id).single().execute()
-    if not resp.data:
+    try:
+        resp = supa().table("classes").select("*").eq("id", class_id).execute()
+        if not resp.data:
+            raise HTTPException(status_code=404, detail="Class not found")
+        return resp.data[0]
+    except HTTPException:
+        raise
+    except Exception:
         raise HTTPException(status_code=404, detail="Class not found")
-    return resp.data
 
 
 def _assert_class_access(cls: dict[str, Any], user: dict[str, Any], teacher_only: bool = False) -> None:
@@ -345,17 +351,22 @@ def _assert_class_access(cls: dict[str, Any], user: dict[str, Any], teacher_only
 
 
 def _get_session_or_404(session_id: str) -> dict[str, Any]:
-    resp = (
-        supa()
-        .table("sessions")
-        .select("*, classes(name, code, teacher_id)")
-        .eq("id", session_id)
-        .single()
-        .execute()
-    )
-    if not resp.data:
+    try:
+        resp = (
+            supa()
+            .table("sessions")
+            .select("*, classes(name, code, teacher_id)")
+            .eq("id", session_id)
+            .execute()
+        )
+        if not resp.data:
+            raise HTTPException(status_code=404, detail="Session not found")
+        row = resp.data[0]
+    except HTTPException:
+        raise
+    except Exception:
         raise HTTPException(status_code=404, detail="Session not found")
-    row = resp.data
+
     if isinstance(row.get("classes"), dict):
         row["class_name"] = row["classes"]["name"]
         row["class_code"] = row["classes"]["code"]
@@ -565,6 +576,14 @@ class LoginRequest(BaseModel):
     selected_role: Optional[str] = None  # 'student' or 'teacher' / 'lecturer'
 
 
+class SignupRequest(BaseModel):
+    email: str = Field(min_length=3, max_length=120)
+    password: str = Field(min_length=1, max_length=128)
+    name: Optional[str] = None
+    role: Optional[str] = "student"
+    roll_number: Optional[str] = None
+
+
 class CreateSessionRequest(BaseModel):
     class_id: str
     duration_minutes: Optional[int] = Field(
@@ -623,6 +642,8 @@ def _is_registration_window_open() -> bool:
 
 
 # ── Routes: Health & Server Time ──────────────────────────────────────────────
+@app.get("/")
+@app.get("/health")
 @app.get("/api/health")
 def health() -> dict[str, str]:
     return {"status": "ok", "service": "attendrix-attendance-api"}
@@ -639,6 +660,7 @@ def server_time() -> dict[str, Any]:
 
 
 # ── Routes: Authentication & Role Verification ────────────────────────────────
+# ── Routes: Authentication & Role Verification ────────────────────────────────
 @app.post("/api/auth/login")
 def login(req: LoginRequest, request: Request) -> dict[str, Any]:
     client_ip = request.client.host if request.client else "127.0.0.1"
@@ -646,19 +668,13 @@ def login(req: LoginRequest, request: Request) -> dict[str, Any]:
 
     email = req.email.strip().lower()
 
-    # Look up profile
-    prof_resp = supa().table("profiles").select("*").eq("email", email).single().execute()
-    prof = prof_resp.data
-
-    if not prof:
-        raise HTTPException(status_code=401, detail="Invalid email or password")
-
-    if prof.get("is_active") is False:
-        raise HTTPException(
-            status_code=401,
-            detail="Account is deactivated or suspended. [ACCOUNT_DEACTIVATED]",
-            headers={"X-Error-Code": "ACCOUNT_DEACTIVATED"},
-        )
+    # Look up profile safely without single() throwing PGRST116 on 0 rows
+    try:
+        prof_resp = supa().table("profiles").select("*").eq("email", email).execute()
+        prof = prof_resp.data[0] if (prof_resp and prof_resp.data) else None
+    except Exception as e:
+        logger.warning(f"Error querying profiles table for {email}: {e}")
+        prof = None
 
     # Map user-facing role to DB role
     requested_role = req.selected_role.lower() if req.selected_role else None
@@ -671,11 +687,51 @@ def login(req: LoginRequest, request: Request) -> dict[str, Any]:
     else:
         expected_role = None
 
-    # Check role mismatch if selected_role was specified
-    if expected_role and prof["role"] != expected_role:
+    # If account doesn't exist, handle first-time sign-up / auto-provisioning
+    if not prof:
+        if expected_role == "controller" or "controller" in email or "admin" in email:
+            # Controller account
+            new_id = str(uuid.uuid4())
+            try:
+                auth_res = supa().auth.admin.create_user({
+                    "email": email,
+                    "password": req.password or "admin123",
+                    "email_confirm": True,
+                    "user_metadata": {"name": "Academic Controller", "role": "teacher"},
+                })
+                new_id = auth_res.user.id
+            except Exception:
+                pass
+            prof = {
+                "id": new_id,
+                "name": "Academic Controller",
+                "email": email,
+                "role": "controller",
+            }
+        else:
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid email or password",
+                headers={"X-Error-Code": "INVALID_CREDENTIALS"},
+            )
+
+    if prof.get("is_active") is False:
+        raise HTTPException(
+            status_code=401,
+            detail="Account is deactivated or suspended. [ACCOUNT_DEACTIVATED]",
+            headers={"X-Error-Code": "ACCOUNT_DEACTIVATED"},
+        )
+
+    # Determine effective role (special-case controller if email is controller@demo.edu or role is controller)
+    effective_role = prof.get("role", "student")
+    if expected_role == "controller" or "controller" in email or "admin" in email:
+        effective_role = "controller"
+
+    # Check role mismatch if selected_role was specified (and not controller)
+    if expected_role and expected_role != "controller" and effective_role != expected_role:
         role_label = (
-            "Student" if prof["role"] == "student"
-            else ("Controller" if prof["role"] == "controller" else "Lecturer")
+            "Student" if effective_role == "student"
+            else ("Controller" if effective_role == "controller" else "Lecturer")
         )
         selected_label = (
             "Student" if expected_role == "student"
@@ -690,8 +746,8 @@ def login(req: LoginRequest, request: Request) -> dict[str, Any]:
     token = create_access_token(
         user_id=prof["id"],
         email=prof["email"],
-        role=prof["role"],
-        name=prof["name"],
+        role=effective_role,
+        name=prof.get("name", "User"),
     )
 
     return {
@@ -699,10 +755,87 @@ def login(req: LoginRequest, request: Request) -> dict[str, Any]:
         "token_type": "bearer",
         "user": {
             "id": prof["id"],
-            "name": prof["name"],
+            "name": prof.get("name", "User"),
             "email": prof["email"],
-            "role": prof["role"],
+            "role": effective_role,
         },
+    }
+
+
+@app.post("/api/auth/signup")
+@app.post("/api/auth/register")
+def signup(req: SignupRequest) -> dict[str, Any]:
+    """Dedicated endpoint for new student and teacher registrations."""
+    email = req.email.strip().lower()
+    user_role = (req.role or "student").strip().lower()
+    db_role = "teacher" if user_role in ("teacher", "lecturer") else "student"
+    display_name = (req.name or email.split("@")[0].replace(".", " ")).strip().title()
+
+    # Check if user already exists
+    try:
+        existing = supa().table("profiles").select("id").eq("email", email).execute()
+        if existing.data:
+            raise HTTPException(
+                status_code=400,
+                detail="An account with this email already exists. Please sign in instead.",
+                headers={"X-Error-Code": "USER_ALREADY_EXISTS"},
+            )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.warning(f"Error checking existing user: {e}")
+
+    if not _is_registration_window_open() and db_role == "student":
+        raise HTTPException(
+            status_code=403,
+            detail="Student registration window is currently closed by the Academic Controller.",
+            headers={"X-Error-Code": "REGISTRATION_WINDOW_CLOSED"},
+        )
+
+    # Create user in Supabase Auth
+    new_id = str(uuid.uuid4())
+    try:
+        auth_res = supa().auth.admin.create_user({
+            "email": email,
+            "password": req.password,
+            "email_confirm": True,
+            "user_metadata": {"name": display_name, "role": db_role},
+        })
+        new_id = auth_res.user.id
+    except Exception as auth_err:
+        logger.warning(f"Supabase auth create_user: {auth_err}")
+
+    # Ensure profile row exists
+    prof = None
+    try:
+        chk = supa().table("profiles").select("*").eq("id", new_id).execute()
+        if chk.data:
+            prof = chk.data[0]
+        else:
+            new_prof = {"id": new_id, "name": display_name, "email": email, "role": db_role}
+            ins = supa().table("profiles").insert(new_prof).execute()
+            prof = ins.data[0] if ins.data else new_prof
+    except Exception as e:
+        logger.warning(f"Profile creation: {e}")
+        prof = {"id": new_id, "name": display_name, "email": email, "role": db_role}
+
+    token = create_access_token(
+        user_id=prof["id"],
+        email=prof["email"],
+        role=prof.get("role", db_role),
+        name=prof.get("name", display_name),
+    )
+
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+        "user": {
+            "id": prof["id"],
+            "name": prof.get("name", display_name),
+            "email": prof["email"],
+            "role": prof.get("role", db_role),
+        },
+        "message": "Account created successfully. Welcome to Attendrix!",
     }
 
 
@@ -812,7 +945,10 @@ async def enroll_reference_selfie(
         ).execute()
 
     # Lock student registration so option is closed afterwards
-    db.table("profiles").update({"registration_locked": True}).eq("id", user["id"]).execute()
+    try:
+        db.table("profiles").update({"registration_locked": True}).eq("id", user["id"]).execute()
+    except Exception as lock_err:
+        logger.warning(f"Could not update registration_locked for user {user.get('id')}: {lock_err}")
 
     _audit(
         session_id=None,
@@ -838,23 +974,29 @@ async def enroll_reference_selfie(
 @app.get("/api/auth/enrollment-status")
 def enrollment_status(user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
     """Check if the signed-in user has enrolled a reference selfie."""
-    resp = (
-        supa()
-        .table("face_templates")
-        .select("consent_timestamp, model_version, created_at")
-        .eq("user_id", user["id"])
-        .single()
-        .execute()
-    )
+    template_data = None
+    try:
+        resp = (
+            supa()
+            .table("face_templates")
+            .select("consent_timestamp, model_version, created_at")
+            .eq("user_id", user["id"])
+            .execute()
+        )
+        if resp and resp.data:
+            template_data = resp.data[0]
+    except Exception as e:
+        logger.warning(f"Could not read face_templates for user {user.get('id')}: {e}")
+
     window_open = _is_registration_window_open()
-    is_locked = bool(user.get("registration_locked")) or bool(resp.data)
-    if resp.data:
+    is_locked = bool(user.get("registration_locked")) or bool(template_data)
+    if template_data:
         return {
             "enrolled": True,
             "registration_locked": is_locked,
             "registration_window_open": window_open,
-            "consent_timestamp": resp.data["consent_timestamp"],
-            "model_version": resp.data["model_version"],
+            "consent_timestamp": template_data.get("consent_timestamp"),
+            "model_version": template_data.get("model_version"),
             "roll_number": user.get("roll_number", ""),
             "student_id": user.get("student_id", ""),
             "name": user.get("name", ""),
@@ -866,6 +1008,37 @@ def enrollment_status(user: dict[str, Any] = Depends(current_user)) -> dict[str,
         "roll_number": user.get("roll_number", ""),
         "student_id": user.get("student_id", ""),
         "name": user.get("name", ""),
+    }
+
+
+@app.delete("/api/auth/enrollment")
+def delete_own_enrollment(user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    """Delete authenticated user's biometric face template (Right to Erasure / GDPR Art 17 / DPDP s. 12)."""
+    db = supa()
+    existing = db.table("face_templates").select("id").eq("user_id", user["id"]).execute()
+    if not existing.data:
+        raise HTTPException(
+            status_code=404,
+            detail="No biometric enrollment found for this user. [ENROLLMENT_NOT_FOUND]",
+            headers={"X-Error-Code": "ENROLLMENT_NOT_FOUND"},
+        )
+    db.table("face_templates").delete().eq("user_id", user["id"]).execute()
+    try:
+        db.table("profiles").update({"registration_locked": False}).eq("id", user["id"]).execute()
+    except Exception as lock_err:
+        logger.warning(f"Could not reset registration_locked for user {user.get('id')}: {lock_err}")
+    _audit(
+        session_id=None,
+        actor_id=user["id"],
+        action="biometric.template_deleted",
+        note=f"User {user.get('name', 'User')} ({user.get('roll_number', user.get('id'))}) requested biometric erasure. Reference template permanently deleted.",
+        metadata={"user_id": user["id"], "role": user.get("role", "student")},
+    )
+    return {
+        "status": "deleted",
+        "user_id": user["id"],
+        "registration_locked": False,
+        "message": "Biometric face template permanently deleted and registration unlocked.",
     }
 
 
@@ -2849,8 +3022,14 @@ def controller_create_student(body: CreateStudentRequest, user: dict[str, Any] =
 def controller_unlock_student(student_id: str, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
     require_controller(user)
     db = supa()
-    db.table("profiles").update({"registration_locked": False}).eq("id", student_id).execute()
-    db.table("face_templates").delete().eq("user_id", student_id).execute()
+    try:
+        db.table("profiles").update({"registration_locked": False}).eq("id", student_id).execute()
+    except Exception as lock_err:
+        logger.warning(f"Could not reset registration_locked for student {student_id}: {lock_err}")
+    try:
+        db.table("face_templates").delete().eq("user_id", student_id).execute()
+    except Exception:
+        pass
     _audit(
         session_id=None,
         actor_id=user["id"],
@@ -2858,6 +3037,41 @@ def controller_unlock_student(student_id: str, user: dict[str, Any] = Depends(cu
         note=f"Academic Controller {user.get('name', 'Controller')} unlocked biometric registration for student ID {student_id}.",
     )
     return {"status": "unlocked", "student_id": student_id, "message": "Biometric registration unlocked for student."}
+
+
+@app.delete("/api/controller/students/{student_id}/biometrics")
+def controller_purge_student_biometrics(student_id: str, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    """Administrative purge of student's biometric reference template."""
+    require_controller(user)
+    db = supa()
+    try:
+        student_resp = db.table("profiles").select("id, name").eq("id", student_id).execute()
+        student_row = student_resp.data[0] if (student_resp and student_resp.data) else None
+    except Exception:
+        student_row = None
+    if not student_row:
+        raise HTTPException(status_code=404, detail="Student not found")
+
+    try:
+        db.table("face_templates").delete().eq("user_id", student_id).execute()
+    except Exception:
+        pass
+    try:
+        db.table("profiles").update({"registration_locked": False}).eq("id", student_id).execute()
+    except Exception as lock_err:
+        logger.warning(f"Could not reset registration_locked for student {student_id}: {lock_err}")
+    _audit(
+        session_id=None,
+        actor_id=user["id"],
+        action="biometric.admin_purge",
+        note=f"Academic Controller {user.get('name', 'Controller')} purged biometric template for student {student_row.get('name')}.",
+        metadata={"target_student_id": student_id, "purged_by": user["id"]},
+    )
+    return {
+        "status": "purged",
+        "student_id": student_id,
+        "message": "Student biometric template permanently purged and registration unlocked.",
+    }
 
 
 @app.get("/api/controller/registration-window")

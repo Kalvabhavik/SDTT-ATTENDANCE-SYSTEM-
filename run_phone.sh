@@ -55,7 +55,7 @@ else
 
     # Launch uvicorn in background
     cd "$BACKEND_DIR"
-    "$BACKEND_DIR/.venv/bin/uvicorn" app.main:app --host 0.0.0.0 --port 8000 > /tmp/attendance_backend.log 2>&1 &
+    "$BACKEND_DIR/.venv/bin/uvicorn" app.main:app --host 0.0.0.0 --port 8000 --reload > /tmp/attendance_backend.log 2>&1 &
     BACKEND_PID=$!
     cd "$SCRIPT_DIR"
 
@@ -93,9 +93,10 @@ echo ""
 echo "=================================================="
 echo " 🚀 Launching Flutter on your phone..."
 echo "    Target: $CONNECTED_DEVICE"
-echo "    API:    http://localhost:8000/api"
+TARGET_API_URL="${API_BASE_URL:-https://attendrix-backend-egww.onrender.com/api}"
+echo "    API:    $TARGET_API_URL"
 echo "=================================================="
 echo ""
 
 cd "$MOBILE_DIR"
-flutter run -d "$CONNECTED_DEVICE" --dart-define=API_BASE_URL=http://localhost:8000/api
+flutter run -d "$CONNECTED_DEVICE" --dart-define=API_BASE_URL="$TARGET_API_URL"

@@ -31,6 +31,7 @@
 | `SEC-020` | Unhandled Internal Server Error Information Leakage | **MEDIUM** | `backend/app/main.py` | **RESOLVED** | `TC-SEC-020` |
 | `SEC-021` | Incomplete Audit Metadata Sensitive Key Scrubbing | **MEDIUM** | `backend/app/main.py` | **RESOLVED** | `TC-UNIT-015` |
 | `SEC-022` | Accessibility Text Scaler Layout Overflows | **LOW** | `apps/mobile/lib/screens/` | **RESOLVED** | `Category 12 Mobile Suite` |
+| `SEC-023` | Missing Biometric Right-to-Erasure & Admin Purge | **HIGH** | `backend/app/main.py` | **RESOLVED** | `TC-PRIV-001`, `TC-PRIV-002` |
 
 ---
 
@@ -374,6 +375,23 @@
 - **Actual Behaviour (Pre-Fix):** RenderFlex threw layout overflow exceptions on 1.5x and 2.0x scaling.
 - **Remediation:** Wrapped server toggle pill, demo account chips, and authentication CTA buttons with `FittedBox(fit: BoxFit.scaleDown)` and `SingleChildScrollView(scrollDirection: Axis.horizontal)`.
 - **Retest Result:** **RESOLVED** — Verified via `apps/mobile/test/accessibility_and_screens_test.dart` (16 / 16 tests passing across all 4 screen sizes and 2.0x scaler).
+
+---
+
+### SEC-023: Missing Biometric Right-to-Erasure and Administrative Purge (GDPR Art 17 / DPDP Section 12)
+- **Finding ID:** `SEC-023`
+- **Severity:** **HIGH** (CVSS 7.4: AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:N/A:N, Privacy & Statutory Compliance)
+- **Rationale:** The system stored encrypted biometric face embeddings in `face_templates` without providing an authenticated self-service erasure mechanism for data subjects (GDPR Article 17 "Right to Erasure" and Indian DPDP Act 2023 Section 12) or an administrative purge capability for Academic Controllers upon student graduation or consent withdrawal.
+- **Affected Component:** `backend/app/main.py`.
+- **Reproduction Steps:**
+  1. Authenticate as enrolled student.
+  2. Attempt to request permanent erasure of facial template.
+  3. No deletion endpoint existed; biometric templates persisted indefinitely.
+- **Expected Behaviour:** Authenticated user can execute `DELETE /api/auth/enrollment` to permanently erase biometric templates and unlock re-enrollment. Controllers can execute `DELETE /api/controller/students/{id}/biometrics` for administrative compliance.
+- **Actual Behaviour (Pre-Fix):** No deletion endpoints existed.
+- **Remediation:** Implemented `DELETE /api/auth/enrollment` (student self-service right-to-erasure) and `DELETE /api/controller/students/{student_id}/biometrics` (controller administrative purge). Both endpoints permanently erase ciphertext from `face_templates`, reset `registration_locked = False`, and record non-repudiable audit logs.
+- **Retest Result:** **RESOLVED** — Verified via `test_biometric_privacy_lifecycle_and_right_to_erasure` in `backend/tests/test_performance_and_privacy.py`.
+
 
 
 

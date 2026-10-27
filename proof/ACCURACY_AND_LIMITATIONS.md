@@ -105,3 +105,19 @@ In compliance with computer-vision security engineering standards, **no claim of
 - **No client-controlled verification bypass:** `is_live`, `verified`, and `confidence` parameters submitted by clients are discarded.
 - **No automatic attendance after a timeout:** Any model timeout or runtime exception fails closed with HTTP 503 `MODEL_UNAVAILABLE`.
 - **No hardcoded success responses:** Every verification step executes server-side neural network inference on raw uploaded image bytes.
+
+---
+
+## 6. Operational Reliability, Concurrency & Privacy Boundaries
+
+### 1. Concurrency Limits & Database Contention
+- **SQLite Concurrency Ceiling:** While SQLite in WAL mode handles up to 10–20 concurrent submission bursts via `threading.Lock` serialization and a 5,000ms `busy_timeout`, single-file databases face write contention if thousands of students in a 2,000+ seat stadium attempt simultaneous check-in.
+- **Recommended Architectural Transition:** For deployments > 1,000 students, migrate from SQLite to managed PostgreSQL with connection pooling (e.g., PgBouncer) and row-level locks (`SELECT ... FOR UPDATE`).
+
+### 2. Biometric Retention & Right-to-Erasure
+- **GDPR Article 17 & DPDP Section 12:** Attendrix implements `DELETE /api/auth/enrollment` and `DELETE /api/controller/students/{id}/biometrics`, permanently erasing biometric templates and unlocking registration.
+- **Template Reversibility:** Biometric embeddings are 128-d/512-d unit vectors encrypted with AES-256-GCM. Decrypted vectors cannot be reverse-rendered into original photographic pixels; however, compromised embeddings could theoretically be used for cross-database biometric linkage if the AES key is breached.
+- **Key Rotation Limitation:** Cryptographic keys (`SECRET_KEY`) must be stored in secure Hardware Security Modules (HSM) or AWS KMS in production rather than local environment variables.
+
+### 3. Network Disruption & Offline Operation
+- **Strict Connectivity Requirement:** Attendrix does not permit fully offline biometric attendance marking. Because anti-replay validation, active HMAC challenge issuance, and attendance locking require centralized coordination, intermittent network outages require the client to retry with cached idempotency keys once connectivity is restored.

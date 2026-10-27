@@ -6,7 +6,7 @@
     "status_code": 200,
     "decision": "present",
     "evidence": "Match: True, Liveness: True, Confidence: 1.0",
-    "timestamp": "2026-10-27T20:30:02Z"
+    "timestamp": "2026-10-27T21:34:28Z"
   },
   {
     "test_id": "TC-ID-002",
@@ -15,7 +15,7 @@
     "status_code": 400,
     "decision": "REJECTED_QUALITY",
     "evidence": "Code: IMAGE_BLURRY, Detail: Photo is too blurry (sharpness score 0.4 < 35.0). Please hold the phone steady in good lighting. [IMAGE_BLURRY]",
-    "timestamp": "2026-10-27T20:30:02Z"
+    "timestamp": "2026-10-27T21:34:28Z"
   },
   {
     "test_id": "TC-ID-003",
@@ -24,7 +24,7 @@
     "status_code": 200,
     "decision": "absent",
     "evidence": "Match: False, Liveness: True, Confidence: -0.021",
-    "timestamp": "2026-10-27T20:30:02Z"
+    "timestamp": "2026-10-27T21:34:28Z"
   },
   {
     "test_id": "TC-ID-004",
@@ -33,7 +33,7 @@
     "status_code": 400,
     "decision": "REJECTED_MISSING_ENROLLMENT",
     "evidence": "Detail: Biometrics not enrolled. You must register your face reference on first sign-in before marking attendance., Code: MISSING_ENROLLMENT_DATA",
-    "timestamp": "2026-10-27T20:30:02Z"
+    "timestamp": "2026-10-27T21:34:28Z"
   },
   {
     "test_id": "TC-ID-005",
@@ -42,7 +42,7 @@
     "status_code": 400,
     "decision": "REJECTED_MALFORMED",
     "evidence": "Detail: Malformed or corrupted biometric enrollment data. Re-enrollment required. [INVALID_ENROLLMENT_DATA], Code: INVALID_ENROLLMENT_DATA",
-    "timestamp": "2026-10-27T20:30:02Z"
+    "timestamp": "2026-10-27T21:34:28Z"
   },
   {
     "test_id": "TC-ID-006",
@@ -51,7 +51,7 @@
     "status_code": 400,
     "decision": "REJECTED_EXPIRED_OR_INCOMPATIBLE",
     "evidence": "Incompatible Code: INVALID_ENROLLMENT_DATA, Expired Code: EXPIRED_ENROLLMENT_DATA",
-    "timestamp": "2026-10-27T20:30:02Z"
+    "timestamp": "2026-10-27T21:34:28Z"
   },
   {
     "test_id": "TC-ID-007",
@@ -60,7 +60,7 @@
     "status_code": 200,
     "decision": "pending",
     "evidence": "Status: pending, Match: False, Confidence: 0.4",
-    "timestamp": "2026-10-27T20:30:02Z"
+    "timestamp": "2026-10-27T21:34:28Z"
   },
   {
     "test_id": "TC-ID-008",
@@ -69,7 +69,7 @@
     "status_code": 400,
     "decision": "REJECTED_SESSION_CLOSED",
     "evidence": "Detail: This attendance session is not open.",
-    "timestamp": "2026-10-27T20:30:02Z"
+    "timestamp": "2026-10-27T21:34:28Z"
   },
   {
     "test_id": "TC-ID-009",
@@ -78,7 +78,7 @@
     "status_code": 400,
     "decision": "REJECTED_REPLAY",
     "evidence": "Code: REPLAY_ATTACK_DETECTED, Detail: Replay attack detected: Exact duplicate image replay detected (identical cryptographic SHA-256 digest).. Fresh camera capture is strictly required. [REPLAY_ATTACK_DETECTED]",
-    "timestamp": "2026-10-27T20:30:02Z"
+    "timestamp": "2026-10-27T21:34:28Z"
   },
   {
     "test_id": "TC-ID-010",
@@ -87,7 +87,7 @@
     "status_code": 400,
     "decision": "REJECTED_CHALLENGE_REUSE",
     "evidence": "Detail: Challenge token has already been used. Tokens are strictly single-use.",
-    "timestamp": "2026-10-27T20:30:02Z"
+    "timestamp": "2026-10-27T21:34:28Z"
   },
   {
     "test_id": "TC-ID-011",
@@ -96,7 +96,7 @@
     "status_code": 400,
     "decision": "REJECTED_DUPLICATE_ATTEMPT",
     "evidence": "Code: ATTEMPT_LIMIT_REACHED, Detail: Strictly 1 attempt allowed. You have already completed your live attendance attempt for this session.",
-    "timestamp": "2026-10-27T20:30:02Z"
+    "timestamp": "2026-10-27T21:34:28Z"
   },
   {
     "test_id": "TC-ID-012",
@@ -105,7 +105,7 @@
     "status_code": 200,
     "decision": "ATOMIC_LOCK_SERIALIZED",
     "evidence": "Successes: 1, Blocked: 4, Total DB Rows: 1",
-    "timestamp": "2026-10-27T20:30:02Z"
+    "timestamp": "2026-10-27T21:34:28Z"
   },
   {
     "test_id": "TC-ID-013",
@@ -114,7 +114,7 @@
     "status_code": 500,
     "decision": "FAILS_CLOSED_NO_PHANTOM",
     "evidence": "Status: 500, Code: DATABASE_TRANSACTION_FAILED, Detail: Database transaction failure during attendance persistence. [DATABASE_TRANSACTION_FAILED]",
-    "timestamp": "2026-10-27T20:30:02Z"
+    "timestamp": "2026-10-27T21:34:29Z"
   },
   {
     "test_id": "TC-ID-014",
@@ -123,7 +123,7 @@
     "status_code": 403,
     "decision": "BLOCKED_IDOR_FORBIDDEN",
     "evidence": "Status: 403, Code: IDOR_ATTEMPT_BLOCKED, Detail: Unauthorized: Cannot submit attendance for another student [IDOR_ATTEMPT_BLOCKED]",
-    "timestamp": "2026-10-27T20:30:02Z"
+    "timestamp": "2026-10-27T21:34:29Z"
   },
   {
     "test_id": "TC-ID-015",
@@ -132,6 +132,6 @@
     "status_code": 200,
     "decision": "PRIVACY_COMPLIANT_ZERO_LEAKAGE",
     "evidence": "Verified complete absence of float array vectors, raw landmarks, and image buffers in application logs.",
-    "timestamp": "2026-10-27T20:30:02Z"
+    "timestamp": "2026-10-27T21:34:29Z"
   }
 ]
