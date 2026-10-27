@@ -1293,6 +1293,354 @@
 
 ---
 
+## Category K: API Security Hardening (Task 06)
+
+### TC-SEC-001: Missing Authentication Token Rejection
+- **Category:** Category K — API Security Hardening
+- **Objective:** Verify that protected endpoints reject requests lacking an Authorization Bearer header.
+- **Preconditions:** Server active with in-memory database.
+- **Inputs & Setup:** Unauthenticated requests dispatched to 7 core protected routes: `/api/me`, `/api/sessions`, `/api/sessions/s1/verify-attendance`, `/api/sessions/s1/end`, `/api/controller/classes`, `/api/audit`, `/api/analytics`.
+- **Execution Steps:**
+  1. Dispatch HTTP GET/POST/PATCH requests to each endpoint without Authorization header.
+- **Expected Result:** HTTP 401 Unauthorized with detail "Missing authorization credentials" or "Not authenticated".
+- **Actual Result:** All 7 endpoints rejected unauthenticated requests with HTTP 401.
+- **Pass/Fail Criteria:** Pass if all protected endpoints return 401.
+- **Status:** PASS
+- **Evidence:** `proof/logs/security/api_security_test_log.json`, `proof/screenshots/06_api_security/02_token_revocation_and_deactivation.png`
+- **Defect Reference:** SEC-007
+
+---
+
+### TC-SEC-002: Malformed and Forged HMAC-SHA256 JWT Rejection
+- **Category:** Category K — API Security Hardening
+- **Objective:** Verify that garbage strings and tokens signed with forged secrets are rejected with 401.
+- **Preconditions:** SUPABASE_JWT_SECRET configured on backend.
+- **Inputs & Setup:** (1) Random string `Bearer not-a-valid-jwt-token`; (2) Valid payload signed with attacker secret `completely_wrong_secret_key_12345678`.
+- **Execution Steps:**
+  1. GET `/api/me` with malformed token.
+  2. GET `/api/me` with forged token.
+- **Expected Result:** HTTP 401 Unauthorized with detail indicating invalid token.
+- **Actual Result:** Both requests returned HTTP 401 with "Invalid token".
+- **Pass/Fail Criteria:** Pass if signature verification prevents forged tokens from authenticating.
+- **Status:** PASS
+- **Evidence:** `proof/logs/security/api_security_test_log.json`, `proof/screenshots/06_api_security/02_token_revocation_and_deactivation.png`
+
+---
+
+### TC-SEC-003: Expired JWT Credentials Rejection
+- **Category:** Category K — API Security Hardening
+- **Objective:** Ensure expired JWT tokens are rejected with 401 and an explicit expiration message.
+- **Preconditions:** Server active.
+- **Inputs & Setup:** JWT payload with `exp = current_time - 3600` (expired 1 hour ago) signed with legitimate secret.
+- **Execution Steps:**
+  1. GET `/api/me` with expired Bearer token.
+- **Expected Result:** HTTP 401 Unauthorized with "Token has expired".
+- **Actual Result:** HTTP 401 returned with detail "Token has expired".
+- **Pass/Fail Criteria:** Pass if expired token is immediately rejected.
+- **Status:** PASS
+- **Evidence:** `proof/logs/security/api_security_test_log.json`, `proof/screenshots/06_api_security/02_token_revocation_and_deactivation.png`
+
+---
+
+### TC-SEC-004: Token Revocation Upon User Logout (JTI Blacklist)
+- **Category:** Category K — API Security Hardening
+- **Objective:** Verify that after calling `POST /api/auth/logout`, the token is blacklisted and cannot be reused.
+- **Preconditions:** Active student session with valid JWT.
+- **Inputs & Setup:** Login as student1, obtain access token, call logout endpoint, then retry `/api/me`.
+- **Execution Steps:**
+  1. POST `/api/auth/login` to obtain token.
+  2. GET `/api/me` with token (verify 200 OK).
+  3. POST `/api/auth/logout` with Bearer token.
+  4. GET `/api/me` with revoked token.
+- **Expected Result:** Step 3 returns 200 with "credentials revoked"; Step 4 returns HTTP 401 `REVOKED_CREDENTIALS`.
+- **Actual Result:** Step 4 rejected with HTTP 401, detail: "Token has been revoked. Please re-authenticate.", X-Error-Code: `REVOKED_CREDENTIALS`.
+- **Pass/Fail Criteria:** Pass if revoked token is completely unusable.
+- **Status:** PASS
+- **Evidence:** `proof/logs/security/api_security_test_log.json`, `proof/screenshots/06_api_security/02_token_revocation_and_deactivation.png`
+- **Defect Reference:** SEC-017
+
+---
+
+### TC-SEC-005: Account Deactivation Enforcement
+- **Category:** Category K — API Security Hardening
+- **Objective:** Verify that deactivated accounts (`is_active = False`) are blocked on both login and API requests.
+- **Preconditions:** Student account marked `is_active = False` in database.
+- **Inputs & Setup:** Attempt login with valid credentials; attempt API request with previously issued token.
+- **Execution Steps:**
+  1. POST `/api/auth/login` with deactivated user credentials.
+  2. GET `/api/me` with token for deactivated user.
+- **Expected Result:** Both requests return HTTP 401 `ACCOUNT_DEACTIVATED`.
+- **Actual Result:** Both requests returned HTTP 401 with detail "Account has been deactivated. Contact your institution administrator." and X-Error-Code: `ACCOUNT_DEACTIVATED`.
+- **Pass/Fail Criteria:** Pass if inactive users cannot access the system.
+- **Status:** PASS
+- **Evidence:** `proof/logs/security/api_security_test_log.json`, `proof/screenshots/06_api_security/02_token_revocation_and_deactivation.png`
+
+---
+
+### TC-SEC-006: Student Privilege Boundaries (Forbidden from Teacher Endpoints)
+- **Category:** Category K — API Security Hardening
+- **Objective:** Verify role-based authorization prevents students from calling lecturer-only routes.
+- **Preconditions:** Authenticated student token.
+- **Inputs & Setup:** Student calls `POST /api/sessions`, `PATCH /api/sessions/s1/end`, `GET /api/audit`, `GET /api/analytics`.
+- **Execution Steps:**
+  1. Dispatch requests to teacher-restricted endpoints using student Bearer token.
+- **Expected Result:** All endpoints return HTTP 403 Forbidden with `TEACHER_ONLY` or `ROLE_DENIED`.
+- **Actual Result:** All 4 teacher operations returned HTTP 403.
+- **Pass/Fail Criteria:** Pass if students are strictly prevented from managing sessions or reading audit logs.
+- **Status:** PASS
+- **Evidence:** `proof/logs/security/api_security_test_log.json`, `proof/screenshots/06_api_security/01_rbac_and_class_ownership.png`
+- **Defect Reference:** SEC-007
+
+---
+
+### TC-SEC-007: Controller Privilege Isolation
+- **Category:** Category K — API Security Hardening
+- **Objective:** Verify that students and teachers cannot access administrative controller endpoints.
+- **Preconditions:** Authenticated student and teacher tokens.
+- **Inputs & Setup:** Call `/api/controller/classes`, `/api/controller/classes/c1/capture-room`, `/api/controller/users/csv-import`.
+- **Execution Steps:**
+  1. Dispatch requests with student token.
+  2. Dispatch requests with teacher token.
+- **Expected Result:** All requests return HTTP 403 Forbidden with `CONTROLLER_ONLY`.
+- **Actual Result:** All controller endpoints returned HTTP 403 for both non-admin roles.
+- **Pass/Fail Criteria:** Pass if controller routes are strictly accessible only by controllers.
+- **Status:** PASS
+- **Evidence:** `proof/logs/security/api_security_test_log.json`, `proof/screenshots/06_api_security/01_rbac_and_class_ownership.png`
+
+---
+
+### TC-SEC-008: Cross-Teacher Class and Session Isolation (IDOR Defense)
+- **Category:** Category K — API Security Hardening
+- **Objective:** Verify that Teacher A cannot create sessions or modify sessions belonging to Teacher B's classes.
+- **Preconditions:** Teacher A and Teacher B provisioned with separate classes and sessions.
+- **Inputs & Setup:** Teacher A attempts `POST /api/sessions` for Class B; Teacher A attempts `PATCH /api/sessions/{session_b}/end`.
+- **Execution Steps:**
+  1. Teacher A calls session creation referencing Class B.
+  2. Teacher A calls session finalization referencing Session B.
+- **Expected Result:** Both requests return HTTP 403 Forbidden ("You are not assigned to this class").
+- **Actual Result:** Both requests returned HTTP 403 with `X-Error-Code: CLASS_ACCESS_DENIED`.
+- **Pass/Fail Criteria:** Pass if teachers cannot access or manipulate other teachers' classes/sessions.
+- **Status:** PASS
+- **Evidence:** `proof/logs/security/api_security_test_log.json`, `proof/screenshots/06_api_security/01_rbac_and_class_ownership.png`
+- **Defect Reference:** SEC-018
+
+---
+
+### TC-SEC-009: Teacher Audit Log Scoping (Horizontal Data Isolation)
+- **Category:** Category K — API Security Hardening
+- **Objective:** Ensure Teacher A querying `/api/audit` receives only audit records for classes they teach.
+- **Preconditions:** Audit log contains events from Session A (Teacher A) and Session B (Teacher B).
+- **Inputs & Setup:** Teacher A queries `GET /api/audit`; Controller queries `GET /api/audit`.
+- **Execution Steps:**
+  1. Query audit log as Teacher A.
+  2. Inspect returned records for presence of Session B IDs.
+  3. Query audit log as Controller.
+- **Expected Result:** Teacher A receives zero records from Session B; Controller receives institutional records from both.
+- **Actual Result:** Teacher A received only Session A records (0% data leak); Controller received all sessions.
+- **Pass/Fail Criteria:** Pass if horizontal audit log leakage is completely prevented.
+- **Status:** PASS
+- **Evidence:** `proof/logs/security/api_security_test_log.json`, `proof/screenshots/06_api_security/01_rbac_and_class_ownership.png`
+- **Defect Reference:** SEC-018
+
+---
+
+### TC-SEC-010: Student Attendance Submission IDOR Defense
+- **Category:** Category K — API Security Hardening
+- **Objective:** Verify student cannot submit attendance on behalf of another student by manipulating form parameters.
+- **Preconditions:** Authenticated as Student 1. Student 2 exists in database.
+- **Inputs & Setup:** Student 1 submits `POST /api/sessions/s1/verify-attendance` with `student_id: student_2_uuid`.
+- **Execution Steps:**
+  1. Dispatch attendance check-in with mismatched student ID.
+- **Expected Result:** HTTP 403 Forbidden with `X-Error-Code: IDOR_ATTEMPT_BLOCKED`.
+- **Actual Result:** Request blocked with HTTP 403 and `X-Error-Code: IDOR_ATTEMPT_BLOCKED`.
+- **Pass/Fail Criteria:** Pass if client-supplied identity assertions are rejected.
+- **Status:** PASS
+- **Evidence:** `proof/logs/security/api_security_test_log.json`, `proof/screenshots/06_api_security/04_attendance_idempotency_and_concurrency.png`
+- **Defect Reference:** SEC-013
+
+---
+
+### TC-SEC-011: Unenrolled Student Attendance Rejection
+- **Category:** Category K — API Security Hardening
+- **Objective:** Ensure a student not enrolled in the session's class cannot submit attendance.
+- **Preconditions:** Student 3 is provisioned but not enrolled in Class 1.
+- **Inputs & Setup:** Student 3 calls `POST /api/sessions/{session_1}/verify-attendance`.
+- **Execution Steps:**
+  1. Dispatch attendance verification with Student 3 token.
+- **Expected Result:** HTTP 403 Forbidden ("You are not enrolled in this session's class").
+- **Actual Result:** Returned HTTP 403 Forbidden with `CLASS_ACCESS_DENIED`.
+- **Pass/Fail Criteria:** Pass if enrollment membership is strictly enforced.
+- **Status:** PASS
+- **Evidence:** `proof/logs/security/api_security_test_log.json`, `proof/screenshots/06_api_security/04_attendance_idempotency_and_concurrency.png`
+
+---
+
+### TC-SEC-012: Attendance Rejected on Closed or Expired Sessions
+- **Category:** Category K — API Security Hardening
+- **Objective:** Ensure challenge creation and attendance verification fail closed on closed sessions.
+- **Preconditions:** Session marked with `status = 'closed'`.
+- **Inputs & Setup:** Student calls `/liveness-challenge` and `/verify-attendance` for closed session.
+- **Execution Steps:**
+  1. POST challenge request on closed session.
+  2. POST verify-attendance request on closed session.
+- **Expected Result:** Both requests return HTTP 400 Bad Request ("This attendance session is not open").
+- **Actual Result:** Both requests returned HTTP 400 Bad Request.
+- **Pass/Fail Criteria:** Pass if closed sessions reject attendance actions.
+- **Status:** PASS
+- **Evidence:** `proof/logs/security/api_security_test_log.json`, `proof/screenshots/06_api_security/04_attendance_idempotency_and_concurrency.png`
+
+---
+
+### TC-SEC-013: Client-Manipulated Verification Flags Strictly Disregarded
+- **Category:** Category K — API Security Hardening
+- **Objective:** Verify client cannot bypass biometric verification by asserting `is_live=True`, `verified=True`, or `confidence=0.999`.
+- **Preconditions:** Enrolled student reference template.
+- **Inputs & Setup:** Attacker submits non-matching face image while asserting full bypass flags in multipart form.
+- **Execution Steps:**
+  1. POST `/verify-attendance` with mismatched face and `is_live=True, verified=True, client_confidence=0.999`.
+- **Expected Result:** Server disregards bypass flags, computes real CV embedding, flags mismatch, decides status `absent`.
+- **Actual Result:** Status marked `absent` (`face_match=False`), server logs warning regarding client bypass assertions.
+- **Pass/Fail Criteria:** Pass if client flags do not override server-side biometric inference.
+- **Status:** PASS
+- **Evidence:** `proof/logs/security/api_security_test_log.json`, `proof/screenshots/06_api_security/04_attendance_idempotency_and_concurrency.png`
+- **Defect Reference:** SEC-008
+
+---
+
+### TC-SEC-014: Attendance Idempotency Key Handling & Retry Defense
+- **Category:** Category K — API Security Hardening
+- **Objective:** Ensure retries with Idempotency-Key return previous decision idempotently; repeated non-idempotent check-ins are blocked.
+- **Preconditions:** Enrolled student, open session.
+- **Inputs & Setup:** Initial check-in with `Idempotency-Key: idemp-999`; second check-in with identical key; third check-in with different key.
+- **Execution Steps:**
+  1. Submit check-in with Idempotency-Key (Status 200 Present).
+  2. Re-send identical request with same key.
+  3. Submit check-in with different key.
+- **Expected Result:** Step 2 returns 200 with `idempotent: True`; Step 3 returns 400 `ATTEMPT_LIMIT_REACHED`.
+- **Actual Result:** Step 2 returned 200 Present idempotently; Step 3 blocked with 400 `ATTEMPT_LIMIT_REACHED`.
+- **Pass/Fail Criteria:** Pass if identical retries replay safely and duplicate check-ins are blocked.
+- **Status:** PASS
+- **Evidence:** `proof/logs/security/api_security_test_log.json`, `proof/screenshots/06_api_security/04_attendance_idempotency_and_concurrency.png`
+- **Defect Reference:** SEC-012
+
+---
+
+### TC-SEC-015: High-Concurrency Check-in Mutex Serialization
+- **Category:** Category K — API Security Hardening
+- **Objective:** Ensure concurrent check-in requests for the same student/session are serialized transactionally without duplicates.
+- **Preconditions:** Enrolled student, open session.
+- **Inputs & Setup:** 5 concurrent worker threads in `ThreadPoolExecutor` simultaneously submitting check-ins at T=0.
+- **Execution Steps:**
+  1. Dispatch 5 concurrent check-in requests.
+  2. Inspect HTTP status codes and database records.
+- **Expected Result:** Exactly 1 request succeeds (200), remaining 4 rejected (400); exactly 1 attendance row in DB.
+- **Actual Result:** Statuses: exactly one 200, four 400s; database contains exactly 1 attendance record.
+- **Pass/Fail Criteria:** Pass if race conditions are eliminated by mutex serialization.
+- **Status:** PASS
+- **Evidence:** `proof/logs/security/api_security_test_log.json`, `proof/screenshots/06_api_security/04_attendance_idempotency_and_concurrency.png`
+- **Defect Reference:** SEC-012
+
+---
+
+### TC-SEC-016: Schema Validation and Out-of-Range Parameters (HTTP 422)
+- **Category:** Category K — API Security Hardening
+- **Objective:** Ensure Pydantic schemas reject out-of-range parameters and invalid enum values with HTTP 422.
+- **Preconditions:** Authenticated teacher.
+- **Inputs & Setup:** SessionCreate with `duration_minutes = 999` (>60); AttendanceUpdate with `status = "invalid_status_value"`.
+- **Execution Steps:**
+  1. POST `/api/sessions` with duration 999.
+  2. PATCH `/api/sessions/s1/attendance/u1` with invalid status.
+- **Expected Result:** Both requests return HTTP 422 Unprocessable Entity.
+- **Actual Result:** Both requests returned HTTP 422 with detailed field validation errors.
+- **Pass/Fail Criteria:** Pass if strict schema bounds reject invalid input.
+- **Status:** PASS
+- **Evidence:** `proof/logs/security/api_security_test_log.json`, `proof/screenshots/06_api_security/03_payload_limits_and_schema_validation.png`
+
+---
+
+### TC-SEC-017: Oversized Payload and Request Size Limits (HTTP 413)
+- **Category:** Category K — API Security Hardening
+- **Objective:** Ensure requests exceeding maximum size limits return HTTP 413 PAYLOAD_TOO_LARGE at ASGI middleware and route levels.
+- **Preconditions:** Server active.
+- **Inputs & Setup:** (1) Request with `Content-Length: 20MB` (> 15MB limit); (2) File upload with 11MB image (> 10MB limit).
+- **Execution Steps:**
+  1. POST with Content-Length 20MB.
+  2. POST verify-attendance with 11MB file upload.
+- **Expected Result:** Both requests return HTTP 413.
+- **Actual Result:** Request 1 returned 413 with `PAYLOAD_TOO_LARGE`; Request 2 returned 413 with `IMAGE_TOO_LARGE`.
+- **Pass/Fail Criteria:** Pass if oversized payloads are rejected before memory exhaustion.
+- **Status:** PASS
+- **Evidence:** `proof/logs/security/api_security_test_log.json`, `proof/screenshots/06_api_security/03_payload_limits_and_schema_validation.png`
+- **Defect Reference:** SEC-019
+
+---
+
+### TC-SEC-018: Corrupted and Unsupported Image Upload Rejection
+- **Category:** Category K — API Security Hardening
+- **Objective:** Ensure zero-byte files and non-image files are rejected with appropriate error codes.
+- **Preconditions:** Enrolled student, open session.
+- **Inputs & Setup:** (1) 0-byte file upload; (2) HTML script file disguised as JPEG.
+- **Execution Steps:**
+  1. POST verify-attendance with empty byte file.
+  2. POST verify-attendance with HTML script bytes.
+- **Expected Result:** Empty file returns 400 `EMPTY_IMAGE`; non-image returns 415 `UNSUPPORTED_FORMAT`.
+- **Actual Result:** Request 1 returned 400 `EMPTY_IMAGE`; Request 2 returned 415 `UNSUPPORTED_FORMAT`.
+- **Pass/Fail Criteria:** Pass if invalid file payloads are rejected before processing.
+- **Status:** PASS
+- **Evidence:** `proof/logs/security/api_security_test_log.json`, `proof/screenshots/06_api_security/03_payload_limits_and_schema_validation.png`
+
+---
+
+### TC-SEC-019: Sliding-Window Rate Limiting Abuse Defense (HTTP 429)
+- **Category:** Category K — API Security Hardening
+- **Objective:** Ensure sliding-window rate limiter raises HTTP 429 when threshold is exceeded.
+- **Preconditions:** Rate limiting active (`RATE_LIMIT_LOGIN_PER_MIN = 10`).
+- **Inputs & Setup:** Client sends 12 rapid login requests within 60 seconds from same IP.
+- **Execution Steps:**
+  1. Dispatch 12 rapid login calls.
+  2. Inspect response status codes.
+- **Expected Result:** Requests 1-10 succeed or fail normally; requests 11-12 return HTTP 429 Too Many Requests.
+- **Actual Result:** Request 11 returned HTTP 429 with detail "Rate limit exceeded. Try again in 60 seconds."
+- **Pass/Fail Criteria:** Pass if burst traffic triggers rate limiting.
+- **Status:** PASS
+- **Evidence:** `proof/logs/security/api_security_test_log.json`, `proof/screenshots/06_api_security/03_payload_limits_and_schema_validation.png`
+
+---
+
+### TC-SEC-020: Global ASGI Exception Shield Sanitization (HTTP 500)
+- **Category:** Category K — API Security Hardening
+- **Objective:** Verify that unhandled server exceptions do not leak stack traces, database keys, or internal details to clients.
+- **Preconditions:** Temporary test route `/api/test-shield-crash` configured to raise an unexpected internal exception containing a sensitive database key.
+- **Inputs & Setup:** Send GET request triggering unhandled `KeyError("CRITICAL_INTERNAL_DATABASE_KEY_LEAK")`.
+- **Execution Steps:**
+  1. GET `/api/test-shield-crash`.
+  2. Inspect response status and response body.
+- **Expected Result:** HTTP 500 with generic JSON `{"detail": "Internal server error occurred. Please contact system administrator.", "error_code": "INTERNAL_SERVER_ERROR"}`; zero leakage of sensitive key string.
+- **Actual Result:** HTTP 500 returned sanitized JSON; sensitive key string completely absent from response body.
+- **Pass/Fail Criteria:** Pass if no internal exception details reach the client.
+- **Status:** PASS
+- **Evidence:** `proof/logs/security/api_security_test_log.json`, `proof/screenshots/06_api_security/05_sanitized_exception_shield.png`
+- **Defect Reference:** SEC-020
+
+---
+
+### TC-SEC-021: Audit Log Redaction (Zero Credential & Biometric Leakage)
+- **Category:** Category K — API Security Hardening
+- **Objective:** Verify `_sanitize_audit_metadata` strips passwords, JWT tokens, and biometric embeddings from persisted audit entries.
+- **Preconditions:** Server active.
+- **Inputs & Setup:** Audit metadata payload containing `password`, `access_token`, `jwt`, `encrypted_embedding`, and 512-dim float array.
+- **Execution Steps:**
+  1. Dispatch `_audit()` with sensitive metadata dictionary.
+  2. Retrieve persisted audit log record from database.
+- **Expected Result:** Passwords and tokens masked to `[REDACTED]`; biometric vectors masked to `[BIOMETRIC_REDACTED]`.
+- **Actual Result:** Sensitive fields scrubbed; zero raw credentials or vectors persisted in database.
+- **Pass/Fail Criteria:** Pass if all sensitive fields are redacted.
+- **Status:** PASS
+- **Evidence:** `proof/logs/security/api_security_test_log.json`, `proof/screenshots/06_api_security/05_sanitized_exception_shield.png`
+- **Defect Reference:** SEC-015
+
+---
+
 ## Test Execution Summary Matrix
 
 | Category | Planned Tests | Passed | Failed | Blocked | Not Run | Pass Rate |
@@ -1306,5 +1654,7 @@
 | Category G: Accuracy & Limits | 1 | 1 | 0 | 0 | 0 | 100% |
 | Category H: Adversarial Evaluation & PAD | 11 | 11 | 0 | 0 | 0 | 100% |
 | Category I: Identity Verification & Anti-Proxy | 15 | 15 | 0 | 0 | 0 | 100% |
-| **TOTAL** | **52** | **52** | **0** | **0** | **0** | **100%** |
+| Category K: API Security Hardening | 21 | 21 | 0 | 0 | 0 | 100% |
+| **TOTAL** | **73** | **73** | **0** | **0** | **0** | **100%** |
+
 

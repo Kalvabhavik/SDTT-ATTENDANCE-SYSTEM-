@@ -29,6 +29,7 @@ ATTENDANCE_SECRET_KEY: str = os.getenv(
 ATTENDANCE_TOKEN_TTL_SECONDS = int(os.getenv("ATTENDANCE_TOKEN_TTL_SECONDS", "28800"))
 WS_TICKET_TTL_SECONDS = int(os.getenv("ATTENDANCE_WS_TICKET_TTL_SECONDS", "60"))
 MAX_CAPTURE_BYTES = int(os.getenv("ATTENDANCE_MAX_CAPTURE_BYTES", "25165824"))  # 24MB for multi-frame sweep
+MAX_REQUEST_SIZE_BYTES = int(os.getenv("ATTENDANCE_MAX_REQUEST_SIZE_BYTES", "15728640"))  # 15MB max payload size
 CORS_ORIGINS = [
     v.strip()
     for v in os.getenv(
@@ -37,6 +38,19 @@ CORS_ORIGINS = [
     ).split(",")
     if v.strip()
 ]
+
+
+def validate_environment_config() -> list[str]:
+    """Validate critical environment configurations and return warnings or errors."""
+    issues = []
+    if ATTENDANCE_ENV == "production":
+        if "attendrix_super_secret" in ATTENDANCE_SECRET_KEY:
+            issues.append("ATTENDANCE_SECRET_KEY is using default placeholder in production.")
+        if "test_jwt_secret" in SUPABASE_JWT_SECRET:
+            issues.append("SUPABASE_JWT_SECRET is using default placeholder in production.")
+        if len(ATTENDANCE_SECRET_KEY) < 32:
+            issues.append("ATTENDANCE_SECRET_KEY must be at least 32 characters in production.")
+    return issues
 
 # ── Session Lifecycle & Time Limits ───────────────────────────────────────────
 DEFAULT_SESSION_DURATION_MINUTES = 10

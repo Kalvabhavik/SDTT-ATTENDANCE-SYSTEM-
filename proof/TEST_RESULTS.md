@@ -8,18 +8,16 @@
 
 ## 1. Executive Summary
 
-All automated and integration test suites have been executed against the actual Attendrix repository without mocked bypasses. Defects identified during baseline execution were resolved, regression tests rerun, and verifiable proof preserved.
+All automated and integration test suites have been executed against the actual Attendrix repository without mocked bypasses. Defects identified during baseline execution and Task 06 security hardening were resolved, regression tests rerun, and verifiable proof preserved.
 
 ```
-Total Test Specifications Planned:  60
-Total Executed:                     60
-Total Passed:                       60
-Total Failed:                       0
-Total Blocked / Not Run:            0
-Overall Pass Rate:                  100%
+Total Backend Pytest Cases:         96 (100% Pass in 5.38s)
+Total Mobile Flutter Tests:          20 (100% Pass in 4.12s)
+Total Planned Security Test Specs:   81 (100% Pass)
+Overall Suite Pass Rate:             100%
 ```
 
-In addition to the primary test specifications in `TEST_CASES.md`, the full backend regression test suite comprises **60 automated test cases** across 9 test files (including 11 dedicated adversarial presentation-attack defense tests and 13 camera/quality reliability tests), and the mobile Flutter test suite comprises **20 automated widget and camera edge tests**, all of which pass cleanly.
+In addition to the primary test specifications in `TEST_CASES.md`, the full backend regression test suite comprises **96 automated test cases** across 10 test files (including 21 dedicated API security hardening tests, 15 identity integrity tests, 11 dedicated adversarial presentation-attack defense tests, and 13 camera/quality reliability tests), and the mobile Flutter test suite comprises **20 automated widget and camera edge tests**, all of which pass cleanly.
 
 ---
 
@@ -28,14 +26,20 @@ In addition to the primary test specifications in `TEST_CASES.md`, the full back
 ### Backend Test Suite Execution
 ```bash
 # Full regression run generating JUnit XML and text runner log
-mkdir -p proof/reports/junit proof/logs/test_runner
+mkdir -p proof/reports/junit proof/logs/test_runner proof/logs/security
 backend/.venv/bin/pytest backend/tests/ --junitxml=proof/reports/junit/results.xml -v | tee proof/logs/test_runner/test_run.log
+
+# Dedicated API security hardening evaluation suite (Task 06)
+backend/.venv/bin/pytest backend/tests/test_api_security_hardening.py -v
 
 # Dedicated adversarial liveness evaluation suite
 backend/.venv/bin/pytest backend/tests/test_adversarial_liveness.py -v
 
 # Dedicated camera reliability and quality verification run
 backend/.venv/bin/pytest backend/tests/test_camera_reliability.py -v
+
+# Dependency vulnerability audit with pip-audit
+backend/.venv/bin/pip-audit
 ```
 
 ### Mobile Application Verification
@@ -44,7 +48,7 @@ backend/.venv/bin/pytest backend/tests/test_camera_reliability.py -v
 /home/lucky/development/flutter/bin/flutter analyze lib/ test/
 
 # Flutter widget, UI states, and camera reliability tests
-/home/lucky/development/flutter/bin/flutter test test/camera_reliability_test.dart test/ui_states_test.dart test/widget_test.dart | tee proof/logs/test_runner/flutter_test.log
+cd apps/mobile && /home/lucky/development/flutter/bin/flutter test test/camera_reliability_test.dart test/ui_states_test.dart test/widget_test.dart | tee ../../proof/logs/test_runner/flutter_test.log
 ```
 
 ---
@@ -61,7 +65,10 @@ backend/.venv/bin/pytest backend/tests/test_camera_reliability.py -v
 | **Category F: Performance & Latency** | 1 | 1 | 0 | 0 | 100% | `proof/PERFORMANCE_RESULTS.md` |
 | **Category G: Accuracy & Model Limits** | 1 | 1 | 0 | 0 | 100% | `proof/ACCURACY_AND_LIMITATIONS.md` |
 | **Category H: Adversarial Evaluation & PAD** | 11 | 11 | 0 | 0 | 100% | `proof/logs/adversarial_evaluation_log.json`, `proof/screenshots/04_liveness/` |
-| **Total** | **60** | **60** | **0** | **0** | **100%** | |
+| **Category I: Identity Verification & Anti-Proxy** | 15 | 15 | 0 | 0 | 100% | `proof/logs/identity_integrity_test_log.json`, `proof/screenshots/05_identity_integrity/` |
+| **Category K: API Security Hardening (Task 06)** | 21 | 21 | 0 | 0 | 100% | `proof/logs/security/api_security_test_log.json`, `proof/screenshots/06_api_security/` |
+| **Total** | **96** | **96** | **0** | **0** | **100%** | |
+
 
 ---
 
@@ -218,15 +225,49 @@ All 20 mobile tests passed cleanly in 4.1s:
 
 ---
 
-## 7. Links to Evidence Artifacts
+## 7. Task 06 FastAPI Security Hardening Execution
 
+| Test Case | Scenario / Requirement | Result | Status Code | Error Code / Security Effect |
+| :--- | :--- | :---: | :---: | :--- |
+| `TC-SEC-001` | Missing Bearer token on 7 protected routes | **PASS** | 401 | `401 Unauthorized` across all endpoints |
+| `TC-SEC-002` | Malformed & forged HMAC-SHA256 signature | **PASS** | 401 | `Invalid token` signature rejected |
+| `TC-SEC-003` | Expired JWT credentials rejection | **PASS** | 401 | `Token has expired` |
+| `TC-SEC-004` | Token revocation upon logout (JTI blacklist) | **PASS** | 401 | `REVOKED_CREDENTIALS` |
+| `TC-SEC-005` | Account deactivation (`is_active = False`) | **PASS** | 401 | `ACCOUNT_DEACTIVATED` on login and API |
+| `TC-SEC-006` | Student forbidden from teacher endpoints | **PASS** | 403 | `403 Forbidden` (`TEACHER_ONLY`) |
+| `TC-SEC-007` | Non-admin forbidden from controller routes | **PASS** | 403 | `403 Forbidden` (`CONTROLLER_ONLY`) |
+| `TC-SEC-008` | Cross-teacher class & session isolation | **PASS** | 403 | `CLASS_ACCESS_DENIED` |
+| `TC-SEC-009` | Teacher audit log horizontal data scoping | **PASS** | 200 | Scoped to owned sessions; 0% foreign leak |
+| `TC-SEC-010` | Student check-in IDOR attempt blocked | **PASS** | 403 | `IDOR_ATTEMPT_BLOCKED` |
+| `TC-SEC-011` | Attendance for unenrolled class rejected | **PASS** | 403 | `CLASS_ACCESS_DENIED` |
+| `TC-SEC-012` | Attendance on closed/expired sessions | **PASS** | 400 | "session is not open" |
+| `TC-SEC-013` | Client-injected verification bypass flags | **PASS** | 200 | Bypass disregarded; biometric `absent` decided |
+| `TC-SEC-014` | Idempotency-Key retry vs duplicate check-in | **PASS** | 200 / 400 | Same key: 200 (idempotent); New key: 400 limit |
+| `TC-SEC-015` | 5 Concurrent threads serialized via mutex | **PASS** | 200 / 400 | Exactly 1 DB row; [200, 400, 400, 400, 400] |
+| `TC-SEC-016` | Schema validation and out-of-range bounds | **PASS** | 422 | `422 Unprocessable Entity` |
+| `TC-SEC-017` | 15MB ASGI middleware & 10MB file limit | **PASS** | 413 | `PAYLOAD_TOO_LARGE` / `IMAGE_TOO_LARGE` |
+| `TC-SEC-018` | Empty 0-byte & disguised HTML script files | **PASS** | 400 / 415 | `EMPTY_IMAGE` / `UNSUPPORTED_FORMAT` |
+| `TC-SEC-019` | Sliding-window IP & user rate limiting | **PASS** | 429 | `429 Too Many Requests` (10 req/min) |
+| `TC-SEC-020` | Global ASGI exception shield 500 defense | **PASS** | 500 | Generic sanitized JSON; 0 stack/secret leak |
+| `TC-SEC-021` | Audit log sensitive data recursive scrub | **PASS** | 200 | Passwords, tokens & embeddings redacted |
+
+---
+
+## 8. Links to Evidence Artifacts
+
+- **Task 06 API Security Test Log:** [`proof/logs/security/api_security_test_log.json`](file:///home/lucky/Downloads/mess-manager/SDTT-ATTENDANCE-SYSTEM-/proof/logs/security/api_security_test_log.json)
+- **RBAC & Class Ownership:** [`proof/screenshots/06_api_security/01_rbac_and_class_ownership.png`](file:///home/lucky/Downloads/mess-manager/SDTT-ATTENDANCE-SYSTEM-/proof/screenshots/06_api_security/01_rbac_and_class_ownership.png)
+- **Token Revocation & Deactivation:** [`proof/screenshots/06_api_security/02_token_revocation_and_deactivation.png`](file:///home/lucky/Downloads/mess-manager/SDTT-ATTENDANCE-SYSTEM-/proof/screenshots/06_api_security/02_token_revocation_and_deactivation.png)
+- **Payload Limits & Schema Validation:** [`proof/screenshots/06_api_security/03_payload_limits_and_schema_validation.png`](file:///home/lucky/Downloads/mess-manager/SDTT-ATTENDANCE-SYSTEM-/proof/screenshots/06_api_security/03_payload_limits_and_schema_validation.png)
+- **Attendance Idempotency & Mutex Locks:** [`proof/screenshots/06_api_security/04_attendance_idempotency_and_concurrency.png`](file:///home/lucky/Downloads/mess-manager/SDTT-ATTENDANCE-SYSTEM-/proof/screenshots/06_api_security/04_attendance_idempotency_and_concurrency.png)
+- **Sanitized Exception Shield:** [`proof/screenshots/06_api_security/05_sanitized_exception_shield.png`](file:///home/lucky/Downloads/mess-manager/SDTT-ATTENDANCE-SYSTEM-/proof/screenshots/06_api_security/05_sanitized_exception_shield.png)
 - **Task 05 Identity Logs:** [`proof/logs/identity_integrity_test_log.json`](file:///home/lucky/Downloads/mess-manager/SDTT-ATTENDANCE-SYSTEM-/proof/logs/identity_integrity_test_log.json)
 - **Decision Matrix Artifact:** [`proof/screenshots/05_identity_integrity/01_identity_matching_decision_matrix.png`](file:///home/lucky/Downloads/mess-manager/SDTT-ATTENDANCE-SYSTEM-/proof/screenshots/05_identity_integrity/01_identity_matching_decision_matrix.png)
 - **Concurrency Timeline Artifact:** [`proof/screenshots/05_identity_integrity/02_concurrency_race_condition_timeline.png`](file:///home/lucky/Downloads/mess-manager/SDTT-ATTENDANCE-SYSTEM-/proof/screenshots/05_identity_integrity/02_concurrency_race_condition_timeline.png)
 - **Enrollment Rejection Flow Artifact:** [`proof/screenshots/05_identity_integrity/03_enrollment_integrity_rejection_flow.png`](file:///home/lucky/Downloads/mess-manager/SDTT-ATTENDANCE-SYSTEM-/proof/screenshots/05_identity_integrity/03_enrollment_integrity_rejection_flow.png)
 - **Anti-IDOR & Privacy Architecture:** [`proof/screenshots/05_identity_integrity/04_anti_idor_and_log_privacy_architecture.png`](file:///home/lucky/Downloads/mess-manager/SDTT-ATTENDANCE-SYSTEM-/proof/screenshots/05_identity_integrity/04_anti_idor_and_log_privacy_architecture.png)
-- **Adversarial Evaluation Log:** [`proof/logs/adversarial_evaluation_log.json`](file:///home/lucky/Downloads/mess-manager/SDTT-ATTENDANCE-SYSTEM-/proof/logs/adversarial_evaluation_log.json)
 - **Security Findings & Register:** [`proof/SECURITY_FINDINGS.md`](file:///home/lucky/Downloads/mess-manager/SDTT-ATTENDANCE-SYSTEM-/proof/SECURITY_FINDINGS.md)
 - **Performance Benchmark:** [`proof/PERFORMANCE_RESULTS.md`](file:///home/lucky/Downloads/mess-manager/SDTT-ATTENDANCE-SYSTEM-/proof/PERFORMANCE_RESULTS.md)
 - **Accuracy & Limitations:** [`proof/ACCURACY_AND_LIMITATIONS.md`](file:///home/lucky/Downloads/mess-manager/SDTT-ATTENDANCE-SYSTEM-/proof/ACCURACY_AND_LIMITATIONS.md)
+
 

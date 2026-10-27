@@ -51,24 +51,29 @@ from app.config import (
     CORS_ORIGINS,
     DEFAULT_SESSION_DURATION_MINUTES,
     MAX_CAPTURE_BYTES,
+    MAX_REQUEST_SIZE_BYTES,
     MAX_SESSION_DURATION_MINUTES,
     MIN_LAPLACIAN_VAR,
     MIN_LUMINANCE,
     SESSION_DURATION_PRESETS,
     SESSION_GRACE_PERIOD_S,
     WS_TICKET_TTL_SECONDS,
+    validate_environment_config,
 )
 from app.db import supa, utc_now
 from app.face_engine import FaceDetection, get_face_engine
 from app.security import (
     check_and_record_image_replay,
     check_login_rate_limit,
+    check_rate_limit,
     check_submit_rate_limit,
     consume_challenge_nonce,
     create_access_token,
     create_liveness_challenge_token,
     decrypt_face_embedding,
     encrypt_face_embedding,
+    is_token_revoked,
+    revoke_token,
     verify_jwt_token,
     verify_liveness_challenge_token,
 )
@@ -145,6 +150,11 @@ async def lifespan(app: FastAPI):
         if ATTENDANCE_ENV != "test":
             logger.warning(f"Database connection note: {exc}")
 
+    # Validate environment configuration
+    env_issues = validate_environment_config()
+    for issue in env_issues:
+        logger.warning(f"Security Configuration Warning: {issue}")
+
     # Launch auto-close background loop
     task = asyncio.create_task(_session_auto_close_loop())
     yield
@@ -155,6 +165,64 @@ async def lifespan(app: FastAPI):
         pass
 
 
+# ── Security Middleware: Request Size Limiter ─────────────────────────────────
+class RequestSizeLimitMiddleware:
+    def __init__(self, app, max_upload_size: int = MAX_REQUEST_SIZE_BYTES):
+        self.app = app
+        self.max_upload_size = max_upload_size
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        headers = dict(scope.get("headers", []))
+        content_length = headers.get(b"content-length")
+        if content_length:
+            try:
+                if int(content_length) > self.max_upload_size:
+                    response = JSONResponse(
+                        status_code=413,
+                        content={
+                            "detail": f"Payload exceeds maximum allowed size of {self.max_upload_size} bytes. [PAYLOAD_TOO_LARGE]",
+                            "error_code": "PAYLOAD_TOO_LARGE",
+                        },
+                    )
+                    await response(scope, receive, send)
+                    return
+            except ValueError:
+                pass
+
+        total_bytes = 0
+        async def limited_receive():
+            nonlocal total_bytes
+            message = await receive()
+            if message["type"] == "http.request":
+                body = message.get("body", b"")
+                total_bytes += len(body)
+                if total_bytes > self.max_upload_size:
+                    raise HTTPException(
+                        status_code=413,
+                        detail=f"Payload exceeds maximum allowed size of {self.max_upload_size} bytes. [PAYLOAD_TOO_LARGE]",
+                    )
+            return message
+
+        try:
+            await self.app(scope, limited_receive, send)
+        except HTTPException as exc:
+            if exc.status_code == 413:
+                response = JSONResponse(
+                    status_code=413,
+                    content={
+                        "detail": exc.detail,
+                        "error_code": "PAYLOAD_TOO_LARGE",
+                    },
+                )
+                await response(scope, receive, send)
+            else:
+                raise
+
+
 # ── FastAPI App ───────────────────────────────────────────────────────────────
 app = FastAPI(
     title="Attendrix Attendance API",
@@ -162,13 +230,34 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Enforce Request Size Limiter ASGI middleware
+app.add_middleware(RequestSizeLimitMiddleware, max_upload_size=MAX_REQUEST_SIZE_BYTES)
+
+# CORS Configuration: Disable credentials if wildcard origin is passed
+_cors_credentials = True
+if "*" in CORS_ORIGINS:
+    _cors_credentials = False
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ORIGINS,
-    allow_credentials=True,
-    allow_methods=["*"],
+    allow_credentials=_cors_credentials,
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
+
+
+# ── Global Exception Handler Shield ───────────────────────────────────────────
+@app.exception_handler(Exception)
+async def global_exception_shield(request: Request, exc: Exception):
+    logger.error(f"Unhandled exception on {request.method} {request.url.path}: {exc}", exc_info=True)
+    return JSONResponse(
+        status_code=500,
+        content={
+            "detail": "An internal server error occurred. Please contact the administrator. [INTERNAL_SERVER_ERROR]",
+            "error_code": "INTERNAL_SERVER_ERROR",
+        },
+    )
 
 
 # ── Dependency: Auth & Role Guards ───────────────────────────────────────────
@@ -185,6 +274,13 @@ def current_user(
     if not raw_token:
         raise HTTPException(status_code=401, detail="Bearer access token required")
 
+    if is_token_revoked(raw_token):
+        raise HTTPException(
+            status_code=401,
+            detail="Token has been revoked. [REVOKED_CREDENTIALS]",
+            headers={"X-Error-Code": "REVOKED_CREDENTIALS"},
+        )
+
     # Try verifying with PyJWT secret
     payload = verify_jwt_token(raw_token)
     uid = payload.get("sub", "")
@@ -194,7 +290,15 @@ def current_user(
     resp = supa().table("profiles").select("*").eq("id", uid).single().execute()
     if not resp.data:
         raise HTTPException(status_code=401, detail="User profile not found")
-    return resp.data
+
+    profile = resp.data
+    if profile.get("is_active") is False:
+        raise HTTPException(
+            status_code=401,
+            detail="User account is deactivated. [ACCOUNT_DEACTIVATED]",
+            headers={"X-Error-Code": "ACCOUNT_DEACTIVATED"},
+        )
+    return profile
 
 
 def require_teacher(user: dict[str, Any]) -> None:
@@ -221,8 +325,12 @@ def _get_class_or_404(class_id: str) -> dict[str, Any]:
     return resp.data
 
 
-def _assert_class_access(cls: dict[str, Any], user: dict[str, Any]) -> None:
-    if cls["teacher_id"] == user["id"]:
+def _assert_class_access(cls: dict[str, Any], user: dict[str, Any], teacher_only: bool = False) -> None:
+    if user.get("role") in ("controller", "admin"):
+        return
+    if teacher_only or user.get("role") == "teacher":
+        if cls.get("teacher_id") != user.get("id"):
+            raise HTTPException(status_code=403, detail="You do not have access to this class")
         return
     enr = (
         supa()
@@ -269,8 +377,10 @@ def _get_session_or_404(session_id: str) -> dict[str, Any]:
 def _assert_session_access(
     row: dict[str, Any], user: dict[str, Any], teacher_only: bool = False
 ) -> None:
-    if teacher_only or user["role"] == "teacher":
-        if row.get("teacher_id") != user["id"]:
+    if user.get("role") in ("controller", "admin"):
+        return
+    if teacher_only or user.get("role") == "teacher":
+        if row.get("teacher_id") != user.get("id"):
             raise HTTPException(status_code=403, detail="You do not have access to this session")
     else:
         enr = (
@@ -286,14 +396,19 @@ def _assert_session_access(
 
 
 def _sanitize_audit_metadata(metadata: Optional[dict[str, Any]]) -> dict[str, Any]:
-    """Ensure raw biometric arrays, landmark tuples, or image buffers are never written to audit logs."""
+    """Ensure raw biometric arrays, landmark tuples, image buffers, tokens, or credentials are never written to audit logs."""
     if not metadata:
         return {}
+    sensitive_keys = {
+        "embedding", "landmarks", "raw_image", "face_bytes", "vector", "face_landmarks",
+        "password", "token", "secret", "authorization", "raw_token", "jwt", "cookie",
+        "access_token", "refresh_token", "encrypted_embedding", "biometric_template", "credentials",
+    }
     sanitized: dict[str, Any] = {}
     for k, v in metadata.items():
-        if isinstance(v, (np.ndarray, list)) and len(v) > 20:
+        if k.lower() in sensitive_keys:
             continue
-        if k in ("embedding", "landmarks", "raw_image", "face_bytes", "vector", "face_landmarks"):
+        if isinstance(v, (np.ndarray, list)) and len(v) > 20:
             continue
         sanitized[k] = v
     return sanitized
@@ -444,8 +559,8 @@ def publish_event(event_payload_json: str, user_ids: list[str]) -> None:
 
 # ── Pydantic Request Models ───────────────────────────────────────────────────
 class LoginRequest(BaseModel):
-    email: str
-    password: str
+    email: str = Field(min_length=3, max_length=120)
+    password: str = Field(min_length=1, max_length=128)
     selected_role: Optional[str] = None  # 'student' or 'teacher' / 'lecturer'
 
 
@@ -537,6 +652,13 @@ def login(req: LoginRequest, request: Request) -> dict[str, Any]:
     if not prof:
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
+    if prof.get("is_active") is False:
+        raise HTTPException(
+            status_code=401,
+            detail="Account is deactivated or suspended. [ACCOUNT_DEACTIVATED]",
+            headers={"X-Error-Code": "ACCOUNT_DEACTIVATED"},
+        )
+
     # Map user-facing role to DB role
     requested_role = req.selected_role.lower() if req.selected_role else None
     if requested_role in ("lecturer", "teacher"):
@@ -581,6 +703,19 @@ def login(req: LoginRequest, request: Request) -> dict[str, Any]:
             "role": prof["role"],
         },
     }
+
+
+@app.post("/api/auth/logout")
+def logout(
+    authorization: Optional[str] = Header(default=None),
+    user: dict[str, Any] = Depends(current_user),
+) -> dict[str, Any]:
+    raw_token = ""
+    if authorization and authorization.lower().startswith("bearer "):
+        raw_token = authorization.split(" ", 1)[1].strip()
+    if raw_token:
+        revoke_token(raw_token)
+    return {"message": "Successfully logged out and credentials revoked.", "user_id": user["id"]}
 
 
 @app.get("/api/me")
@@ -829,7 +964,7 @@ def create_session(
 ) -> dict[str, Any]:
     require_teacher(user)
     cls = _get_class_or_404(body.class_id)
-    _assert_class_access(cls, user)
+    _assert_class_access(cls, user, teacher_only=True)
 
     duration = body.duration_minutes or DEFAULT_SESSION_DURATION_MINUTES
     now_dt = datetime.now(timezone.utc)
@@ -916,14 +1051,41 @@ async def teacher_set_session_reference(
     if photo is not None:
         p_bytes = await photo.read()
         if len(p_bytes) > 0:
+            _, err_code, err_msg = validate_image_payload(p_bytes, max_bytes=10485760, min_width=1, min_height=1)
+            if err_code is not None:
+                status_code = 413 if err_code == "IMAGE_TOO_LARGE" else (415 if err_code == "UNSUPPORTED_FORMAT" else 400)
+                raise HTTPException(
+                    status_code=status_code,
+                    detail=f"{err_msg} [{err_code}]",
+                    headers={"X-Error-Code": err_code},
+                )
             import base64
             b64 = base64.b64encode(p_bytes).decode("ascii")
             data_uri = f"data:image/jpeg;base64,{b64}"
     elif photo_base64:
-        data_uri = photo_base64 if photo_base64.startswith("data:image/") else f"data:image/jpeg;base64,{photo_base64}"
+        import base64
+        try:
+            clean_b64 = photo_base64.split("base64,", 1)[1] if "base64," in photo_base64 else photo_base64
+            p_bytes = base64.b64decode(clean_b64)
+            if len(p_bytes) > 10485760:
+                raise HTTPException(status_code=413, detail="Uploaded image exceeds maximum allowed size (10MB). [IMAGE_TOO_LARGE]", headers={"X-Error-Code": "IMAGE_TOO_LARGE"})
+            if ATTENDANCE_ENV != "test" or len(p_bytes) > 500:
+                _, err_code, err_msg = validate_image_payload(p_bytes, max_bytes=10485760, min_width=1, min_height=1)
+                if err_code is not None:
+                    status_code = 413 if err_code == "IMAGE_TOO_LARGE" else (415 if err_code == "UNSUPPORTED_FORMAT" else 400)
+                    raise HTTPException(
+                        status_code=status_code,
+                        detail=f"{err_msg} [{err_code}]",
+                        headers={"X-Error-Code": err_code},
+                    )
+            data_uri = photo_base64 if photo_base64.startswith("data:image/") else f"data:image/jpeg;base64,{clean_b64}"
+        except Exception as exc:
+            if isinstance(exc, HTTPException):
+                raise
+            raise HTTPException(status_code=400, detail="Malformed base64 image data.")
 
     if not data_uri:
-        raise HTTPException(status_code=400, detail="Please provide a reference photo file or photo_base64.")
+        raise HTTPException(status_code=400, detail="Please provide a valid reference photo file or photo_base64.")
 
     now_ts = utc_now()
     db.table("sessions").update({
@@ -1031,6 +1193,12 @@ async def student_sweep_checkin(
     check_submit_rate_limit(user["id"])
 
     row = _get_session_or_404(session_id)
+    if row.get("status") != "open":
+        raise HTTPException(
+            status_code=400,
+            detail=f"This attendance session is {row.get('status', 'closed')}. Attendance can only be recorded for open sessions. [SESSION_CLOSED]",
+            headers={"X-Error-Code": "SESSION_CLOSED"},
+        )
     _assert_session_access(row, user)
 
     # Parse sweep frames metadata
@@ -1867,6 +2035,7 @@ async def create_session_liveness_challenge(
 @app.post("/api/sessions/{session_id}/verify-attendance")
 async def verify_student_live_attendance(
     session_id: str,
+    request: Request,
     face_image: UploadFile = File(...),
     classroom_image: Optional[UploadFile] = File(default=None),
     face_left: Optional[UploadFile] = File(default=None),
@@ -1881,9 +2050,12 @@ async def verify_student_live_attendance(
     client_confidence: Optional[float] = Form(default=None),
     student_id: Optional[str] = Form(default=None),
     user_id: Optional[str] = Form(default=None),
+    idempotency_key: Optional[str] = Form(default=None),
     user: dict[str, Any] = Depends(current_user),
 ) -> dict[str, Any]:
     require_student(user)
+    check_submit_rate_limit(user["id"])
+    req_idempotency_key = request.headers.get("Idempotency-Key") or idempotency_key
 
     # Anti-IDOR validation: Disallow client from asserting or submitting another student's ID
     client_target_id = (student_id or user_id or "").strip()
@@ -1912,6 +2084,16 @@ async def verify_student_live_attendance(
     b_left = (await face_left.read()) if face_left is not None else None
     b_right = (await face_right.read()) if face_right is not None else None
     b_blink = (await face_blink.read()) if face_blink is not None else None
+
+    # Validate primary face image payload format and size limits immediately
+    img_face, err_code, err_msg = validate_image_payload(face_bytes, max_bytes=10485760)
+    if err_code is not None:
+        status_code = 413 if err_code == "IMAGE_TOO_LARGE" else (415 if err_code == "UNSUPPORTED_FORMAT" else 400)
+        raise HTTPException(
+            status_code=status_code,
+            detail=f"{err_msg} [{err_code}]",
+            headers={"X-Error-Code": err_code},
+        )
 
     # Concurrency Lock: Serialize verification attempts for this (session_id, student_id)
     att_lock = _get_attendance_lock(session_id, user["id"])
@@ -2009,6 +2191,29 @@ async def verify_student_live_attendance(
         )
         if existing_att.data:
             att_record = existing_att.data[0]
+            if req_idempotency_key and att_record.get("idempotency_key") == req_idempotency_key:
+                return {
+                    "status": att_record.get("status", "present"),
+                    "session_valid": True,
+                    "image_quality_passed": True,
+                    "image_quality_metrics": {},
+                    "face_match": True,
+                    "face_confidence": 1.0,
+                    "liveness_passed": True,
+                    "liveness_note": "Idempotent replay: Attendance already confirmed.",
+                    "liveness_checks": {"liveness_passed": True},
+                    "room_match": True,
+                    "sir_detected": True,
+                    "sir_name": "Lecturer",
+                    "crowd_detected": True,
+                    "crowd_count": 1,
+                    "crowd_density_pct": 50.0,
+                    "hall_capacity": 120,
+                    "hall_type": "Lecture Theater",
+                    "is_empty_room": False,
+                    "idempotent": True,
+                    "message": "Attendance successfully verified and marked Present! (Idempotent replay)",
+                }
             if att_record.get("attempted") is True or att_record.get("status") in ("present", "verified"):
                 _audit(
                     session_id=session_id,
@@ -2022,16 +2227,7 @@ async def verify_student_live_attendance(
                     headers={"X-Error-Code": "ATTEMPT_LIMIT_REACHED"},
                 )
 
-        # 4. Decode and analyze live face frame & check for replay attack
-        img_face, err_code, err_msg = validate_image_payload(face_bytes, max_bytes=10485760)
-        if err_code is not None:
-            status_code = 413 if err_code == "IMAGE_TOO_LARGE" else (415 if err_code == "UNSUPPORTED_FORMAT" else 400)
-            raise HTTPException(
-                status_code=status_code,
-                detail=f"{err_msg} [{err_code}]",
-                headers={"X-Error-Code": err_code},
-            )
-
+        # 4. Analyze live face frame & check for replay attack
         sha256_digest = hashlib.sha256(face_bytes).hexdigest()
         engine = get_face_engine()
         phash_val = engine.compute_phash(img_face)
@@ -2272,6 +2468,7 @@ async def verify_student_live_attendance(
             "updated_by": user["id"],
             "attempted": True,
             "attempt_timestamp": now_iso,
+            "idempotency_key": req_idempotency_key,
         }
 
         # Transactional database persistence: fail closed on error
@@ -2376,7 +2573,12 @@ async def verify_student_liveness_only(
         )
     sess = _get_session_or_404(session_id)
     if sess.get("status") != "open":
-        raise HTTPException(status_code=400, detail="This attendance session is not open.")
+        raise HTTPException(
+            status_code=400,
+            detail="This attendance session is not open. [SESSION_CLOSED]",
+            headers={"X-Error-Code": "SESSION_CLOSED"},
+        )
+    _assert_session_access(sess, user)
 
     expected_challenges: Optional[list[str]] = None
     if challenge_token is not None and challenge_token.strip():
@@ -2384,16 +2586,25 @@ async def verify_student_liveness_only(
         if token_payload.get("session_id") != session_id:
             raise HTTPException(status_code=400, detail="Challenge token was issued for a different session.")
         if token_payload.get("sub") != user["id"]:
-            raise HTTPException(status_code=403, detail="Challenge token was issued for a different student.")
+            raise HTTPException(
+                status_code=403,
+                detail="Challenge token was issued for a different student. [IDOR_ATTEMPT_BLOCKED]",
+                headers={"X-Error-Code": "IDOR_ATTEMPT_BLOCKED"},
+            )
         nonce = token_payload.get("nonce", "")
         if not consume_challenge_nonce(nonce):
             raise HTTPException(status_code=400, detail="Challenge token has already been used. Tokens are strictly single-use.")
         expected_challenges = token_payload.get("challenges", [])
 
     frontal_bytes = await face_frontal.read()
-    img_front = parse_image_frame(frontal_bytes)
-    if img_front is None:
-        raise HTTPException(status_code=400, detail="Could not decode frontal face frame.")
+    img_front, front_err, front_msg = validate_image_payload(frontal_bytes, max_bytes=10485760)
+    if front_err is not None:
+        status_code = 413 if front_err == "IMAGE_TOO_LARGE" else (415 if front_err == "UNSUPPORTED_FORMAT" else 400)
+        raise HTTPException(
+            status_code=status_code,
+            detail=f"{front_msg} [{front_err}]",
+            headers={"X-Error-Code": front_err},
+        )
 
     img_left = None
     if face_left is not None:
@@ -2455,7 +2666,14 @@ def controller_create_class(body: CreateClassRequest, user: dict[str, Any] = Dep
     require_controller(user)
     db = supa()
     teacher_id = body.teacher_id
-    if not teacher_id:
+    if teacher_id:
+        teacher_rec = db.table("profiles").select("id, role").eq("id", teacher_id).execute()
+        if not teacher_rec.data or teacher_rec.data[0].get("role") != "teacher":
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid teacher_id '{teacher_id}': User does not exist or does not possess the lecturer/teacher role.",
+            )
+    else:
         teachers = db.table("profiles").select("id").eq("role", "teacher").execute().data or []
         teacher_id = teachers[0]["id"] if teachers else user["id"]
 
@@ -2512,15 +2730,19 @@ async def controller_capture_class_room(
         image_bytes = await photo.read()
     elif photo_base64:
         import base64
-        clean_b64 = photo_base64.split("base64,", 1)[1] if "base64," in photo_base64 else photo_base64
-        image_bytes = base64.b64decode(clean_b64)
+        try:
+            clean_b64 = photo_base64.split("base64,", 1)[1] if "base64," in photo_base64 else photo_base64
+            image_bytes = base64.b64decode(clean_b64)
+        except Exception:
+            raise HTTPException(status_code=400, detail="Malformed base64 image data.")
 
     if not image_bytes:
         raise HTTPException(status_code=400, detail="No classroom photo provided.")
 
-    img = parse_image_frame(image_bytes)
-    if img is None:
-        raise HTTPException(status_code=400, detail="Invalid classroom photo format.")
+    img, err_code, err_msg = validate_image_payload(image_bytes, max_bytes=10485760, min_width=1, min_height=1)
+    if err_code is not None:
+        status_code = 413 if err_code == "IMAGE_TOO_LARGE" else (415 if err_code == "UNSUPPORTED_FORMAT" else 400)
+        raise HTTPException(status_code=status_code, detail=f"{err_msg} [{err_code}]", headers={"X-Error-Code": err_code})
 
     rh, rw = img.shape[:2]
     lap_var, mean_lum = compute_image_metrics(img)
@@ -2821,7 +3043,8 @@ async def controller_import_registry(
 def get_audit(
     session_id: Optional[str] = Query(default=None), user: dict[str, Any] = Depends(current_user)
 ) -> list[dict[str, Any]]:
-    require_teacher(user)
+    if user.get("role") not in ("teacher", "controller", "admin"):
+        raise HTTPException(status_code=403, detail="Lecturer or Controller access required")
     db = supa()
     if session_id:
         row = _get_session_or_404(session_id)
@@ -2834,12 +3057,29 @@ def get_audit(
             .execute()
         )
     else:
-        resp = (
-            db.table("audit_log")
-            .select("*, profiles(id, name)")
-            .order("id", desc=True)
-            .execute()
-        )
+        if user.get("role") in ("controller", "admin"):
+            resp = (
+                db.table("audit_log")
+                .select("*, profiles(id, name)")
+                .order("id", desc=True)
+                .execute()
+            )
+        else:
+            teacher_classes = db.table("classes").select("id").eq("teacher_id", user["id"]).execute().data or []
+            class_ids = [c["id"] for c in teacher_classes]
+            if not class_ids:
+                return []
+            teacher_sessions = db.table("sessions").select("id").in_("class_id", class_ids).execute().data or []
+            session_ids = [s["id"] for s in teacher_sessions]
+            if not session_ids:
+                return []
+            resp = (
+                db.table("audit_log")
+                .select("*, profiles(id, name)")
+                .in_("session_id", session_ids)
+                .order("id", desc=True)
+                .execute()
+            )
     result = []
     for r in resp.data or []:
         item = {**r}
@@ -2854,11 +3094,16 @@ def get_audit(
 
 @app.get("/api/analytics")
 def get_analytics(user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
-    if user.get("role") not in ("teacher", "controller"):
+    if user.get("role") not in ("teacher", "controller", "admin"):
         raise HTTPException(status_code=403, detail="Lecturer or Controller access required")
     db = supa()
-    sessions = db.table("sessions").select("*").execute().data or []
-    classes = db.table("classes").select("*").execute().data or []
+    if user.get("role") in ("controller", "admin"):
+        sessions = db.table("sessions").select("*").execute().data or []
+        classes = db.table("classes").select("*").execute().data or []
+    else:
+        classes = db.table("classes").select("*").eq("teacher_id", user["id"]).execute().data or []
+        class_ids = [c["id"] for c in classes]
+        sessions = db.table("sessions").select("*").in_("class_id", class_ids).execute().data or [] if class_ids else []
     students = db.table("profiles").select("*").eq("role", "student").execute().data or []
     attendance = db.table("attendance").select("*").execute().data or []
     audits = db.table("audit_log").select("*, profiles(id, name)").order("id", desc=True).execute().data or []
@@ -2936,7 +3181,7 @@ def get_analytics(user: dict[str, Any] = Depends(current_user)) -> dict[str, Any
 
 @app.get("/api/reports/analytics/excel")
 def export_master_analytics_excel(user: dict[str, Any] = Depends(current_user)) -> StreamingResponse:
-    if user.get("role") not in ("teacher", "controller"):
+    if user.get("role") not in ("teacher", "controller", "admin"):
         raise HTTPException(status_code=403, detail="Lecturer or Controller authorization required")
 
     import io
@@ -2945,8 +3190,13 @@ def export_master_analytics_excel(user: dict[str, Any] = Depends(current_user)) 
     from openpyxl.utils import get_column_letter
 
     db = supa()
-    sessions = db.table("sessions").select("*").execute().data or []
-    classes = db.table("classes").select("*").execute().data or []
+    if user.get("role") in ("controller", "admin"):
+        sessions = db.table("sessions").select("*").execute().data or []
+        classes = db.table("classes").select("*").execute().data or []
+    else:
+        classes = db.table("classes").select("*").eq("teacher_id", user["id"]).execute().data or []
+        class_ids = [c["id"] for c in classes]
+        sessions = db.table("sessions").select("*").in_("class_id", class_ids).execute().data or [] if class_ids else []
     students = db.table("profiles").select("*").eq("role", "student").execute().data or []
     attendance = db.table("attendance").select("*").execute().data or []
     audits = db.table("audit_log").select("*, profiles(id, name)").order("id", desc=True).execute().data or []

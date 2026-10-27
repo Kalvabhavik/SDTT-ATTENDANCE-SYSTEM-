@@ -81,6 +81,30 @@ def verify_jwt_token(token: str) -> dict[str, Any]:
         raise HTTPException(status_code=401, detail=f"Invalid token: {exc}")
 
 
+# ── Token Revocation & Blacklist ──────────────────────────────────────────────
+_revoked_tokens: set[str] = set()
+
+
+def revoke_token(token: str) -> None:
+    """Add a JWT token's hash to the revocation blacklist."""
+    if not token:
+        return
+    token_hash = hashlib.sha256(token.strip().encode("utf-8")).hexdigest()
+    _revoked_tokens.add(token_hash)
+
+
+def is_token_revoked(token: str) -> bool:
+    """Check if token's hash is in the revocation blacklist."""
+    if not token:
+        return False
+    token_hash = hashlib.sha256(token.strip().encode("utf-8")).hexdigest()
+    return token_hash in _revoked_tokens
+
+
+def reset_revoked_tokens() -> None:
+    _revoked_tokens.clear()
+
+
 # ── In-Memory Rate Limiting ───────────────────────────────────────────────────
 _rate_limits: dict[str, list[float]] = {}
 
@@ -91,7 +115,11 @@ def reset_rate_limits() -> None:
 
 def check_rate_limit(key: str, max_requests: int, window_seconds: float = 60.0) -> None:
     """Sliding-window rate limiter. Raises 429 if limit exceeded."""
-    if os.getenv("ATTENDANCE_ENV", ATTENDANCE_ENV).lower() == "test" and not key.startswith("test_rate:"):
+    if (
+        os.getenv("ATTENDANCE_ENV", ATTENDANCE_ENV).lower() == "test"
+        and not key.startswith("test_rate:")
+        and not os.getenv("ATTENDANCE_TEST_RATE_LIMIT")
+    ):
         return
     now = time.time()
     history = _rate_limits.setdefault(key, [])
@@ -197,5 +225,6 @@ def reset_security_caches() -> None:
     _consumed_challenge_nonces.clear()
     _submitted_image_hashes.clear()
     _submitted_phashes.clear()
+    reset_revoked_tokens()
     reset_rate_limits()
 

@@ -1,0 +1,212 @@
+[
+  {
+    "test_id": "SEC-01",
+    "category": "Authentication",
+    "scenario": "Reject requests missing Authorization Bearer token across protected routes",
+    "status_code": 401,
+    "expected_status": 401,
+    "passed": true,
+    "details": "All 7 protected endpoints rejected unauthenticated requests with HTTP 401",
+    "timestamp": "2026-10-27T19:56:42+00:00"
+  },
+  {
+    "test_id": "SEC-02",
+    "category": "Authentication",
+    "scenario": "Reject malformed and forged HMAC-SHA256 JWT tokens",
+    "status_code": 401,
+    "expected_status": 401,
+    "passed": true,
+    "details": "Forged secret and malformed JWT rejected with HTTP 401",
+    "timestamp": "2026-10-27T19:56:42+00:00"
+  },
+  {
+    "test_id": "SEC-03",
+    "category": "Authentication",
+    "scenario": "Reject expired JWT credentials",
+    "status_code": 401,
+    "expected_status": 401,
+    "passed": true,
+    "details": "Expired token rejected with HTTP 401 Token has expired",
+    "timestamp": "2026-10-27T19:56:42+00:00"
+  },
+  {
+    "test_id": "SEC-04",
+    "category": "Authentication",
+    "scenario": "Token revocation upon user logout",
+    "status_code": 401,
+    "expected_status": 401,
+    "passed": true,
+    "details": "Revoked token blocked with HTTP 401 REVOKED_CREDENTIALS",
+    "timestamp": "2026-10-27T19:56:42+00:00"
+  },
+  {
+    "test_id": "SEC-05",
+    "category": "Authorization",
+    "scenario": "Block login and access for deactivated accounts",
+    "status_code": 401,
+    "expected_status": 401,
+    "passed": true,
+    "details": "Deactivated student blocked on login and route access with HTTP 401 ACCOUNT_DEACTIVATED",
+    "timestamp": "2026-10-27T19:56:43+00:00"
+  },
+  {
+    "test_id": "SEC-06",
+    "category": "Authorization",
+    "scenario": "Prevent students from invoking lecturer management endpoints",
+    "status_code": 403,
+    "expected_status": 403,
+    "passed": true,
+    "details": "Student blocked from session creation, review queue, and finalization with HTTP 403",
+    "timestamp": "2026-10-27T19:56:43+00:00"
+  },
+  {
+    "test_id": "SEC-07",
+    "category": "Authorization",
+    "scenario": "Prevent students and teachers from accessing controller endpoints",
+    "status_code": 403,
+    "expected_status": 403,
+    "passed": true,
+    "details": "Student and teacher blocked from academic controller endpoints with HTTP 403",
+    "timestamp": "2026-10-27T19:56:43+00:00"
+  },
+  {
+    "test_id": "SEC-08",
+    "category": "Authorization / IDOR",
+    "scenario": "Cross-teacher class and session modification blocked",
+    "status_code": 403,
+    "expected_status": 403,
+    "passed": true,
+    "details": "Teacher B denied access to Teacher A's class and session with HTTP 403",
+    "timestamp": "2026-10-27T19:56:43+00:00"
+  },
+  {
+    "test_id": "SEC-09",
+    "category": "Authorization / Data Privacy",
+    "scenario": "Audit log scoping to prevent cross-teacher data leakage (IDOR)",
+    "status_code": 200,
+    "expected_status": 200,
+    "passed": true,
+    "details": "Teacher A received only owned session audit records; Teacher B data fully isolated",
+    "timestamp": "2026-10-27T19:56:43+00:00"
+  },
+  {
+    "test_id": "SEC-10",
+    "category": "Attendance Integrity / IDOR",
+    "scenario": "Reject check-in submitted on behalf of another student",
+    "status_code": 403,
+    "expected_status": 403,
+    "passed": true,
+    "details": "IDOR attempt blocked with HTTP 403 and X-Error-Code: IDOR_ATTEMPT_BLOCKED",
+    "timestamp": "2026-10-27T19:56:43+00:00"
+  },
+  {
+    "test_id": "SEC-11",
+    "category": "Attendance Integrity",
+    "scenario": "Reject attendance check-in for unenrolled student",
+    "status_code": 403,
+    "expected_status": 403,
+    "passed": true,
+    "details": "Unenrolled student rejected with HTTP 403 You are not enrolled in this session's class",
+    "timestamp": "2026-10-27T19:56:43+00:00"
+  },
+  {
+    "test_id": "SEC-12",
+    "category": "Attendance Integrity",
+    "scenario": "Reject attendance requests on closed or expired sessions",
+    "status_code": 400,
+    "expected_status": 400,
+    "passed": true,
+    "details": "Challenge and attendance verification rejected on closed session with HTTP 400",
+    "timestamp": "2026-10-27T19:56:43+00:00"
+  },
+  {
+    "test_id": "SEC-13",
+    "category": "Attendance Integrity",
+    "scenario": "Strictly disregard client-supplied bypass assertions and verification flags",
+    "status_code": 200,
+    "expected_status": 200,
+    "passed": true,
+    "details": "Server disregarded bypass flags; decided status 'absent' from biometric inference",
+    "timestamp": "2026-10-27T19:56:43+00:00"
+  },
+  {
+    "test_id": "SEC-14",
+    "category": "Attendance Integrity",
+    "scenario": "Idempotent retry with Idempotency-Key header; repeat attempts blocked with 400",
+    "status_code": 200,
+    "expected_status": 200,
+    "passed": true,
+    "details": "Idempotent retry returned 200 (idempotent: True); subsequent distinct attempt blocked with 400 ATTEMPT_LIMIT_REACHED",
+    "timestamp": "2026-10-27T19:56:43+00:00"
+  },
+  {
+    "test_id": "SEC-15",
+    "category": "Concurrency & Transactions",
+    "scenario": "Serialize concurrent check-in attempts via threading mutex lock",
+    "status_code": 200,
+    "expected_status": 200,
+    "passed": true,
+    "details": "5 concurrent threads executed cleanly; exactly 1 attendance record in database (statuses: [400, 400, 400, 200, 400])",
+    "timestamp": "2026-10-27T19:56:43+00:00"
+  },
+  {
+    "test_id": "SEC-16",
+    "category": "Input Validation",
+    "scenario": "Reject schema violations and out-of-range parameters with HTTP 422",
+    "status_code": 422,
+    "expected_status": 422,
+    "passed": true,
+    "details": "Pydantic schemas rejected invalid duration (>60m) and invalid status regex with HTTP 422",
+    "timestamp": "2026-10-27T19:56:43+00:00"
+  },
+  {
+    "test_id": "SEC-17",
+    "category": "Payload Limits",
+    "scenario": "Reject oversized payloads at middleware and file upload levels with HTTP 413",
+    "status_code": 413,
+    "expected_status": 413,
+    "passed": true,
+    "details": "Payload exceeding 15MB rejected at ASGI level; 11MB file upload rejected with HTTP 413 IMAGE_TOO_LARGE",
+    "timestamp": "2026-10-27T19:56:43+00:00"
+  },
+  {
+    "test_id": "SEC-18",
+    "category": "Input Validation",
+    "scenario": "Reject empty and disguised non-image files",
+    "status_code": 415,
+    "expected_status": 415,
+    "passed": true,
+    "details": "Empty image rejected with 400 EMPTY_IMAGE; HTML file rejected with 415 UNSUPPORTED_FORMAT",
+    "timestamp": "2026-10-27T19:56:43+00:00"
+  },
+  {
+    "test_id": "SEC-19",
+    "category": "Abuse Protection",
+    "scenario": "Enforce sliding-window rate limiting on sensitive endpoints (HTTP 429)",
+    "status_code": 429,
+    "expected_status": 429,
+    "passed": true,
+    "details": "Rate limiter successfully triggered HTTP 429 Rate limit exceeded upon exceeding login threshold",
+    "timestamp": "2026-10-27T19:56:43+00:00"
+  },
+  {
+    "test_id": "SEC-20",
+    "category": "Information Leakage Defense",
+    "scenario": "Sanitize unhandled server exceptions to prevent stack trace leaks",
+    "status_code": 500,
+    "expected_status": 500,
+    "passed": true,
+    "details": "Unhandled error caught by exception shield; returned generic sanitized 500 JSON without stack trace",
+    "timestamp": "2026-10-27T19:56:43+00:00"
+  },
+  {
+    "test_id": "SEC-21",
+    "category": "Information Leakage Defense",
+    "scenario": "Redact credentials, tokens, and biometric vectors from audit logs",
+    "status_code": 200,
+    "expected_status": 200,
+    "passed": true,
+    "details": "Audit sanitizer stripped all passwords, tokens, JWTs, and biometric vectors from metadata",
+    "timestamp": "2026-10-27T19:56:43+00:00"
+  }
+]

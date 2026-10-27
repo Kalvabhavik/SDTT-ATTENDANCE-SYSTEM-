@@ -24,6 +24,11 @@
 | `SEC-013` | Insecure Direct Object Reference (IDOR) on Student Check-in | **HIGH** | `backend/app/main.py` | **RESOLVED** | `TC-ID-014` |
 | `SEC-014` | Unhandled 500 Crash on Corrupted / Incompatible Enrollment Biometrics | **MEDIUM** | `backend/app/main.py` | **RESOLVED** | `TC-ID-005`, `TC-ID-006` |
 | `SEC-015` | Biometric Leakage and Database Fail-Open Vulnerability | **MEDIUM** | `backend/app/main.py` | **RESOLVED** | `TC-ID-013`, `TC-ID-015` |
+| `SEC-016` | Known Vulnerabilities in Python Dependencies (cryptography, pytest) | **HIGH** | `backend/requirements.txt` | **RESOLVED** | `pip-audit` (0 findings) |
+| `SEC-017` | Missing Token Revocation Mechanism on User Sign-Out | **MEDIUM** | `backend/app/security.py` & `main.py` | **RESOLVED** | `TC-SEC-004` |
+| `SEC-018` | Cross-Teacher Audit Log & Analytics Information Disclosure (Horizontal IDOR) | **HIGH** | `backend/app/main.py` | **RESOLVED** | `TC-SEC-008`, `TC-SEC-009` |
+| `SEC-019` | Unbounded Request Payload and DoS Risk | **HIGH** | `backend/app/main.py` | **RESOLVED** | `TC-SEC-017` |
+| `SEC-020` | Unhandled Internal Server Error Information Leakage | **MEDIUM** | `backend/app/main.py` | **RESOLVED** | `TC-SEC-020` |
 
 ---
 
@@ -262,5 +267,81 @@
 - **Actual Behaviour (Pre-Fix):** Audit metadata was not explicitly filtered for large float arrays; DB transaction failure crashed without structured fail-closed handling.
 - **Remediation:** Implemented `_sanitize_audit_metadata` to automatically strip arrays > 20 floats and sensitive biometric keys. Wrapped database persistence in try-except block that audits `attendance.transaction_failed` and returns HTTP 500 `DATABASE_TRANSACTION_FAILED`. Verified log sanitization with automated log inspection test.
 - **Retest Result:** **RESOLVED** — Verified via `TC-ID-013` and `TC-ID-015`.
+
+---
+
+### SEC-016: Known Vulnerabilities in Python Dependencies (cryptography & pytest)
+- **Finding ID:** `SEC-016`
+- **Severity:** **HIGH** (CVE-2024-12797, CVE-2024-26130, CVE-2023-49083, CVE-2023-23931, etc.)
+- **Rationale:** Dependency vulnerability audit via `pip-audit` identified 12 vulnerabilities in `cryptography 43.0.3` (including memory corruption and side-channel leakage) and 2 in `pytest 8.4.2`.
+- **Affected Component:** `backend/requirements.txt`, installed virtual environment packages.
+- **Reproduction Steps:**
+  1. Execute `backend/.venv/bin/pip-audit` against installed dependencies.
+  2. Inspect output report for vulnerable distributions and CVSS scores.
+- **Expected Behaviour:** Zero known vulnerabilities in installed dependencies.
+- **Actual Behaviour (Pre-Fix):** 14 vulnerabilities reported across `cryptography` and `pytest`.
+- **Remediation:** Upgraded virtual environment packages to `cryptography 50.0.2` and `pytest 9.1.1`. Updated lower bounds in `backend/requirements.txt` to `cryptography>=44.0.1` and `pytest>=9.0.0`. Re-ran `pip-audit`: reports `No known vulnerabilities found`.
+- **Retest Result:** **RESOLVED** — Verified via `pip-audit`.
+
+---
+
+### SEC-017: Missing Token Revocation Mechanism on User Sign-Out
+- **Finding ID:** `SEC-017`
+- **Severity:** **MEDIUM** (CVSS 6.5: AV:N/AC:L/PR:L/UI:N/S:U/C:L/I:L/A:N, CWE-613)
+- **Rationale:** Once issued, JWT bearer tokens remained valid until expiration (`exp`), even if the user explicitly clicked "Logout" or their session was terminated by an administrator. An intercepted or cached token could continue executing authenticated actions.
+- **Affected Component:** `backend/app/security.py`, `backend/app/main.py`.
+- **Reproduction Steps:**
+  1. Authenticate user and acquire access token.
+  2. Call sign-out.
+  3. Re-issue request to `/api/me` with previous token.
+- **Expected Behaviour:** Server rejects the revoked token with HTTP 401.
+- **Actual Behaviour (Pre-Fix):** No logout endpoint existed; token remained valid until expiry.
+- **Remediation:** Implemented in-memory token/JTI revocation blacklist in `backend/app/security.py` (`revoke_token()`, `is_token_revoked()`). Created `POST /api/auth/logout` endpoint that blacklists the caller's bearer token. Updated `current_user` dependency to check `is_token_revoked(token)` on every request, raising HTTP 401 `REVOKED_CREDENTIALS`.
+- **Retest Result:** **RESOLVED** — Verified via `TC-SEC-004`.
+
+---
+
+### SEC-018: Cross-Teacher Audit Log & Analytics Information Disclosure (Horizontal IDOR)
+- **Finding ID:** `SEC-018`
+- **Severity:** **HIGH** (CVSS 7.5: AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:N/A:N, CWE-639 / CWE-200)
+- **Rationale:** The `/api/audit` endpoint returned all audit records indiscriminately to any authenticated teacher, allowing Teacher A to inspect sensitive audit logs, student names, and verification events from Teacher B's classes. Similarly, session manipulation and analytics lacked class-ownership verification.
+- **Affected Component:** `backend/app/main.py` (`get_audit_log`, `export_master_analytics_excel`, `create_session`).
+- **Reproduction Steps:**
+  1. Create classes for Teacher A and Teacher B with distinct sessions and audit entries.
+  2. Query `GET /api/audit` as Teacher A.
+- **Expected Behaviour:** Teacher A receives only audit logs for classes and sessions they teach.
+- **Actual Behaviour (Pre-Fix):** Teacher A received institutional audit entries from all teachers.
+- **Remediation:** Enforced strict class ownership checks via `_assert_class_access(cls, user, teacher_only=True)`. Scoped `GET /api/audit` queries for teachers to sessions belonging to classes where `classes.teacher_id == user["id"]`. Controllers retain institutional visibility.
+- **Retest Result:** **RESOLVED** — Verified via `TC-SEC-008` and `TC-SEC-009`.
+
+---
+
+### SEC-019: Unbounded Request Payload and DoS Risk
+- **Finding ID:** `SEC-019`
+- **Severity:** **HIGH** (CVSS 7.5: AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H, CWE-400 / CWE-770)
+- **Rationale:** The API server lacked an ASGI-level request size limiter, allowing an attacker to dispatch unbounded streaming HTTP bodies (> 50MB) that exhausted server RAM before hitting route logic. Furthermore, multipart image uploads lacked early size and magic-byte validation.
+- **Affected Component:** `backend/app/main.py`, `backend/app/config.py`.
+- **Reproduction Steps:**
+  1. Dispatch HTTP POST request with `Content-Length: 20971520` (20MB) or upload 11MB file.
+- **Expected Behaviour:** Request rejected early with HTTP 413 `PAYLOAD_TOO_LARGE`.
+- **Actual Behaviour (Pre-Fix):** Server attempted to buffer entire payload in memory before failing.
+- **Remediation:** Implemented `RequestSizeLimitMiddleware` enforcing a 15MB ceiling (`MAX_REQUEST_SIZE_BYTES = 15728640`). Added early image payload validation inspecting magic bytes and enforcing a 10MB file limit with HTTP 413 `IMAGE_TOO_LARGE` before any database queries.
+- **Retest Result:** **RESOLVED** — Verified via `TC-SEC-017`.
+
+---
+
+### SEC-020: Unhandled Internal Server Error Information Leakage
+- **Finding ID:** `SEC-020`
+- **Severity:** **MEDIUM** (CVSS 5.3: AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N, CWE-209)
+- **Rationale:** Uncaught Python exceptions (e.g., unexpected database network errors, parsing faults) could bubble up to Starlette's default error handler, exposing raw exception messages, internal database keys, or stack traces to clients.
+- **Affected Component:** `backend/app/main.py`.
+- **Reproduction Steps:**
+  1. Trigger an unexpected internal exception containing a sensitive database key.
+  2. Inspect HTTP 500 response body returned to the client.
+- **Expected Behaviour:** Response body contains generic sanitized error JSON with zero stack trace or secret leakage.
+- **Actual Behaviour (Pre-Fix):** Raw exception details could leak in responses or crash handlers.
+- **Remediation:** Registered a global ASGI exception shield `@app.exception_handler(Exception)` catching all unhandled exceptions. It logs the full traceback internally for DevOps while returning a clean, sanitized HTTP 500 response: `{"detail": "Internal server error occurred. Please contact system administrator.", "error_code": "INTERNAL_SERVER_ERROR"}`.
+- **Retest Result:** **RESOLVED** — Verified via `TC-SEC-020`.
+
 
 

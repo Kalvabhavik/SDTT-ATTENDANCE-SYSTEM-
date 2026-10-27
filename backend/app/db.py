@@ -103,7 +103,7 @@ class InMemoryTableQuery:
             elif op == "in":
                 if row_val not in val and str(row_val) not in {str(v) for v in val}:
                     return False
-        return self
+        return True
 
     def execute(self) -> MockResponse:
         rows = self.db.tables.setdefault(self.table_name, [])
