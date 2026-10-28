@@ -65,6 +65,10 @@ if APP_ENV in {"staging", "production"}:
 WS_TICKET_TTL_SECONDS = int(os.getenv("ATTENDANCE_WS_TICKET_TTL_SECONDS", "60"))
 MAX_CAPTURE_BYTES = int(os.getenv("ATTENDANCE_MAX_CAPTURE_BYTES", "10485760"))
 MAX_CAPTURE_PIXELS = int(os.getenv("ATTENDANCE_MAX_CAPTURE_PIXELS", "25000000"))
+AUTH_PROFILE_CACHE_TTL_SECONDS = int(os.getenv("ATTENDANCE_AUTH_PROFILE_CACHE_TTL_SECONDS", "10"))
+AUTH_PROFILE_CACHE_MAX_ENTRIES = int(os.getenv("ATTENDANCE_AUTH_PROFILE_CACHE_MAX_ENTRIES", "10000"))
+DEFAULT_LIST_LIMIT = int(os.getenv("ATTENDANCE_DEFAULT_LIST_LIMIT", "100"))
+MAX_LIST_LIMIT = int(os.getenv("ATTENDANCE_MAX_LIST_LIMIT", "500"))
 RATE_LIMIT_WINDOW_SECONDS = int(os.getenv("ATTENDANCE_RATE_LIMIT_WINDOW_SECONDS", "60"))
 RATE_LIMIT_MAX_LOGIN_ATTEMPTS = int(os.getenv("ATTENDANCE_RATE_LIMIT_MAX_LOGIN_ATTEMPTS", "10"))
 CORS_ORIGINS = [
@@ -97,6 +101,8 @@ _ws_client_loops: dict[WebSocket, asyncio.AbstractEventLoop] = {}
 _ws_client_queues: dict[WebSocket, asyncio.Queue[str]] = {}
 _login_attempts: dict[str, list[float]] = {}
 _login_lock = threading.Lock()
+_profile_cache: dict[str, tuple[dict[str, Any], float]] = {}
+_profile_cache_lock = threading.Lock()
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -165,10 +171,25 @@ def current_user(authorization: Optional[str] = Header(default=None)) -> dict[st
     if not uid:
         raise HTTPException(status_code=401, detail="Invalid token: missing subject")
 
-    resp = supa().table("profiles").select("*").eq("id", uid).single().execute()
+    now = time.monotonic()
+    with _profile_cache_lock:
+        cached = _profile_cache.get(uid)
+        if cached and cached[1] > now:
+            return dict(cached[0])
+
+    resp = supa().table("profiles").select("id, name, email, role").eq("id", uid).single().execute()
     if not resp.data:
         raise HTTPException(status_code=401, detail="User profile not found")
-    return resp.data
+    profile = dict(resp.data)
+    with _profile_cache_lock:
+        expired = [key for key, (_, expires_at) in _profile_cache.items() if expires_at <= now]
+        for key in expired:
+            _profile_cache.pop(key, None)
+        if len(_profile_cache) >= AUTH_PROFILE_CACHE_MAX_ENTRIES:
+            oldest = min(_profile_cache, key=lambda key: _profile_cache[key][1])
+            _profile_cache.pop(oldest, None)
+        _profile_cache[uid] = (profile, now + AUTH_PROFILE_CACHE_TTL_SECONDS)
+    return profile
 
 
 def require_teacher(user: dict[str, Any]) -> None:
@@ -311,9 +332,9 @@ def _session_payload(row: dict[str, Any], user: dict[str, Any]) -> dict[str, Any
         att = (
             supa()
             .table("attendance")
-            .select("*, profiles!attendance_student_id_fkey(name, email)")
+            .select("id, student_id, status, note, updated_at, profiles!attendance_student_id_fkey(name, email)")
             .eq("session_id", row["id"])
-            .order("profiles!attendance_student_id_fkey(name)")
+            .order("student_id")
             .execute()
         )
         entries = []
@@ -330,9 +351,10 @@ def _session_payload(row: dict[str, Any], user: dict[str, Any]) -> dict[str, Any
         sugg = (
             supa()
             .table("suggestions")
-            .select("*, profiles!suggestions_student_id_fkey(name)")
+            .select("id, student_id, confidence, label, created_at, profiles!suggestions_student_id_fkey(name)")
             .eq("session_id", row["id"])
-            .order("id")
+            .order("created_at", desc=True)
+            .limit(MAX_LIST_LIMIT)
             .execute()
         )
         slist = []
@@ -364,8 +386,8 @@ def _audit(
     action: str,
     note: Optional[str] = None,
     metadata: Optional[dict[str, Any]] = None,
-) -> None:
-    supa().table("audit_log").insert(
+) -> dict[str, Any] | None:
+    response = supa().table("audit_log").insert(
         {
             "session_id": session_id,
             "action": action,
@@ -375,6 +397,37 @@ def _audit(
             "metadata_json": json.dumps(metadata or {}, separators=(",", ":")),
         }
     ).execute()
+    return response.data[0] if response.data else None
+
+
+def _audit_many(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    if not rows:
+        return []
+    response = supa().table("audit_log").insert(rows).execute()
+    return response.data or []
+
+
+def _public_audit(row: Optional[dict[str, Any]]) -> Optional[dict[str, Any]]:
+    if not row:
+        return None
+    return {
+        "id": row.get("id"),
+        "session_id": row.get("session_id"),
+        "action": row.get("action"),
+        "timestamp": row.get("timestamp"),
+        "note": row.get("note"),
+        "actor_id": row.get("actor_id"),
+    }
+
+
+def _session_summary(session_id: str) -> dict[str, int]:
+    response = supa().table("attendance").select("status").eq("session_id", session_id).execute()
+    rows = response.data or []
+    return {
+        "present": sum(1 for row in rows if row.get("status") == "present"),
+        "absent": sum(1 for row in rows if row.get("status") == "absent"),
+        "pending": sum(1 for row in rows if row.get("status") == "pending"),
+    }
 
 
 def event_payload(event_type: str, data: dict[str, Any]) -> dict[str, Any]:
@@ -462,14 +515,37 @@ def ws_ticket(user: dict[str, Any] = Depends(current_user)) -> dict[str, str]:
 @app.get("/api/classes")
 def classes(user: dict[str, Any] = Depends(current_user)) -> list[dict[str, Any]]:
     if user["role"] == "teacher":
-        resp = supa().table("classes").select("*").eq("teacher_id", user["id"]).order("name").execute()
+        resp = (
+            supa()
+            .table("classes")
+            .select("id, name, code, teacher_id, created_at, enrollments(count)")
+            .eq("teacher_id", user["id"])
+            .order("name")
+            .execute()
+        )
     else:
         enr = supa().table("enrollments").select("class_id").eq("student_id", user["id"]).execute()
         class_ids = [e["class_id"] for e in (enr.data or [])]
         if not class_ids:
             return []
-        resp = supa().table("classes").select("*").in_("id", class_ids).order("name").execute()
-    return resp.data or []
+        resp = (
+            supa()
+            .table("classes")
+            .select("id, name, code, teacher_id, created_at, enrollments(count)")
+            .in_("id", class_ids)
+            .order("name")
+            .execute()
+        )
+    result = []
+    for row in resp.data or []:
+        item = {key: value for key, value in row.items() if key != "enrollments"}
+        enrollments = row.get("enrollments") or []
+        if enrollments and isinstance(enrollments[0], dict):
+            item["student_count"] = enrollments[0].get("count", 0)
+        else:
+            item["student_count"] = 0
+        result.append(item)
+    return result
 
 
 @app.get("/api/classes/{class_id}/students")
@@ -488,7 +564,11 @@ def class_students(class_id: str, user: dict[str, Any] = Depends(current_user)) 
 
 
 @app.get("/api/sessions")
-def sessions(user: dict[str, Any] = Depends(current_user)) -> list[dict[str, Any]]:
+def sessions(
+    user: dict[str, Any] = Depends(current_user),
+    limit: int = Query(DEFAULT_LIST_LIMIT, ge=1, le=MAX_LIST_LIMIT),
+    offset: int = Query(0, ge=0),
+) -> list[dict[str, Any]]:
     if user["role"] == "teacher":
         resp = (
             supa()
@@ -496,6 +576,7 @@ def sessions(user: dict[str, Any] = Depends(current_user)) -> list[dict[str, Any
             .select("*, classes(name, code, teacher_id)")
             .eq("classes.teacher_id", user["id"])
             .order("created_at", desc=True)
+            .range(offset, offset + limit - 1)
             .execute()
         )
     else:
@@ -509,6 +590,7 @@ def sessions(user: dict[str, Any] = Depends(current_user)) -> list[dict[str, Any
             .select("*, classes(name, code), attendance(status, note)")
             .in_("class_id", class_ids)
             .order("created_at", desc=True)
+            .range(offset, offset + limit - 1)
             .execute()
         )
     rows = []
@@ -529,6 +611,18 @@ def create_session(
     require_teacher(user)
     cls = _get_class_or_404(body.class_id)
     _assert_class_access(cls, user)
+    existing_resp = (
+        supa()
+        .table("sessions")
+        .select("id")
+        .eq("class_id", body.class_id)
+        .eq("status", "open")
+        .order("created_at", desc=True)
+        .limit(1)
+        .execute()
+    )
+    if existing_resp.data:
+        return _session_payload(_get_session_or_404(existing_resp.data[0]["id"]), user)
     now = utc_now()
     sess_resp = (
         supa()
@@ -672,42 +766,43 @@ def update_attendance(
     if row["status"] != "open":
         raise HTTPException(status_code=409, detail="Finalized sessions cannot be changed")
 
-    enr = (
-        supa()
-        .table("enrollments")
-        .select("class_id")
-        .eq("class_id", row["class_id"])
-        .eq("student_id", student_id)
-        .execute()
-    )
-    if not enr.data:
-        raise HTTPException(status_code=404, detail="Student is not enrolled in this class")
-
     now = utc_now()
-    supa().table("attendance").update(
-        {"status": body.status, "note": body.note, "updated_by": user["id"], "updated_at": now}
-    ).eq("session_id", session_id).eq("student_id", student_id).execute()
-
-    _audit(session_id, user["id"], "attendance.changed",
-           note=body.note,
-           metadata={"student_id": student_id, "status": body.status})
-
     changed = (
         supa()
         .table("attendance")
-        .select("student_id, status, note, updated_at, profiles!attendance_student_id_fkey(name)")
+        .update({"status": body.status, "note": body.note, "updated_by": user["id"], "updated_at": now})
         .eq("session_id", session_id)
         .eq("student_id", student_id)
-        .single()
+        .select("id, student_id, status, note, updated_at, profiles!attendance_student_id_fkey(name)")
         .execute()
     )
-    result = {**changed.data}
+    changed_row = changed.data[0] if isinstance(changed.data, list) and changed.data else changed.data
+    if not changed_row:
+        raise HTTPException(status_code=404, detail="Student is not enrolled in this class")
+    result = {**changed_row}
     prof = result.pop("profiles!attendance_student_id_fkey", None) or result.pop("profiles", None)
     if isinstance(prof, dict):
         result["name"] = prof["name"]
 
+    audit = _audit(
+        session_id,
+        user["id"],
+        "attendance.changed",
+        note=body.note,
+        metadata={"student_id": student_id, "status": body.status},
+    )
+
     publish_event(
-        event_payload("attendance.changed", {"session_id": session_id, "student_id": student_id, "status": body.status}),
+        event_payload(
+            "attendance.changed",
+            {
+                "session_id": session_id,
+                "student_id": student_id,
+                "status": body.status,
+                "attendance": result,
+                "audit": _public_audit(audit),
+            },
+        ),
         [user["id"]],
     )
     return result
@@ -726,7 +821,13 @@ def finalize(
     row = _get_session_or_404(session_id)
     _assert_session_access(row, user, teacher_only=True)
     if row["status"] != "open":
-        raise HTTPException(status_code=409, detail="Session is already finalized")
+        return {
+            "session_id": session_id,
+            "status": row["status"],
+            "finalized_at": row.get("finalized_at"),
+            "summary": _session_summary(session_id),
+            "already_finalized": True,
+        }
 
     now = utc_now()
     pending_resp = (
@@ -743,11 +844,6 @@ def finalize(
         {"status": "absent", "updated_by": user["id"], "updated_at": now}
     ).eq("session_id", session_id).eq("status", "pending").execute()
 
-    for s in pending:
-        _audit(session_id, user["id"], "attendance.changed",
-               note="Pending attendance marked absent at finalization.",
-               metadata={"student_id": s["student_id"], "status": "absent", "finalization": True})
-
     finalized_resp = (
         supa()
         .table("sessions")
@@ -758,10 +854,42 @@ def finalize(
         .execute()
     )
     if not finalized_resp.data:
-        raise HTTPException(status_code=409, detail="Session was finalized concurrently")
-    _audit(session_id, user["id"], "session.finalized",
-           note="Session finalized; pending records marked absent.",
-           metadata={"pending_marked_absent": len(pending)})
+        current = _get_session_or_404(session_id)
+        return {
+            "session_id": session_id,
+            "status": current["status"],
+            "finalized_at": current.get("finalized_at"),
+            "summary": _session_summary(session_id),
+            "already_finalized": True,
+        }
+
+    audit_rows = [
+        {
+            "session_id": session_id,
+            "actor_id": user["id"],
+            "action": "attendance.changed",
+            "timestamp": now,
+            "note": "Pending attendance marked absent at finalization.",
+            "metadata_json": json.dumps(
+                {"student_id": s["student_id"], "status": "absent", "finalization": True},
+                separators=(",", ":"),
+            ),
+        }
+        for s in pending
+    ]
+    audit_rows.append(
+        {
+            "session_id": session_id,
+            "actor_id": user["id"],
+            "action": "session.finalized",
+            "timestamp": now,
+            "note": "Session finalized; pending records marked absent.",
+            "metadata_json": json.dumps(
+                {"pending_marked_absent": len(pending)}, separators=(",", ":")
+            ),
+        }
+    )
+    _audit_many(audit_rows)
 
     students_resp = (
         supa().table("enrollments").select("student_id").eq("class_id", row["class_id"]).execute()
@@ -781,19 +909,13 @@ def finalize(
     if notif_rows:
         supa().table("notifications").insert(notif_rows).execute()
 
-    att_resp = supa().table("attendance").select("status").eq("session_id", session_id).execute()
-    att_all = att_resp.data or []
-    summary = {
-        "present": sum(1 for a in att_all if a["status"] == "present"),
-        "absent": sum(1 for a in att_all if a["status"] == "absent"),
-        "pending": 0,
-    }
+    summary = _session_summary(session_id)
     student_ids = [s["student_id"] for s in students]
 
     ev = event_payload("session.finalized", {"session_id": session_id, "summary": summary})
     publish_event(ev, [user["id"], *student_ids])
-    for sid in student_ids:
-        publish_event(event_payload("notification.created", {"session_id": session_id}), [sid])
+    if student_ids:
+        publish_event(event_payload("notification.created", {"session_id": session_id}), student_ids)
 
     return {"session_id": session_id, "status": "finalized", "finalized_at": now, "summary": summary}
 
@@ -809,6 +931,7 @@ def my_attendance(user: dict[str, Any] = Depends(current_user)) -> dict[str, Any
         .select("session_id, status, note, updated_at, sessions(created_at, finalized_at, class_id, classes(id, name, code))")
         .eq("student_id", user["id"])
         .order("sessions(created_at)", desc=True)
+        .limit(MAX_LIST_LIMIT)
         .execute()
     )
     entries = []
@@ -908,7 +1031,11 @@ def report(session_id: str, user: dict[str, Any] = Depends(current_user)) -> dic
 
 
 @app.get("/api/audit")
-def get_audit(session_id: str = Query(...), user: dict[str, Any] = Depends(current_user)) -> list[dict[str, Any]]:
+def get_audit(
+    session_id: str = Query(...),
+    user: dict[str, Any] = Depends(current_user),
+    limit: int = Query(DEFAULT_LIST_LIMIT, ge=1, le=MAX_LIST_LIMIT),
+) -> list[dict[str, Any]]:
     require_teacher(user)
     row = _get_session_or_404(session_id)
     _assert_session_access(row, user, teacher_only=True)
@@ -919,6 +1046,7 @@ def get_audit(session_id: str = Query(...), user: dict[str, Any] = Depends(curre
         .select("*, profiles(id, name)")
         .eq("session_id", session_id)
         .order("id")
+        .limit(limit)
         .execute()
     )
     result = []
@@ -934,13 +1062,17 @@ def get_audit(session_id: str = Query(...), user: dict[str, Any] = Depends(curre
 
 
 @app.get("/api/notifications")
-def notifications(user: dict[str, Any] = Depends(current_user)) -> list[dict[str, Any]]:
+def notifications(
+    user: dict[str, Any] = Depends(current_user),
+    limit: int = Query(DEFAULT_LIST_LIMIT, ge=1, le=MAX_LIST_LIMIT),
+) -> list[dict[str, Any]]:
     resp = (
         supa()
         .table("notifications")
         .select("id, type, title, body, session_id, created_at, read_at")
         .eq("user_id", user["id"])
         .order("created_at", desc=True)
+        .limit(limit)
         .execute()
     )
     return resp.data or []

@@ -20,4 +20,23 @@ void main() {
     });
     expect(suggestion.status, 'present');
   });
+
+  test('Supabase UUID identifiers are preserved across session parsing', () {
+    final session = AttendanceSession.fromJson({
+      'id': 'session-uuid',
+      'class_id': 'class-uuid',
+      'class_name': 'Physics',
+      'status': 'open',
+      'attendance': [
+        {
+          'student_id': 'student-uuid',
+          'name': 'Ada Student',
+          'status': 'pending',
+        },
+      ],
+    });
+    expect(session.id, 'session-uuid');
+    expect(session.classId, 'class-uuid');
+    expect(session.records.single.studentId, 'student-uuid');
+  });
 }

@@ -12,16 +12,18 @@ class RealtimeService {
   WebSocketChannel? _channel;
   StreamSubscription<dynamic>? _subscription;
   bool _closed = false;
+  bool _reconnectScheduled = false;
   int _attempt = 0;
 
   Future<void> connect(
       {required void Function(RealtimeEvent event) onEvent,
       required void Function(String message) onError}) async {
     _closed = false;
-    await _open(onEvent: onEvent, onError: onError);
+    final connected = await _open(onEvent: onEvent, onError: onError);
+    if (!connected) await _reconnect(onEvent, onError);
   }
 
-  Future<void> _open(
+  Future<bool> _open(
       {required void Function(RealtimeEvent event) onEvent,
       required void Function(String message) onError}) async {
     try {
@@ -44,18 +46,31 @@ class RealtimeService {
         onDone: () => _reconnect(onEvent, onError),
         cancelOnError: true,
       );
+      return true;
     } catch (_) {
       onError('Live updates are offline. Pull to refresh or retry later.');
-      await _reconnect(onEvent, onError);
+      return false;
     }
   }
 
   Future<void> _reconnect(void Function(RealtimeEvent event) onEvent,
       void Function(String message) onError) async {
-    if (_closed || _attempt >= 3) return;
+    if (_closed || _attempt >= 3 || _reconnectScheduled) return;
+    _reconnectScheduled = true;
     _attempt += 1;
-    await Future<void>.delayed(Duration(seconds: _attempt * 2));
-    if (!_closed) await _open(onEvent: onEvent, onError: onError);
+    try {
+      await Future<void>.delayed(Duration(seconds: _attempt * 2));
+      if (!_closed) {
+        final connected = await _open(onEvent: onEvent, onError: onError);
+        if (!connected && !_closed) {
+          _reconnectScheduled = false;
+          await _reconnect(onEvent, onError);
+          return;
+        }
+      }
+    } finally {
+      _reconnectScheduled = false;
+    }
   }
 
   Future<void> dispose() async {

@@ -8,10 +8,10 @@ Deliver a working prototype in this order: (1) Flutter mobile app with teacher/s
 
 - `apps/mobile/`: Flutter/Dart application with role-aware screens, camera capture, REST client, WebSocket refresh, and app notification feed.
 - `apps/dashboard/`: responsive React + TypeScript web dashboard, reusing the same auth, REST routes, records, and WebSocket events.
-- `backend/`: FastAPI API, SQLite demo database, role-based authentication, session/attendance workflows, audit log, in-app notification records, and authenticated WebSocket events.
+- `backend/`: FastAPI API, Supabase Auth/PostgreSQL persistence, role-based authorization, session/attendance workflows, audit log, in-app notification records, and authenticated WebSocket events.
 - `docs/`: API contract and privacy/deployment notes.
 
-SQLite and synthetic accounts are for local demonstration only. No face embeddings or raw class photos are retained. “Recognition” is an explicitly simulated suggestion workflow; a teacher must review and commit every status. Manual roll call remains available. Production use would require lawful notice/consent, opt-out process, security/privacy and fairness review, deployment-grade identity/authentication, backups, retention/deletion policies, and a separately configured push provider.
+Synthetic accounts and suggestions are for local demonstration only. Supabase PostgreSQL identifiers are UUID strings. No face embeddings or raw class photos are retained. “Recognition” is an explicitly simulated suggestion workflow; a teacher must review and commit every status. Manual roll call remains available. Production use would require lawful notice/consent, opt-out process, security/privacy and fairness review, deployment-grade identity/authentication, backups, retention/deletion policies, and a separately configured push provider.
 
 ## Realtime contract
 

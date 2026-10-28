@@ -108,10 +108,16 @@ create table if not exists public.notifications (
 );
 
 -- 3. Indexes ──────────────────────────────────────────────────
+create index if not exists idx_classes_teacher_created on public.classes(teacher_id, created_at desc);
+create index if not exists idx_enrollments_student_class on public.enrollments(student_id, class_id);
+create index if not exists idx_sessions_class_created on public.sessions(class_id, created_at desc);
 create index if not exists idx_attendance_student    on public.attendance(student_id);
+create index if not exists idx_attendance_session_status on public.attendance(session_id, status);
 create index if not exists idx_checkin_session       on public.checkin_attempts(session_id);
 create index if not exists idx_checkin_student       on public.checkin_attempts(student_id);
+create index if not exists idx_suggestions_session_created on public.suggestions(session_id, created_at desc);
 create index if not exists idx_audit_session         on public.audit_log(session_id);
+create index if not exists idx_audit_session_timestamp on public.audit_log(session_id, timestamp desc);
 create index if not exists idx_notifications_user    on public.notifications(user_id, created_at desc);
 
 -- 4. Trigger: auto-create profile on Supabase Auth signup ─────
@@ -158,14 +164,14 @@ create policy "classes_student_enrolled" on public.classes
   for select using (
     exists (
       select 1 from public.enrollments e
-      where e.class_id = id and e.student_id = auth.uid()
+      where e.class_id = public.classes.id and e.student_id = auth.uid()
     )
   );
 
 -- enrollments: teacher sees enrollments in their classes; students see their own
 create policy "enrollments_teacher" on public.enrollments
   for select using (
-    exists (select 1 from public.classes c where c.id = class_id and c.teacher_id = auth.uid())
+    exists (select 1 from public.classes c where c.id = public.enrollments.class_id and c.teacher_id = auth.uid())
   );
 
 create policy "enrollments_student_own" on public.enrollments
@@ -174,13 +180,13 @@ create policy "enrollments_student_own" on public.enrollments
 -- sessions: teacher sees own; students see sessions in enrolled classes
 create policy "sessions_teacher" on public.sessions
   for all using (
-    exists (select 1 from public.classes c where c.id = class_id and c.teacher_id = auth.uid())
+    exists (select 1 from public.classes c where c.id = public.sessions.class_id and c.teacher_id = auth.uid())
   );
 
 create policy "sessions_student" on public.sessions
   for select using (
     exists (
-      select 1 from public.enrollments e where e.class_id = class_id and e.student_id = auth.uid()
+      select 1 from public.enrollments e where e.class_id = public.sessions.class_id and e.student_id = auth.uid()
     )
   );
 
@@ -190,7 +196,7 @@ create policy "attendance_teacher" on public.attendance
     exists (
       select 1 from public.sessions s
       join public.classes c on c.id = s.class_id
-      where s.id = session_id and c.teacher_id = auth.uid()
+      where s.id = public.attendance.session_id and c.teacher_id = auth.uid()
     )
   );
 
@@ -207,7 +213,7 @@ create policy "audit_teacher" on public.audit_log
     exists (
       select 1 from public.sessions s
       join public.classes c on c.id = s.class_id
-      where s.id = session_id and c.teacher_id = auth.uid()
+      where s.id = public.audit_log.session_id and c.teacher_id = auth.uid()
     )
   );
 
@@ -217,7 +223,7 @@ create policy "suggestions_teacher" on public.suggestions
     exists (
       select 1 from public.sessions s
       join public.classes c on c.id = s.class_id
-      where s.id = session_id and c.teacher_id = auth.uid()
+      where s.id = public.suggestions.session_id and c.teacher_id = auth.uid()
     )
   );
 

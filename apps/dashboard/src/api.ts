@@ -2,6 +2,7 @@ import { demoClasses, demoNotifications, demoNotifications2, demoRoster, demoSes
 
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api').replace(/\/$/, '')
 const DEMO_MODE = import.meta.env.VITE_ENABLE_DEMO_MODE === 'true'
+const REQUEST_TIMEOUT_MS = 15000
 const localModeKey = 'rollcall-local-mode'
 
 export const getApiBase = () => API_BASE
@@ -101,10 +102,19 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers)
   if (token) headers.set('Authorization', `Bearer ${token}`)
   if (!(init.body instanceof FormData)) headers.set('Content-Type', 'application/json')
-  const response = await fetch(`${API_BASE}${path}`, { ...init, headers })
-  if (!response.ok) throw new Error((await response.text()) || `Request failed (${response.status})`)
-  if (response.status === 204) return undefined as T
-  return response.json() as Promise<T>
+  const controller = new AbortController()
+  const timeout = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
+  try {
+    const response = await fetch(`${API_BASE}${path}`, { ...init, headers, signal: controller.signal })
+    if (!response.ok) throw new Error((await response.text()) || `Request failed (${response.status})`)
+    if (response.status === 204) return undefined as T
+    return response.json() as Promise<T>
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') throw new Error('The attendance service took too long to respond.')
+    throw error
+  } finally {
+    window.clearTimeout(timeout)
+  }
 }
 
 export function currentUser() { return cachedUser }
@@ -145,7 +155,7 @@ export async function capture(sessionId: string, file: File): Promise<Suggestion
   const result = record(await request<unknown>(`/sessions/${encodeURIComponent(sessionId)}/capture`, { method: 'POST', body }))
   return list(result.suggestions ?? result).map(normalizeSuggestion)
 }
-export async function patchAttendance(sessionId: string, studentId: string, attendanceStatus: AttendanceEntry['status'], note?: string) { if (isLocalMode()) return; return request(`/sessions/${encodeURIComponent(sessionId)}/attendance/${encodeURIComponent(studentId)}`, { method: 'PATCH', body: JSON.stringify({ status: attendanceStatus, note }) }) }
+export async function patchAttendance(sessionId: string, studentId: string, attendanceStatus: AttendanceEntry['status'], note?: string): Promise<AttendanceEntry | undefined> { if (isLocalMode()) return undefined; return normalizeAttendance(await request<unknown>(`/sessions/${encodeURIComponent(sessionId)}/attendance/${encodeURIComponent(studentId)}`, { method: 'PATCH', body: JSON.stringify({ status: attendanceStatus, note }) })) }
 export async function finalize(sessionId: string) { if (isLocalMode()) return; return request(`/sessions/${encodeURIComponent(sessionId)}/finalize`, { method: 'POST', body: JSON.stringify({ mark_pending_absent: true }) }) }
 export async function reports(sessionId: string): Promise<Report> {
   if (isLocalMode()) return demoReport(sessionId)

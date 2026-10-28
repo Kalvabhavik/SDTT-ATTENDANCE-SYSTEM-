@@ -10,7 +10,8 @@ The final line narrows notifications to the app only: no email. The prototype im
 
 - Teacher capture, class/session start, seeded roster review, manual attendance-status corrections, and finalization belong in the Flutter teacher flow and web teacher dashboard. This prototype does not include class enrollment or student roster creation/deletion.
 - Student history, dates, totals, percentage, and notifications are restricted to the logged-in student's own profile in both clients.
-- Session records, statuses, users/roles, audit entries, and notifications live in one SQLite-backed FastAPI service for the prototype.
+- Session records, statuses, users/roles, audit entries, and notifications live in one Supabase Auth/PostgreSQL-backed FastAPI service for the prototype.
+- Class, session, student, attendance, notification, and audit identifiers are UUID strings across both clients.
 - A single REST API carries writes and reads; authenticated, short-lived WebSocket tickets and event messages keep the app and website views current.
 - CSV export and print-to-PDF are available from teacher report views. Audit events record session creation, capture, simulated suggestions, edits, and finalization with actor and timestamps.
 - Teacher confirmation is the only way to turn a suggestion into a final attendance status. Remaining pending students are explicitly marked absent by the teacher during finalization.
@@ -23,7 +24,7 @@ A future real-recognition pilot would need an approved model and license, lawful
 
 ## Delivery sequence
 
-The implementation follows the user's sequence: first Flutter source and teacher/student workflows; second the responsive dashboard; third connect both to the same API and live event stream. Flutter was chosen over the managed Expo alternative. The sandbox initially had no Flutter or Dart; the user then explicitly approved installing the official stable Flutter SDK under `/home/ubuntu/tools/flutter`, without system-wide or sudo changes. Native compilation and device-only camera/push behavior are reported only if actually verified.
+The implementation follows the user's sequence: first Flutter source and teacher/student workflows; second the responsive dashboard; third connect both to the same API and live event stream. Flutter was chosen over the managed Expo alternative. Native compilation and device-only camera/push behavior are reported only if actually verified. The current audit sandbox does not contain a Flutter SDK, so Dart analysis/build validation remains pending.
 
 ## Explicit out-of-scope items for this first prototype
 

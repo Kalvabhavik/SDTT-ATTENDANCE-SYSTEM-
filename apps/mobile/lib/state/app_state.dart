@@ -46,10 +46,16 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> loadHome() async {
-    classes = await api.classes();
-    sessions = await api.sessions();
-    notifications = await api.notifications();
-    if (!isTeacher) studentAttendance = await api.studentAttendance();
+    final results = await Future.wait<dynamic>([
+      api.classes(),
+      api.sessions(),
+      api.notifications(),
+      if (!isTeacher) api.studentAttendance(),
+    ]);
+    classes = results[0] as List<Classroom>;
+    sessions = results[1] as List<AttendanceSession>;
+    notifications = results[2] as List<AppNotification>;
+    if (!isTeacher) studentAttendance = results[3] as StudentAttendance;
     notifyListeners();
   }
 
@@ -68,10 +74,12 @@ class AppState extends ChangeNotifier {
   }
 
   void _startRealtime() {
+    var initialConnection = true;
     realtime.connect(onEvent: (event) async {
       liveMessage = 'Live update: ${event.type}';
       if (event.type == 'connected') {
-        await loadHome();
+        if (!initialConnection) await loadHome();
+        initialConnection = false;
         liveMessage = 'Live updates connected';
         return;
       }
@@ -83,7 +91,20 @@ class AppState extends ChangeNotifier {
         studentAttendance = await api.studentAttendance();
       }
       if (event.type == 'attendance.changed' && activeSession != null) {
-        activeSession = await api.session(activeSession!.id);
+        final studentId = event.data['student_id']?.toString();
+        final nextStatus = event.data['status']?.toString();
+        final attendance = event.data['attendance'];
+        if (studentId != null && nextStatus != null && attendance is Map) {
+          final current = activeSession!;
+          final nextRecord = AttendanceRecord.fromJson(
+              Map<String, dynamic>.from(attendance));
+          final records = current.records
+              .map((record) => record.studentId == studentId ? nextRecord : record)
+              .toList();
+          activeSession = current.copyWith(records: records);
+        } else {
+          activeSession = await api.session(activeSession!.id);
+        }
       }
       if (event.type == 'session.created' ||
           event.type == 'session.finalized') {
@@ -96,7 +117,7 @@ class AppState extends ChangeNotifier {
     });
   }
 
-  Future<void> openSession(int sessionId) async {
+  Future<void> openSession(String sessionId) async {
     busy = true;
     error = null;
     notifyListeners();
@@ -110,7 +131,7 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  Future<bool> startSession(int classId) async {
+  Future<bool> startSession(String classId) async {
     busy = true;
     error = null;
     notifyListeners();
@@ -144,7 +165,7 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  Future<bool> setAttendance(int studentId, String status) async {
+  Future<bool> setAttendance(String studentId, String status) async {
     if (activeSession == null) return false;
     try {
       await api.updateAttendance(activeSession!.id, studentId, status);

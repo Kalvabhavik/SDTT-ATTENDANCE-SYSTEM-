@@ -8,7 +8,7 @@ The current implementation uses synthetic, clearly labeled review suggestions. I
 
 ## Components
 
-- `apps/mobile/` — Flutter app for teacher/student use, with Android/iOS/Web scaffolding. Flutter 3.47.7 was installed at `/home/ubuntu/tools/flutter` in this sandbox with user approval; the Android SDK is not installed, so an Android APK/device-camera build was not verified.
+- `apps/mobile/` — Flutter app for teacher/student use, with Android/iOS/Web scaffolding. The mobile client preserves the backend's UUID string identifiers. A Flutter SDK and Android SDK are not present in this audit sandbox, so native/mobile compilation was not verified here.
 - `apps/dashboard/` — React/TypeScript responsive dashboard.
 - `backend/` — FastAPI REST + WebSocket service with Supabase Auth/PostgreSQL persistence and role checks.
 - `docs/API_CONTRACT.md` — shared endpoint and event details.
@@ -25,7 +25,7 @@ Keep the backend, dashboard, and Flutter app pointed at the same API address to 
 
 ## Verification in this sandbox
 
-Backend security and experiment tests pass, and the dashboard TypeScript/Vite production build succeeds. Flutter APK/device camera behavior is not verified because this sandbox has no Android SDK or attached mobile device; native iOS builds require macOS/Xcode.
+Backend security and experiment tests pass (`9 passed`), and the dashboard TypeScript/Vite production build succeeds. Flutter analysis, widget tests, and Flutter Web build are pending because this sandbox has no Flutter SDK; native iOS builds require macOS/Xcode.
 
 ## Demo credentials
 

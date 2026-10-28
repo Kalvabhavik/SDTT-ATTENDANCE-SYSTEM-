@@ -101,16 +101,16 @@ class ApiClient {
         .toList();
   }
 
-  Future<AttendanceSession> session(int sessionId) async =>
+  Future<AttendanceSession> session(String sessionId) async =>
       AttendanceSession.fromJson(Map<String, dynamic>.from(
           await _request('GET', '/sessions/$sessionId') as Map));
 
-  Future<AttendanceSession> createSession(int classId) async =>
+  Future<AttendanceSession> createSession(String classId) async =>
       AttendanceSession.fromJson(Map<String, dynamic>.from(
           await _request('POST', '/sessions', body: {'class_id': classId})
               as Map));
 
-  Future<List<Suggestion>> capture(int sessionId, File photo) async {
+  Future<List<Suggestion>> capture(String sessionId, File photo) async {
     final uri = _endpoint('/sessions/$sessionId/capture');
     final request = http.MultipartRequest('POST', uri);
     request.headers['Accept'] = 'application/json';
@@ -150,7 +150,7 @@ class ApiClient {
     }
   }
 
-  Future<void> updateAttendance(int sessionId, int studentId, String status,
+  Future<void> updateAttendance(String sessionId, String studentId, String status,
       {String? note}) async {
     await _request('PATCH', '/sessions/$sessionId/attendance/$studentId',
         body: {
@@ -159,7 +159,7 @@ class ApiClient {
         });
   }
 
-  Future<void> finalizeSession(int sessionId) async =>
+  Future<void> finalizeSession(String sessionId) async =>
       _request('POST', '/sessions/$sessionId/finalize',
           body: {'mark_pending_absent': true});
 
@@ -180,7 +180,7 @@ class ApiClient {
         .toList();
   }
 
-  Future<void> markNotificationRead(int id) async =>
+  Future<void> markNotificationRead(String id) async =>
       _request('POST', '/notifications/$id/read');
 
   Future<String> wsTicket() async {
