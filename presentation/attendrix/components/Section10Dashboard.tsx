@@ -53,7 +53,7 @@ export default function Section10Dashboard() {
   const [cameraUploading, setCameraUploading] = useState<boolean>(false);
   const [venueLockStatus, setVenueLockStatus] = useState<"UNLOCKED" | "VERIFYING" | "LOCKED">("LOCKED");
 
-  // Generate synthetic reconciled dataset for 80, 120, 240, or 260 students
+  // Generate illustrative, mathematically reconciled dataset for 80, 120, 240, or 260 students.
   const [records, setRecords] = useState<Record<CohortDataset, AttendanceRecord[]>>(() => {
     const studentNames = [
       "Aarav Sharma", "Ananya Iyer", "Rohan Mehta", "Diya Patel", "Kavya Nair",
@@ -98,11 +98,11 @@ export default function Section10Dashboard() {
           sweepPassed = false;
           gyroSweepDelta = 42;
           similarity = 0.88;
-          note = "Insufficient gyro arc (Δyaw = 42° < 120° minimum)";
+          note = "Insufficient gyro arc (Δyaw = 42° < 150° minimum)";
         } else if (i === 67) {
           status = "UNCERTAIN";
           similarity = 0.44;
-          note = "Motion blur threshold fail (Laplacian var < 1.5)";
+          note = "Motion blur threshold fail (Laplacian var < 100)";
         }
 
         list.push({
@@ -472,7 +472,7 @@ export default function Section10Dashboard() {
                             )}
                           </td>
                           <td className="py-3 px-4 text-slate-800 font-bold">
-                            {r.similarity ? `${r.similarity} (${r.similarity >= 0.68 ? "Pass" : "Marginal"})` : "—"}
+                            {r.similarity ? `${r.similarity} (${r.similarity >= 0.72 ? "Pass" : "Review"})` : "—"}
                           </td>
                           <td className="py-3 px-4 font-mono">
                             {r.sweepPassed ? (
@@ -688,7 +688,7 @@ export default function Section10Dashboard() {
               <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200">
                 <span className="text-slate-700 text-[10px] block mb-1 font-bold">1:1 ARCFACE COSINE</span>
                 <span className="text-amber-900 font-extrabold text-sm">
-                  {inspectingRecord.similarity ? `${inspectingRecord.similarity} (Threshold: 0.65)` : "No Biometric Crop"}
+                  {inspectingRecord.similarity ? `${inspectingRecord.similarity} (Pass threshold: 0.72)` : "No Biometric Crop"}
                 </span>
               </div>
 

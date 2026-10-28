@@ -98,7 +98,7 @@ export default function Section06Cohort80({ onSelectCohort }: Section06Cohort80P
                   </span>
                   {rowSeats.map((seat) => {
                     const isSelected = selectedSeat === seat.id;
-                    let colorClass =
+                    const colorClass =
                       seat.status === "verified"
                         ? "bg-amber-500 border-amber-400 text-white shadow-sm"
                         : seat.status === "pending"
@@ -231,7 +231,7 @@ export default function Section06Cohort80({ onSelectCohort }: Section06Cohort80P
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-700 font-bold">180° Sweep Arc:</span>
-                  <span className="text-emerald-800 font-bold">Δyaw = 142° (Valid)</span>
+                  <span className="text-emerald-800 font-bold">Δyaw = 168° (Valid)</span>
                 </div>
               </div>
             </div>

@@ -62,11 +62,11 @@ export default function Section09PipelineDeepDive() {
       shortName: "2. Gyro Gate",
       tagline: "Dynamic spatial-temporal replay elimination",
       purpose:
-        "Verifies that the student swept their device across the physical lecture hall horizontally. Evaluates monotonic yaw angular displacement (Delta yaw >= 120°) to mathematically eliminate static photo relays, screenshots, and pre-recorded videos.",
+        "Verifies that the student swept their device across the physical lecture hall horizontally. Evaluates monotonic yaw angular displacement (Delta yaw >= 150°) to reduce static photo relays, screenshots, and pre-recorded videos.",
       input: "Array of GyroSample { timestamp, yaw, pitch, roll }.",
       output: "SweepValidationResult { valid: bool, delta_yaw: float, monotonic: bool }.",
       failureConditions:
-        "Delta yaw < 120°, non-monotonic angular velocity (spikes or reversed movement), static phone holding.",
+        "Delta yaw < 150°, non-monotonic angular velocity (spikes or reversed movement), static phone holding.",
       status: "Implemented in Prototype",
       statusColor: "bg-emerald-100 text-emerald-950 border-emerald-300 font-bold",
       codeSnippet: `def verify_gyro_sweep(samples: List[GyroSample]):
@@ -74,7 +74,7 @@ export default function Section09PipelineDeepDive() {
     delta_yaw = max(yaw_values) - min(yaw_values)
     is_continuous = check_monotonic_progression(yaw_values)
     
-    if delta_yaw < 120.0 or not is_continuous:
+    if delta_yaw < 150.0 or not is_continuous:
         return SweepResult(valid=False, reason="insufficient_arc")
     return SweepResult(valid=True, delta_yaw=delta_yaw)`,
     },
@@ -88,7 +88,7 @@ export default function Section09PipelineDeepDive() {
       input: "RGB image tensor [H, W, 3].",
       output: "Sharpness index Var(nabla^2 I), mean luminance lux estimate.",
       failureConditions:
-        "Laplacian variance < 1.5 (severe motion blur), mean luminance <= 3.0 lux (extreme underexposure).",
+        "Laplacian variance < 100 (severe motion blur), mean luminance outside the 40–220 range (exposure failure).",
       status: "Implemented in Prototype",
       statusColor: "bg-emerald-100 text-emerald-950 border-emerald-300 font-bold",
       codeSnippet: `def check_image_quality(img_rgb):
@@ -96,9 +96,9 @@ export default function Section09PipelineDeepDive() {
     laplacian_var = cv2.Laplacian(gray, cv2.CV_64F).var()
     mean_lux = float(np.mean(gray))
     
-    if laplacian_var < 1.5:
+    if laplacian_var < 100:
         return QualityResult(usable=False, reason="motion_blur")
-    if mean_lux <= 3.0:
+    if mean_lux < 40.0 or mean_lux > 220.0:
         return QualityResult(usable=False, reason="low_lighting")
     return QualityResult(usable=True, score=laplacian_var, lux=mean_lux)`,
     },
@@ -136,14 +136,14 @@ if faces is None or len(faces) == 0:
       input: "Aligned 112x112 canonical crop + registered 512-D reference vector.",
       output: "Scalar cosine similarity score cos(theta) in [-1.0, 1.0].",
       failureConditions:
-        "Cosine similarity below threshold (tau < 0.68), unregistered student reference vector.",
+        "Cosine similarity below the pass threshold (tau < 0.72), unregistered student reference vector.",
       status: "Implemented in Prototype",
       statusColor: "bg-emerald-100 text-emerald-950 border-emerald-300 font-bold",
       codeSnippet: `# Extracts 512-D unit embedding vector
 emb_probe = arcface_model.forward(aligned_112x112)
 # Cosine similarity: cos(theta) = u . v (normalized)
 cosine_sim = np.dot(emb_probe, emb_reference)
-verified = (cosine_sim >= 0.68)`,
+verified = (cosine_sim >= 0.72)`,
     },
     {
       id: 6,
@@ -151,7 +151,7 @@ verified = (cosine_sim >= 0.68)`,
       shortName: "6. Decision",
       tagline: "Deterministic rule matrix evaluation into 4 operational states",
       purpose:
-        "Synthesizes active liveness challenge, gyro sweep trajectory, image quality gates, YuNet anti-empty-room crowd detection, and ArcFace cosine similarity into four transparent states: VERIFIED, PENDING_REVIEW, UNCERTAIN, or REJECTED.",
+        "Synthesizes active liveness challenge, gyro sweep trajectory, image quality gates, YuNet anti-empty-room crowd detection, and biometric cosine similarity into transparent VERIFIED, PENDING_REVIEW, UNCERTAIN, or REJECTED states.",
       input: "Active liveness (left/right/blink), Gyro delta yaw, Laplacian variance, peer face count, cosine similarity.",
       output: "AttendanceStatus: {VERIFIED, PENDING_REVIEW, UNCERTAIN, REJECTED}.",
       failureConditions: "Ambiguous sensor reading or missing controller venue anchor.",
@@ -161,7 +161,7 @@ verified = (cosine_sim >= 0.68)`,
     return AttendanceStatus.PENDING_REVIEW  # Flagged for supervisor
 elif is_duplicate or student_unregistered:
     return AttendanceStatus.REJECTED
-elif quality_ok and cosine_sim >= 0.68:
+elif quality_ok and cosine_sim >= 0.72:
     return AttendanceStatus.VERIFIED
 elif cosine_sim >= 0.50:
     return AttendanceStatus.PENDING_REVIEW

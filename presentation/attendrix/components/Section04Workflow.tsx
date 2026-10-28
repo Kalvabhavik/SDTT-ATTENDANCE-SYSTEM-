@@ -18,13 +18,13 @@ import {
 
 export default function Section04Workflow() {
   const [activeStep, setActiveStep] = useState<number>(2);
-  const [sweepYaw, setSweepYaw] = useState<number>(142);
+  const [sweepYaw, setSweepYaw] = useState<number>(168);
 
   // Live 180 continuous sweep trajectory simulation
   useEffect(() => {
     const timer = setInterval(() => {
       setSweepYaw((prev) => {
-        if (prev >= 170) return 30;
+        if (prev >= 180) return 30;
         return prev + 15;
       });
     }, 600);
@@ -71,9 +71,9 @@ export default function Section04Workflow() {
       icon: Layers,
       color: "text-amber-700",
       bgBadge: "bg-amber-100 text-amber-900 border-amber-300 font-bold",
-      desc: "Following liveness, student sweeps the classroom across neighbor peers to the lecturer stage (Δyaw ≥ 120°), corroborating the real physical environment with the controller baseline template.",
+      desc: "Following liveness, student sweeps the classroom across neighbor peers to the lecturer stage (Δyaw ≥ 150°), corroborating the real physical environment with the controller baseline template.",
       actionDetails: [
-        `Live Sweep Yaw Progression: ${sweepYaw}° (Monotonic gyroscope angular check ≥ 120°).`,
+        `Live Sweep Yaw Progression: ${sweepYaw}° (Monotonic gyroscope angular check ≥ 150°).`,
         "Audience Peer Corroboration: Detects surrounding peers seated in the lecture hall.",
         "Podium & Lecturer Stage Match: Verifies lecturer presence and stage architecture.",
       ],
@@ -103,29 +103,29 @@ export default function Section04Workflow() {
       icon: Camera,
       color: "text-amber-700",
       bgBadge: "bg-amber-100 text-amber-900 border-amber-300 font-bold",
-      desc: "Canonical 112×112 frontal crop is extracted, aligned, and matched against enrolled institutional reference vector using 512-dimensional ArcFace deep embeddings (cosine similarity threshold ≥ 0.68).",
+      desc: "Canonical 112×112 frontal crop is extracted, aligned, and matched against the enrolled institutional reference using the configured 512-dimensional embedding pipeline (pass at cosine similarity ≥ 0.72; borderline scores route to review).",
       actionDetails: [
-        "Laplacian sharpness variance check (≥ 1.5) ensures crisp face focus.",
+        "Laplacian sharpness variance check (≥ 100) ensures crisp face focus.",
         "512-dimensional Euclidean-normalized unit embedding extraction.",
-        "Cosine threshold cos(θ) ≥ 0.68 authenticates individual enrollment identity.",
+        "Cosine threshold cos(θ) ≥ 0.72 passes individual enrollment identity; borderline scores route to review.",
       ],
       caution:
         "Ephemeral In-Memory Verification: Raw image bytes are purged immediately after comparison (Zero-Knowledge biometric privacy).",
     },
     {
       step: 6,
-      title: "Backend Neural Engine & 1-Attempt Policy",
+      title: "Backend Neural Engine & Bounded Attempt Policy",
       shortTitle: "6. Decision Policy",
       icon: ServerCog,
       color: "text-orange-700",
       bgBadge: "bg-orange-100 text-orange-900 border-orange-300 font-bold",
-      desc: "FastAPI server executes full multi-layer evaluation: Active liveness verified + ArcFace match + Classroom physical match + 1-attempt constraint per session.",
+      desc: "FastAPI server executes full multi-layer evaluation: active liveness, biometric match, classroom corroboration, and a maximum of 3 attempts per student/session with one verified record.",
       actionDetails: [
-        "1. Active Liveness (Yaw Turn & Blink) | 2. ArcFace Biometric (≥0.68).",
-        "3. 180° Sweep Continuity (≥120°) | 4. Lecturer & Peer Presence (N≥1).",
+        "1. Active Liveness (Yaw Turn & Blink) | 2. Biometric match (≥0.72 pass threshold).",
+        "3. 180° Sweep Continuity (≥150°) | 4. Lecturer & Peer Presence (N≥1).",
         "5. Anti-Empty-Room Defense | 6. Server Clock TTL | 7. Deduplication Constraint.",
       ],
-      caution: "1-Attempt Policy: Prevents replay brute-forcing; every submission is final and immutably audited.",
+      caution: "Bounded Attempt Policy: Allows up to 3 attempts while preventing unlimited replay brute-forcing; every submission is audited.",
     },
     {
       step: 7,
@@ -226,7 +226,7 @@ export default function Section04Workflow() {
               </div>
               <div className="flex justify-between items-center text-[11px] text-slate-700 pt-1 font-bold">
                 <span>Monotonic Gyro Check:</span>
-                <span className="text-emerald-700 font-bold">PASS (Δ ≥ 120°)</span>
+                <span className="text-emerald-700 font-bold">PASS (Δ ≥ 150°)</span>
               </div>
               <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden">
                 <div

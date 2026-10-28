@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { gsap } from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
@@ -119,10 +119,8 @@ export default function LectureHallScene({
   }, [scrollProgress, selectedCohort, activeZone, activeSection]);
 
   // 260 student seats metadata definition (13 rows x 20 seats)
-  const seatsData = useRef<StudentSeatData[]>([]);
-
-  // Initialize 260 seats and student roster
-  if (seatsData.current.length === 0) {
+  const seatsData = useMemo<StudentSeatData[]>(() => {
+    const generatedSeats: StudentSeatData[] = [];
     const totalRows = 13;
     const seatsPerRow = 20;
     let idCounter = 1;
@@ -208,7 +206,7 @@ export default function LectureHallScene({
         const hasLaptop = targetStatus !== "unrecorded" && (idCounter % 2 === 0 || idCounter % 5 === 0);
         const hasNotebook = targetStatus !== "unrecorded" && !hasLaptop && (idCounter % 3 === 0);
 
-        seatsData.current.push({
+        generatedSeats.push({
           id: idCounter,
           row: r + 1,
           col: c + 1,
@@ -231,7 +229,8 @@ export default function LectureHallScene({
         idCounter++;
       }
     }
-  }
+    return generatedSeats;
+  }, []);
 
   // Camera flight waypoints synchronized with presentation sections
   const waypoints = [
@@ -360,7 +359,7 @@ export default function LectureHallScene({
       ctxL.fillText("L = -log [ e^(s·cos(θ + m)) / Z ]", 25, 85);
       ctxL.fillText("s = 64.0 (hypersphere radius)", 25, 115);
       ctxL.fillText("m = 0.50 (additive angular margin)", 25, 140);
-      ctxL.fillText("Cosine threshold τ = 0.65 (MobileFaceNet)", 25, 165);
+      ctxL.fillText("Cosine bands: PASS ≥ 0.72 / REVIEW 0.50–0.71", 25, 165);
 
       ctxL.strokeStyle = "#38bdf8";
       ctxL.lineWidth = 2.5;
@@ -378,9 +377,9 @@ export default function LectureHallScene({
       ctxL.fillStyle = "#94a3b8";
       ctxL.font = "12px monospace";
       ctxL.fillText("Feature Embedding Space S² (512-D)", 240, 240);
-      ctxL.fillText("FAR: 0.0001% @ FRR: 1.14%", 240, 270);
-      ctxL.fillText("Quality Gate: Var(Laplacian) ≥ 1.5", 240, 300);
-      ctxL.fillText("Ephemeral Zero-Knowledge Storage", 240, 330);
+      ctxL.fillText("No FAR/FRR claim — validate on local data", 240, 270);
+      ctxL.fillText("Quality Gate: Var(Laplacian) ≥ 100", 240, 300);
+      ctxL.fillText("Encrypted reference template; raw frames purged", 240, 330);
     }
 
     const ctxR = rightCanvas.getContext("2d");
@@ -399,7 +398,7 @@ export default function LectureHallScene({
 
       ctxR.fillStyle = "#ffffff";
       ctxR.font = "14px monospace";
-      ctxR.fillText("1. Monotonic Gyro Sweep (Yaw ≥ 120°)", 25, 85);
+      ctxR.fillText("1. Monotonic Gyro Sweep (Yaw ≥ 150°)", 25, 85);
       ctxR.fillText("2. YuNet Real Face Detection (N ≥ 1)", 25, 115);
       ctxR.fillText("3. Anti-Empty-Room Defense (0-Face Auto-Block)", 25, 140);
       ctxR.fillText("4. Lecturer Stage Grounding (IPD ≥ 30px)", 25, 165);
@@ -430,7 +429,7 @@ export default function LectureHallScene({
 
       ctxR.fillStyle = "#38bdf8";
       ctxR.font = "13px monospace";
-      ctxR.fillText("Audit Ingestion: 260 seats / 4.8s burst", 40, 325);
+      ctxR.fillText("Audit ingestion: bounded, asynchronous, reviewable", 40, 325);
       ctxR.fillText("Zero Proxy Bypass Guarantee (Active)", 40, 350);
     }
   };
@@ -482,7 +481,7 @@ export default function LectureHallScene({
 
     ctx.fillStyle = "#059669";
     ctx.font = "bold 17px monospace";
-    ctx.fillText("● MONOTONIC GYRO TRACKING: ΔYAW ≥ 120° [VALID]", 90, 235);
+    ctx.fillText("● MONOTONIC GYRO TRACKING: ΔYAW ≥ 150° [VALID]", 90, 235);
 
     ctx.fillStyle = "#d97706";
     ctx.font = "bold 15px monospace";
@@ -510,7 +509,7 @@ export default function LectureHallScene({
     let seatIdx = 0;
     for (let mr = 0; mr < miniRows; mr++) {
       for (let mc = 0; mc < miniCols; mc++) {
-        const student = seatsData.current[seatIdx];
+        const student = seatsData[seatIdx];
         if (student) {
           const isMarked = currentProgress >= student.activationScroll;
           if (isMarked) {
@@ -893,7 +892,7 @@ export default function LectureHallScene({
     // ==========================================
     // 240 INSTANCED AUDITORIUM SEATS & LIVING STUDENTS
     // ==========================================
-    const totalCount = seatsData.current.length;
+    const totalCount = seatsData.length;
     const dummy = new THREE.Object3D();
 
     // 1. Instanced Chair Seat Cushions
@@ -915,7 +914,7 @@ export default function LectureHallScene({
     const instancedBackrests = new THREE.InstancedMesh(backrestGeo, backrestMat, totalCount);
     instancedBackrests.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
 
-    seatsData.current.forEach((seat, idx) => {
+    seatsData.forEach((seat, idx) => {
       const isUnrecorded = seat.targetStatus === "unrecorded";
 
       dummy.position.set(
@@ -961,7 +960,7 @@ export default function LectureHallScene({
     const instancedHeads = new THREE.InstancedMesh(headGeo, headMat, totalCount);
     instancedHeads.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
 
-    seatsData.current.forEach((seat, idx) => {
+    seatsData.forEach((seat, idx) => {
       const isUnrecorded = seat.targetStatus === "unrecorded";
 
       if (!isUnrecorded) {
@@ -1012,7 +1011,7 @@ export default function LectureHallScene({
     const instancedLaptopScreens = new THREE.InstancedMesh(laptopScreenGeo, laptopScreenMat, totalCount);
     instancedLaptopScreens.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
 
-    seatsData.current.forEach((seat, idx) => {
+    seatsData.forEach((seat, idx) => {
       if (seat.hasLaptop) {
         dummy.position.set(seat.x - 0.08, seat.y + 0.36, seat.z - 0.44);
         dummy.rotation.set(0, -seat.x * 0.03 + (idx % 2 === 0 ? 0.05 : -0.05), 0);
@@ -1054,7 +1053,7 @@ export default function LectureHallScene({
     const instancedScreens = new THREE.InstancedMesh(screenPieceGeo, screenPieceMat, totalCount);
     instancedScreens.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
 
-    seatsData.current.forEach((seat, idx) => {
+    seatsData.forEach((seat, idx) => {
       const isUnrecorded = seat.targetStatus === "unrecorded";
       if (!isUnrecorded) {
         dummy.position.set(seat.x + 0.14, seat.y + 0.36, seat.z - 0.40);
@@ -1092,7 +1091,7 @@ export default function LectureHallScene({
     const instancedHalos = new THREE.InstancedMesh(haloGeo, haloMat, totalCount);
     instancedHalos.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
 
-    seatsData.current.forEach((seat, idx) => {
+    seatsData.forEach((seat, idx) => {
       dummy.position.set(seat.x, seat.y + 1.15, seat.z - 0.06);
       dummy.rotation.set(Math.PI / 2, 0, 0);
       dummy.scale.set(0.0001, 0.0001, 0.0001);
@@ -1108,7 +1107,7 @@ export default function LectureHallScene({
     // ==========================================
     // FEATURED CLOSE-UP STUDENT (#28) HIGHLIGHTS
     // ==========================================
-    const alexSeat = seatsData.current.find((s) => s.id === 28);
+    const alexSeat = seatsData.find((s) => s.id === 28);
     if (alexSeat) {
       const featPhoneGeo = new THREE.BoxGeometry(0.14, 0.022, 0.25);
       const featPhoneMat = new THREE.MeshStandardMaterial({
@@ -1166,8 +1165,8 @@ export default function LectureHallScene({
     // DATA NETWORK TRANSMISSION BEAMS
     // ==========================================
     const beamLines: number[] = [];
-    for (let i = 0; i < seatsData.current.length; i += 8) {
-      const seat = seatsData.current[i];
+    for (let i = 0; i < seatsData.length; i += 8) {
+      const seat = seatsData[i];
       const p0 = new THREE.Vector3(seat.x, seat.y + 0.5, seat.z - 0.3);
       const p1 = new THREE.Vector3((seat.x + 3.8) * 0.5, seat.y + 3.0, (seat.z - 5.6) * 0.5);
       const p2 = new THREE.Vector3(3.8, 1.6, -5.5);
@@ -1218,7 +1217,7 @@ export default function LectureHallScene({
 
       if (intersects.length > 0 && intersects[0].instanceId !== undefined) {
         const id = intersects[0].instanceId;
-        const seat = seatsData.current[id];
+        const seat = seatsData[id];
         if (seat) {
           soundManager.playClick();
           setHoveredSeat(seat);
@@ -1313,7 +1312,7 @@ export default function LectureHallScene({
       const screensMesh = instancedScreensRef.current;
       const halosMesh = instancedHalosRef.current;
 
-      seatsData.current.forEach((seat, idx) => {
+      seatsData.forEach((seat, idx) => {
         const inCohort =
           curCohort === 80
             ? seat.id <= 80
@@ -1720,7 +1719,7 @@ export default function LectureHallScene({
             </div>
             <div className="flex flex-col gap-1.5 items-center">
               {Array.from({ length: 13 }).map((_, r) => {
-                const rowSeats = seatsData.current.filter((s) => s.row === r + 1);
+                const rowSeats = seatsData.filter((s) => s.row === r + 1);
                 return (
                   <div key={r} className="flex items-center gap-1">
                     <span className="w-6 text-[10px] font-mono text-slate-700 text-right pr-1 font-bold">

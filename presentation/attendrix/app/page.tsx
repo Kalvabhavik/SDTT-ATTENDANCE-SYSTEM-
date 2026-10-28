@@ -7,6 +7,7 @@ import AtmosphericBackground from "@/components/AtmosphericBackground";
 import GsapScrollEffects from "@/components/GsapScrollEffects";
 import Navbar from "@/components/Navbar";
 import Section01Opening from "@/components/Section01Opening";
+import DepthScrollStory from "@/components/DepthScrollStory";
 import Section02Problem from "@/components/Section02Problem";
 import Section03Concept from "@/components/Section03Concept";
 import Section04Workflow from "@/components/Section04Workflow";
@@ -36,13 +37,14 @@ function HomeContent() {
   const [activeSection, setActiveSection] = useState<string>("section-01");
   const [selectedCohort, setSelectedCohort] = useState<80 | 120 | 240 | 260>(260);
   const [activeZone, setActiveZone] = useState<"all" | "zoneA" | "zoneB" | "zoneC">("all");
-  const [isReducedMotion, setIsReducedMotion] = useState<boolean>(false);
+  const [isReducedMotion, setIsReducedMotion] = useState<boolean>(
+    () => typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  );
 
   // Detect user preference for reduced motion
   useEffect(() => {
     if (typeof window !== "undefined") {
       const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
-      setIsReducedMotion(mediaQuery.matches);
       const listener = (e: MediaQueryListEvent) => setIsReducedMotion(e.matches);
       mediaQuery.addEventListener("change", listener);
       return () => mediaQuery.removeEventListener("change", listener);
@@ -88,7 +90,7 @@ function HomeContent() {
     };
 
     if (lenis) {
-      const onLenisScroll = (e: any) => {
+      const onLenisScroll = (e: { progress?: number }) => {
         handleScrollUpdate(e.progress);
       };
       lenis.on("scroll", onLenisScroll);
@@ -139,6 +141,9 @@ function HomeContent() {
           onExploreClick={() => scrollToAnchor("concept")}
           onWorkflowClick={() => scrollToAnchor("workflow")}
         />
+
+        {/* Scroll-driven 3D proof chain: context → evidence → decision */}
+        <DepthScrollStory />
 
         {/* Section 02: Problem */}
         <Section02Problem />
