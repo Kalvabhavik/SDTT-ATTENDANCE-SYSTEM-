@@ -173,7 +173,7 @@ export async function notifications(): Promise<Notification[]> { if (isLocalMode
 export async function markRead(notificationId: string) { if (isLocalMode()) return; return request(`/notifications/${encodeURIComponent(notificationId)}/read`, { method: 'POST' }) }
 export async function wsTicket(): Promise<string> { if (isLocalMode()) return `demo-ticket-${Date.now()}`; const result = record(await request<unknown>('/auth/ws-ticket', { method: 'POST' })); return text(result.ticket) }
 
-export function openRealtime(ticket: string, onMessage: (event: { type: string; data?: unknown }) => void, onState: (state: 'connected' | 'closed' | 'error') => void) {
+export function openRealtime(ticket: string, onMessage: (event: { type: string; event_type?: string; event_id?: string; event_version?: number; session_id?: string; occurred_at?: string; server_timestamp?: string; data?: unknown }) => void, onState: (state: 'connected' | 'closed' | 'error') => void) {
   if (isLocalMode()) { onState('connected'); return () => onState('closed') }
   const origin = new URL(API_BASE)
   const protocol = origin.protocol === 'https:' ? 'wss:' : 'ws:'

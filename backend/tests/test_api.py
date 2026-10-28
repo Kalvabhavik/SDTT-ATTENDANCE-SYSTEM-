@@ -17,6 +17,16 @@ from app import main
 TEST_SECRET = "test-secret-for-attendrix-security-tests-32"
 
 
+def test_realtime_events_have_structured_ordering_metadata():
+    first = main.event_payload("attendance.changed", {"session_id": "session-order-test", "student_id": "student-1"})
+    second = main.event_payload("attendance.changed", {"session_id": "session-order-test", "student_id": "student-2"})
+    assert first["event_id"] != second["event_id"]
+    assert first["event_type"] == "attendance.changed"
+    assert first["session_id"] == "session-order-test"
+    assert second["event_version"] == first["event_version"] + 1
+    assert first["occurred_at"] == first["server_timestamp"] == first["created_at"]
+
+
 def test_jwt_requires_signature_and_authenticated_audience(monkeypatch):
     monkeypatch.setattr(main, "SUPABASE_JWT_SECRET", TEST_SECRET)
     valid = jwt.encode(

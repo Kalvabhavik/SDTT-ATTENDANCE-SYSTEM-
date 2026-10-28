@@ -31,7 +31,7 @@ Session, class, student, attendance, notification, and audit identifiers are UUI
 
 ## Realtime
 
-After obtaining a single-use ticket, connect to `GET /ws?ticket=<ticket>` over WebSocket (use `wss` in production). Server events have shape `{type,data,created_at}` and types `session.created`, `attendance.changed`, `session.finalized`, `notification.created`. Session creation and finalization signals are sent to the teacher and enrolled students; notification-created signals are private to the relevant student. The ticket expires quickly and is consumed once. The event stream is informational; clients should re-fetch the affected resource after reconnecting.
+After obtaining a single-use ticket, connect to `GET /ws?ticket=<ticket>` over WebSocket (use `wss` in production). Server events include `{event_id,event_type,event_version,session_id,occurred_at,server_timestamp,type,data,created_at}` and types `session.created`, `attendance.changed`, `session.finalized`, `notification.created`. `event_id` is unique, and `event_version` increases per session so clients can ignore duplicate or stale events. Session creation and finalization signals are sent to the teacher and enrolled students; notification-created signals are private to the relevant student. The ticket expires quickly and is consumed once. Clients keep bounded event-ID/version guards, apply only newer committed events, and re-fetch the affected resource after reconnecting.
 
 ## Safety and production gaps
 

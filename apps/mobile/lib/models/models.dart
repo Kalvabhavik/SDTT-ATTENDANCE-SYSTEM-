@@ -239,12 +239,25 @@ class AppNotification {
 }
 
 class RealtimeEvent {
-  const RealtimeEvent({required this.type, required this.data});
+  const RealtimeEvent({required this.type, required this.data, this.eventId, this.sessionId, this.eventVersion, this.occurredAt, this.serverTimestamp});
   final String type;
   final Map<String, dynamic> data;
+  final String? eventId;
+  final String? sessionId;
+  final int? eventVersion;
+  final DateTime? occurredAt;
+  final DateTime? serverTimestamp;
   factory RealtimeEvent.fromJson(dynamic value) {
     final map = value is String ? jsonDecode(value) : value;
     final json = _map(map);
-    return RealtimeEvent(type: _string(json['type']), data: _map(json['data']));
+    return RealtimeEvent(
+      type: _string(json['type'] ?? json['event_type']),
+      data: _map(json['data']),
+      eventId: json['event_id']?.toString(),
+      sessionId: json['session_id']?.toString() ?? _map(json['data'])['session_id']?.toString(),
+      eventVersion: json['event_version'] is num ? (json['event_version'] as num).toInt() : null,
+      occurredAt: DateTime.tryParse(_string(json['occurred_at'])),
+      serverTimestamp: DateTime.tryParse(_string(json['server_timestamp'])),
+    );
   }
 }

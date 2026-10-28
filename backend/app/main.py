@@ -103,6 +103,8 @@ _login_attempts: dict[str, list[float]] = {}
 _login_lock = threading.Lock()
 _profile_cache: dict[str, tuple[dict[str, Any], float]] = {}
 _profile_cache_lock = threading.Lock()
+_event_versions: dict[str, int] = {}
+_event_version_lock = threading.Lock()
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -432,7 +434,25 @@ def _session_summary(session_id: str) -> dict[str, int]:
 
 
 def event_payload(event_type: str, data: dict[str, Any]) -> dict[str, Any]:
-    return {"type": event_type, "data": data, "created_at": utc_now()}
+    server_timestamp = utc_now()
+    session_key = str(data.get("session_id") or "global")
+    with _event_version_lock:
+        event_version = _event_versions.get(session_key, 0) + 1
+        _event_versions[session_key] = event_version
+        if len(_event_versions) > 10000:
+            oldest_key = next(iter(_event_versions))
+            _event_versions.pop(oldest_key, None)
+    return {
+        "event_id": str(uuid.uuid4()),
+        "event_type": event_type,
+        "event_version": event_version,
+        "session_id": data.get("session_id"),
+        "occurred_at": server_timestamp,
+        "server_timestamp": server_timestamp,
+        "type": event_type,
+        "data": data,
+        "created_at": server_timestamp,
+    }
 
 
 def publish_event(loopless_event: dict[str, Any], user_ids: list[str]) -> None:

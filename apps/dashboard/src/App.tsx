@@ -20,6 +20,8 @@ function App() {
   const [menuOpen, setMenuOpen] = useState(false)
   const socketClose = useRef<() => void>(() => undefined)
   const socketGeneration = useRef(0)
+  const seenEventIds = useRef(new Set<string>())
+  const latestEventVersions = useRef(new Map<string, number>())
 
   const connect = useCallback(async () => {
     if (!user) return () => undefined
@@ -31,12 +33,30 @@ function App() {
       socketClose.current()
       const close = api.openRealtime(ticket, event => {
         if (generation !== socketGeneration.current) return
-        if (event.type === 'notification.created') setNotice('New notification received.')
+        const data = event.data && typeof event.data === 'object' ? event.data as Record<string, unknown> : {}
+        const eventId = typeof event.event_id === 'string' ? event.event_id : undefined
+        const sessionId = typeof event.session_id === 'string' ? event.session_id : typeof data.session_id === 'string' ? data.session_id : undefined
+        const eventVersion = typeof event.event_version === 'number' ? event.event_version : undefined
+        if (eventId) {
+          if (seenEventIds.current.has(eventId)) return
+          seenEventIds.current.add(eventId)
+          if (seenEventIds.current.size > 2000) seenEventIds.current.delete(seenEventIds.current.values().next().value as string)
+        }
+        if (sessionId && eventVersion !== undefined) {
+          const latest = latestEventVersions.current.get(sessionId) || 0
+          if (eventVersion <= latest) return
+          latestEventVersions.current.set(sessionId, eventVersion)
+        }
+        if ((event.type || event.event_type) === 'notification.created') setNotice('New notification received.')
         window.dispatchEvent(new CustomEvent('rollcall:refresh', { detail: event }))
       }, state => {
         if (generation !== socketGeneration.current) return
         setConnection(state)
-        if (state === 'connected') window.dispatchEvent(new CustomEvent('rollcall:refresh', { detail: { type: 'realtime.connected' } }))
+        if (state === 'connected') {
+          seenEventIds.current.clear()
+          latestEventVersions.current.clear()
+          window.dispatchEvent(new CustomEvent('rollcall:refresh', { detail: { type: 'realtime.connected' } }))
+        }
       })
       socketClose.current = close
       return close

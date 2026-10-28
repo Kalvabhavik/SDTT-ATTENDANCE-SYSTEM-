@@ -22,6 +22,8 @@ class AppState extends ChangeNotifier {
   bool busy = false;
   String? error;
   String? liveMessage;
+  final Set<String> _seenRealtimeEventIds = <String>{};
+  final Map<String, int> _latestRealtimeVersions = <String, int>{};
 
   User? get user => auth?.user;
   bool get isTeacher => user?.isTeacher == true;
@@ -78,11 +80,14 @@ class AppState extends ChangeNotifier {
     realtime.connect(onEvent: (event) async {
       liveMessage = 'Live update: ${event.type}';
       if (event.type == 'connected') {
+        _seenRealtimeEventIds.clear();
+        _latestRealtimeVersions.clear();
         if (!initialConnection) await loadHome();
         initialConnection = false;
         liveMessage = 'Live updates connected';
         return;
       }
+      if (!_acceptRealtimeEvent(event)) return;
       if (event.type == 'notification.created' ||
           event.type == 'session.finalized') {
         notifications = await api.notifications();
@@ -115,6 +120,25 @@ class AppState extends ChangeNotifier {
       liveMessage = message;
       notifyListeners();
     });
+  }
+
+  bool _acceptRealtimeEvent(RealtimeEvent event) {
+    final eventId = event.eventId;
+    if (eventId != null && eventId.isNotEmpty) {
+      if (_seenRealtimeEventIds.contains(eventId)) return false;
+      _seenRealtimeEventIds.add(eventId);
+      if (_seenRealtimeEventIds.length > 2000) {
+        _seenRealtimeEventIds.remove(_seenRealtimeEventIds.first);
+      }
+    }
+    final sessionId = event.sessionId;
+    final version = event.eventVersion;
+    if (sessionId != null && version != null) {
+      final latest = _latestRealtimeVersions[sessionId] ?? 0;
+      if (version <= latest) return false;
+      _latestRealtimeVersions[sessionId] = version;
+    }
+    return true;
   }
 
   Future<void> openSession(String sessionId) async {
