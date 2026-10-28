@@ -160,7 +160,8 @@ void main() {
           final image = await boundary.toImage(pixelRatio: 1.5);
           final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
           if (byteData != null) {
-            final file = File('/home/lucky/Downloads/mess-manager/SDTT-ATTENDANCE-SYSTEM-/proof/screenshots/07_automated_testing/04_network_timeout_retry_card.png');
+            final proofDir = Platform.environment['ATTENDRIX_PROOF_DIR'] ?? '${Directory.systemTemp.path}/attendrix-proof/07_automated_testing';
+            final file = File('$proofDir/04_network_timeout_retry_card.png');
             file.parent.createSync(recursive: true);
             file.writeAsBytesSync(byteData.buffer.asUint8List());
           }
