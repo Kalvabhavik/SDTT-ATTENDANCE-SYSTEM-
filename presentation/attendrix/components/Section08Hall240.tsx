@@ -52,7 +52,7 @@ export default function Section08Hall240() {
     {
       num: 3,
       title: "Beat 3: Ingest 180° Gyro Sweeps",
-      desc: "Student mobile clients stream continuous 180° sweeps (Δyaw ≥ 120°) alongside device-grounded ArcFace probe embeddings.",
+      desc: "Student mobile clients stream continuous 180° sweeps (validated span Δyaw ≥ 150°) alongside device-grounded biometric probe embeddings.",
     },
     {
       num: 4,

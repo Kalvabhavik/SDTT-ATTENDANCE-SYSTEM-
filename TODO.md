@@ -2,7 +2,7 @@
 
 ## Phase 0 — Baseline & Architecture Consolidation (COMPLETED)
 - [x] **Backend Entrypoint Consolidation**: Consolidated on `backend/app/main.py` (Supabase Auth/Postgres architecture + InMemoryDatabase fallback for offline/isolated execution).
-- [x] **Test Suite Modernization**: Removed obsolete SQLite/DB_PATH references; rewrote `backend/tests/test_api.py` into 8 end-to-end tests covering login, role mismatch rejection, reference selfie enrollment, session limits, time enforcement, sweep check-in rules 1–9, review queue, and manual roll-call override.
+- [x] **Test Suite Modernization**: Added the real verification, security, controller, performance, camera, identity-integrity, and retry suites covering authentication, reference enrollment, session limits, time enforcement, sweep rules 1–9, review queue, manual roll-call, authorization, concurrency, and failure handling.
 - [x] **Duplicate Dashboard Clarification**: `apps/dashboard` (React/Vite) maintained as the active production dashboard (`apps/dashboard-next` retained per user instruction).
 - [x] **Removal of Fake Capture Flow**: Removed fake POST `/capture` size-based confidence generator and "synthetic confidence" UI; replaced with real 9-rule continuous sweep pipeline and review queue.
 
@@ -54,7 +54,6 @@
 ---
 
 ## Verification & Experiments (COMPLETED)
-- [x] **Backend Pytest**: 13 tests passing in 4.55s (`test_api.py`, `test_optical_feasibility.py`, `test_panorama_verification.py`).
+- [x] **Backend Pytest**: 138 tests passing in the sandbox after installing the declared OpenCV/ONNX dependencies.
 - [x] **Optical Feasibility & Sweep Benchmark**: Executed `experiments/panorama_verification/run_panorama_verification.py`. Confirmed Rule 7 FLAGGED rate = 80.0% due to front-camera optical resolution limitations at distance, properly routing to review queue.
-- [!] **Untested**: Real-device camera hardware sweep and physical lecture hall deployment (requires live mobile device and physical classroom setting).
-
+- [!] **Untested**: Physical-device camera hardware sweep and physical lecture hall deployment (requires a live mobile device and classroom setting).

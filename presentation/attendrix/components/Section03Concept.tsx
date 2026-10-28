@@ -21,7 +21,7 @@ export default function Section03Concept() {
       icon: Lock,
       color: "text-orange-700",
       borderColor: "border-orange-400",
-      desc: "Student executes a continuous sweep from front selfie through neighbor audience to the lecturer stage (monotonic Δyaw ≥ 120°).",
+      desc: "Student executes a continuous sweep from front selfie through neighbor audience to the lecturer stage (monotonic Δyaw ≥ 150°).",
       role: "Spatial-Temporal Continuity",
     },
     {
@@ -37,7 +37,7 @@ export default function Section03Concept() {
       icon: Smartphone,
       color: "text-amber-700",
       borderColor: "border-amber-400",
-      desc: "Student selfie is aligned to canonical 112×112 crop and compared against enrolled institutional reference (cosine similarity ≥ 0.65).",
+      desc: "Student selfie is aligned to canonical 112×112 crop and compared against the enrolled institutional reference (pass at cosine similarity ≥ 0.72; 0.50–0.71 routes to review).",
       role: "Biometric Identity Grounding",
     },
     {
@@ -153,7 +153,7 @@ export default function Section03Concept() {
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-700 font-bold">Gyro Heading:</span>
-                <span className="text-amber-800 font-bold">Δyaw = 142° (Pass)</span>
+                <span className="text-amber-800 font-bold">Δyaw = 168° (Pass)</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-700 font-bold">YuNet Face Count:</span>
@@ -161,7 +161,7 @@ export default function Section03Concept() {
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-700 font-bold">Biometric Cosine:</span>
-                <span className="text-emerald-800 font-bold">0.86 (Threshold ≥ 0.65)</span>
+                <span className="text-emerald-800 font-bold">0.86 (Pass threshold ≥ 0.72)</span>
               </div>
             </div>
           </div>

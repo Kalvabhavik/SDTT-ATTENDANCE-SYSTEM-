@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useEffect, useRef } from "react";
+import React, { createContext, useContext, useEffect, useRef, useState } from "react";
 import Lenis from "lenis";
 import { gsap } from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
@@ -28,6 +28,7 @@ export default function SmoothScrollProvider({
   children: React.ReactNode;
 }) {
   const lenisRef = useRef<Lenis | null>(null);
+  const [lenis, setLenis] = useState<Lenis | null>(null);
 
   useEffect(() => {
     // Initialize Lenis smooth scroll engine
@@ -39,6 +40,7 @@ export default function SmoothScrollProvider({
       touchMultiplier: 1.5,
     });
     lenisRef.current = lenis;
+    const exposeTimer = window.setTimeout(() => setLenis(lenis), 0);
 
     // Update ScrollTrigger on Lenis scroll
     lenis.on("scroll", () => {
@@ -54,8 +56,10 @@ export default function SmoothScrollProvider({
 
     return () => {
       gsap.ticker.remove(updateTicker);
+      window.clearTimeout(exposeTimer);
       lenis.destroy();
       lenisRef.current = null;
+      setLenis(null);
     };
   }, []);
 
@@ -64,7 +68,7 @@ export default function SmoothScrollProvider({
     options?: { offset?: number; duration?: number }
   ) => {
     if (lenisRef.current) {
-      lenisRef.current.scrollTo(target as any, {
+      lenisRef.current.scrollTo(target, {
         offset: options?.offset ?? -70,
         duration: options?.duration ?? 1.4,
         easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
@@ -82,7 +86,7 @@ export default function SmoothScrollProvider({
   };
 
   return (
-    <SmoothScrollContext.Provider value={{ lenis: lenisRef.current, scrollTo }}>
+    <SmoothScrollContext.Provider value={{ lenis, scrollTo }}>
       {children}
     </SmoothScrollContext.Provider>
   );

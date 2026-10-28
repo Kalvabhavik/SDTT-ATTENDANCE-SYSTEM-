@@ -102,7 +102,7 @@ export default function Section11Architecture() {
       color: "text-amber-800",
       borderColor: "border-amber-400",
       summary:
-        "Analyzes continuous horizontal rotation telemetry (Δyaw ≥ 120°). Evaluates peer density in classroom frames; if 0 faces are detected (empty room capture), immediately triggers zero-presence proxy interception.",
+        "Analyzes continuous horizontal rotation telemetry (Δyaw ≥ 150°). Evaluates peer density in classroom frames; if 0 faces are detected (empty room capture), immediately triggers zero-presence proxy interception.",
       security: "Replay-proof monotonic orientation tracking, zero-presence proxy detection, ephemeral sensor storage.",
     },
     {

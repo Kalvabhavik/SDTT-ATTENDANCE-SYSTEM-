@@ -81,7 +81,7 @@ Future<void> _renderAndCapture({
 }
 
 void main() {
-  const screenshotsDir = '/home/lucky/Downloads/mess-manager/SDTT-ATTENDANCE-SYSTEM-/proof/screenshots/03_camera_reliability';
+  final screenshotsDir = Platform.environment['ATTENDRIX_PROOF_DIR'] ?? '${Directory.systemTemp.path}/attendrix-proof/03_camera_reliability';
 
   group('Camera & Capture Reliability Tests', () {
     testWidgets('TC-MOB-009: Camera Permission Denied State', (tester) async {

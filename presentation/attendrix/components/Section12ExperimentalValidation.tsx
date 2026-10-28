@@ -170,7 +170,7 @@ export default function Section12ExperimentalValidation() {
                   key={key}
                   onClick={() => {
                     soundManager.playClick();
-                    setSelectedLighting(key as any);
+                    setSelectedLighting(key as "ambient_full" | "dimmed_projection" | "backlit");
                   }}
                   className={`py-2 px-1 text-[11px] rounded-xl border text-center transition-all ${
                     selectedLighting === key
@@ -200,7 +200,7 @@ export default function Section12ExperimentalValidation() {
                   key={key}
                   onClick={() => {
                     soundManager.playClick();
-                    setSelectedLens(key as any);
+                    setSelectedLens(key as "normal" | "ultrawide" | "telephoto");
                   }}
                   className={`py-2 px-1 text-[11px] rounded-xl border text-center transition-all ${
                     selectedLens === key

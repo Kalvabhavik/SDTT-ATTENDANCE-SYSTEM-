@@ -1,6 +1,6 @@
 # Classroom Attendance Backend
 
-FastAPI + SQLite prototype for the shared Flutter/web classroom attendance service. This is a **synthetic, review-first demo**, not a biometric or production attendance system.
+FastAPI backend for the shared Flutter/web classroom attendance service. The merged implementation supports Supabase/PostgREST persistence when configured, an in-memory adapter for isolated tests, encrypted biometric reference enrollment, continuous sweep verification, lecturer review, controller roster management, audit logging, and authenticated realtime events.
 
 ## Run locally
 
@@ -21,25 +21,25 @@ The API is under `/api`; WebSocket tickets connect to `/api/ws?ticket=...` (and 
 - `student1@demo.edu` / `student123`
 - `student2@demo.edu` / `student123`
 
-A single seeded class (`CS-101`) and two synthetic enrolled students are created on a new database. Do not use these credentials or the SQLite database for real student data.
+Demo accounts and seed data are development-only. Do not use demo credentials or unconfigured fallback persistence for real student data.
 
 ## Key workflow
 
 1. `POST /api/auth/login` to obtain a bearer token.
 2. Teacher lists classes, creates a session, and receives a pending roster.
-3. Teacher may upload `photo` to `/api/sessions/{id}/capture`. The capture is processed for this request and is not persisted by the application; the endpoint returns clearly labelled synthetic suggestions and writes a metadata audit entry. Multipart parsing can use temporary spooled storage for large uploads, which is handled by the framework for the request. No photo is kept in the application database or durable file storage, and no embedding is created.
-4. Teacher reviews/edits each status through `PATCH /api/sessions/{id}/attendance/{student_id}`.
-5. Teacher explicitly finalizes with `{ "mark_pending_absent": true }`. Remaining pending entries become absent, audit entries are written, and private in-app notifications are created for enrolled students.
-6. Students can read only their own attendance and notifications. Teachers can read class rosters, reports, and audit entries.
-7. `POST /api/auth/ws-ticket` creates a short-lived, single-use ticket for `/api/ws?ticket=...`. Events are informational; clients should refetch after reconnecting.
+3. Students enroll a consented reference selfie and submit continuous sweep frames during an active session. The ordered backend rules validate time, idempotency, image quality, sweep evidence, self-match, neighbour presence, lecturer identification, fraud signals, and the final decision.
+4. Flagged results enter the lecturer review queue; manual roll-call is available as an explicit fallback. Raw sweep frames are purged after processing according to the configured lifecycle.
+5. The lecturer closes the session after review. Final counts, audit entries, notifications, and reports are persisted from authoritative attendance decisions.
+6. Students can read only their own attendance and notifications. Lecturers can read assigned class rosters, reports, review queues, and audit entries. Controllers can manage authorized roster/reference data.
+7. `POST /api/auth/ws-ticket` creates a short-lived, single-use ticket for `/api/ws?ticket=...`. Clients use the structured events and reconcile from the server after reconnecting.
 
 ## Configuration
 
-See `.env.example`. Secrets are environment inputs; the fallback `ATTENDANCE_APP_SECRET` is conspicuously development-only. Configure a strong secret, a private SQLite path, CORS origins, and token limits outside local demos.
+See `.env.example`. Secrets are environment inputs; the fallback `ATTENDANCE_APP_SECRET` is development-only. Configure Supabase URL/service-role credentials, a strong application secret, CORS origins, token limits, biometric retention, and deployment observability before production use.
 
 ## Prototype boundaries
 
-No actual face recognition, biometric collection, embedding storage, email, SMS, real push adapter, or production security claim is included. `pdf_html` in the report endpoint is print-friendly report data, not a server PDF renderer. Production requires privacy/legal review, TLS, stronger identity/authentication, encrypted storage, retention/deletion controls, backup, monitoring, and a separately reviewed push provider.
+The verification pipeline is not a guarantee of accuracy or proxy-attendance elimination. Production requires privacy/legal review, consent and deletion controls, TLS, institution-approved authentication/MFA, encrypted storage, backup, monitoring, physical-device evaluation, and a separately reviewed push provider. `pdf_html` in the report endpoint is print-friendly report data, not a server PDF renderer.
 
 ## Tests
 
@@ -47,4 +47,4 @@ No actual face recognition, biometric collection, embedding storage, email, SMS,
 pytest -q
 ```
 
-Tests use a temporary SQLite database and cover login/roles, teacher session flow, simulated capture privacy, finalization notifications, student isolation, audit entries, and one-time WebSocket ticket behavior.
+Tests use isolated fixtures/adapters and cover authentication, authorization, reference enrollment, sweep verification, liveness/anti-spoofing, controller flows, concurrency, retry behavior, performance/privacy, camera inputs, auditability, reports, and one-time WebSocket ticket behavior.

@@ -47,7 +47,7 @@ const scenarios: Record<ScenarioKey, ScenarioConfig> = {
     outcomeStatus: "VERIFIED",
     outcomeMessage: "All Attendrix verification checks passed.",
     outcomeExplanation:
-      "Active liveness confirmed (Yaw left -18°, yaw right +22°, eye blink verified), ArcFace cosine similarity (0.86 ≥ 0.68), lecturer detected on stage, and lecture hall matched.",
+      "Active liveness confirmed (Yaw left -18°, yaw right +22°, eye blink verified), biometric cosine similarity (0.86 ≥ 0.72), lecturer detected on stage, and lecture hall matched.",
   },
   poor_quality: {
     key: "poor_quality",
@@ -79,7 +79,7 @@ const scenarios: Record<ScenarioKey, ScenarioConfig> = {
   },
   duplicate: {
     key: "duplicate",
-    label: "4. Duplicate Submission (1-Attempt Policy)",
+    label: "4. Duplicate Submission (Idempotent Record)",
     badge: "DUPLICATE REPLAY",
     badgeColor: "bg-rose-100 text-rose-900 border-rose-300 font-bold",
     qualityScore: 95,
@@ -89,7 +89,7 @@ const scenarios: Record<ScenarioKey, ScenarioConfig> = {
     outcomeStatus: "REJECTED",
     outcomeMessage: "A record already exists for this student and session.",
     outcomeExplanation:
-      "Student ID STU-2024-0482 already holds a committed attendance record for session #8491. 1-Attempt Policy rejects re-submission.",
+      "Student ID STU-2024-0482 already holds a committed attendance record for session #8491. Idempotency rejects a second verified record.",
   },
   uncertain_match: {
     key: "uncertain_match",
@@ -101,9 +101,9 @@ const scenarios: Record<ScenarioKey, ScenarioConfig> = {
     cosineSimilarity: 0.58,
     isDuplicate: false,
     outcomeStatus: "PENDING REVIEW",
-    outcomeMessage: "Cosine below 0.68 threshold. Routed to Lecturer Review Desk.",
+    outcomeMessage: "Cosine below 0.72 pass threshold. Routed to Lecturer Review Desk.",
     outcomeExplanation:
-      "Cosine similarity of 0.58 falls below the autonomous 0.68 threshold. System automatically preserves filmstrip keyframes and routes to Lecturer Review Desk.",
+      "Cosine similarity of 0.58 falls into the 0.50–0.71 review band. System preserves filmstrip keyframes and routes to the Lecturer Review Desk.",
   },
 };
 
@@ -244,7 +244,7 @@ export default function Section05StudentVerification() {
                   scenario.challengeMatch ? "text-amber-300" : "text-rose-400 line-through"
                 }`}
               >
-                {scenario.challengeMatch ? "Δyaw = 142° (CONTINUOUS PASS)" : "Δyaw = 18° / YuNet: 0 FACES (FLAGGED)"}
+                {scenario.challengeMatch ? "Δyaw = 168° (CONTINUOUS PASS)" : "Δyaw = 18° / YuNet: 0 FACES (FLAGGED)"}
               </span>
             </div>
           </div>
@@ -341,7 +341,7 @@ export default function Section05StudentVerification() {
               <span className="font-bold">
                 {currentStepIndex >= 2
                   ? scenario.challengeMatch
-                    ? "PASS (Δyaw ≥ 120° & Peers Present)"
+                    ? "PASS (Δyaw ≥ 150° & Peers Present)"
                     : "FLAGGED (Empty Room / 0 Faces)"
                   : "WAITING"}
               </span>
@@ -351,7 +351,7 @@ export default function Section05StudentVerification() {
             <div
               className={`p-3 rounded-xl border text-xs font-mono flex items-center justify-between transition-colors ${
                 currentStepIndex >= 3
-                  ? scenario.cosineSimilarity >= 0.68
+                  ? scenario.cosineSimilarity >= 0.72
                     ? "bg-emerald-50 border-emerald-300 text-emerald-900"
                     : scenario.cosineSimilarity >= 0.5
                     ? "bg-amber-50 border-amber-300 text-amber-900"
@@ -365,7 +365,7 @@ export default function Section05StudentVerification() {
               </div>
               <span className="font-bold">
                 {currentStepIndex >= 3
-                  ? `${scenario.cosineSimilarity.toFixed(2)} (Threshold: ≥ 0.68)`
+                  ? `${scenario.cosineSimilarity.toFixed(2)} (Pass threshold: ≥ 0.72)`
                   : "WAITING"}
               </span>
             </div>
@@ -382,7 +382,7 @@ export default function Section05StudentVerification() {
             >
               <div className="flex items-center gap-2.5">
                 <ShieldCheck className="w-4 h-4" />
-                <span>4. 1-Attempt Policy &amp; Deduplication</span>
+                <span>4. Bounded Attempts &amp; Deduplication</span>
               </div>
               <span className="font-bold">
                 {currentStepIndex >= 4

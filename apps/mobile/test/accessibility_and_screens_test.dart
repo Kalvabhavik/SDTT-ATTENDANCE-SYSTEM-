@@ -24,7 +24,7 @@ Future<void> _captureBoundary(GlobalKey key, String path, WidgetTester tester) a
 }
 
 void main() {
-  const screenshotsDir = '/home/lucky/Downloads/mess-manager/SDTT-ATTENDANCE-SYSTEM-/proof/screenshots/07_automated_testing';
+  final screenshotsDir = Platform.environment['ATTENDRIX_PROOF_DIR'] ?? '${Directory.systemTemp.path}/attendrix-proof/07_automated_testing';
 
   group('Category 12: Supported Screen Sizes & Responsiveness Tests', () {
     final screenSizes = [
