@@ -26,16 +26,18 @@ function normalizeAttendance(value: unknown): AttendanceEntry {
     student_id: id(raw.student_id ?? raw.id),
     student_name: text(raw.name ?? raw.student_name, 'Student'),
     student_email: raw.email === undefined || raw.email === null ? undefined : text(raw.email),
+    roll_number: raw.roll_number === undefined || raw.roll_number === null ? undefined : number(raw.roll_number),
     status: status(raw.status),
     confidence: raw.confidence === undefined || raw.confidence === null ? undefined : number(raw.confidence),
     note: raw.note === null || raw.note === undefined ? undefined : text(raw.note),
     changed_at: updatedAt,
     updated_at: updatedAt,
+    manually_corrected: raw.manually_corrected === true,
   }
 }
 function normalizeSuggestion(value: unknown): Suggestion {
   const raw = record(value)
-  return { student_id: id(raw.student_id ?? raw.id), student_name: text(raw.name ?? raw.student_name, 'Student'), confidence: number(raw.confidence), status: raw.status === 'suggestion' ? 'suggestion' : status(raw.status) }
+  return { student_id: id(raw.student_id ?? raw.id), student_name: text(raw.name ?? raw.student_name, 'Student'), roll_number: raw.roll_number === undefined || raw.roll_number === null ? undefined : number(raw.roll_number), confidence: number(raw.confidence), status: raw.status === 'suggestion' ? 'suggestion' : status(raw.status) }
 }
 function normalizeSession(value: unknown): Session {
   const raw = record(value)

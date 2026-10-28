@@ -3,8 +3,8 @@ export type AttendanceStatus = 'present' | 'absent' | 'pending'
 
 export interface User { id: string; name: string; email: string; role: Role }
 export interface ClassItem { id: string; name: string; code?: string; schedule?: string; room?: string; student_count?: number }
-export interface AttendanceEntry { student_id: string; student_name: string; student_email?: string; status: AttendanceStatus; confidence?: number; note?: string; changed_at?: string; updated_at?: string }
-export interface Suggestion { student_id: string; student_name: string; confidence: number; status?: 'suggestion' | AttendanceStatus }
+export interface AttendanceEntry { student_id: string; student_name: string; student_email?: string; roll_number?: number; status: AttendanceStatus; confidence?: number; note?: string; changed_at?: string; updated_at?: string; manually_corrected?: boolean }
+export interface Suggestion { student_id: string; student_name: string; roll_number?: number; confidence: number; status?: 'suggestion' | AttendanceStatus }
 export interface Session { id: string; class_id: string; class_name?: string; started_at: string; created_at?: string; finalized_at?: string | null; status?: 'open' | 'finalized'; attendance?: AttendanceEntry[]; suggestions?: Suggestion[]; present_count?: number; absent_count?: number; pending_count?: number }
 export interface AttendanceSummary { present: number; absent: number; pending: number; total_finalized: number; percentage: number | null }
 export interface StudentAttendanceEntry { session_id: string; class_name?: string; created_at: string; updated_at?: string; status: AttendanceStatus; note?: string }

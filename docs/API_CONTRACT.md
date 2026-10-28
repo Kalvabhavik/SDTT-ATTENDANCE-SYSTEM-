@@ -15,6 +15,7 @@ Demo accounts: `teacher@demo.edu / teach123`; `student1@demo.edu / student123`; 
 
 - `GET /classes` → teacher's classes (student sees only enrolled classes).
 - `GET /classes/{class_id}/students` → roster; teacher only.
+- Teacher roster and session attendance rows include `roll_number` when the enrollment has been assigned one. Existing installations must backfill `enrollments.roll_number`; session creation uses a deterministic temporary position for legacy null values and does not change the enrollment record.
 - `GET /sessions?limit=100&offset=0` → teacher history/open sessions, or student's own relevant sessions. The server caps list pages at 500.
 - `POST /sessions` — `{class_id}` creates an open session and pending roster records (teacher only).
 - `GET /sessions/{session_id}` → session, roster, attendance statuses, and suggestions (role-limited).
@@ -26,7 +27,7 @@ Demo accounts: `teacher@demo.edu / teach123`; `student1@demo.edu / student123`; 
 - `GET /audit?session_id=<id>` — teacher-only trace of session creation, capture, suggestion generation, changes, and finalization.
 - `GET /notifications`, `POST /notifications/{id}/read` — current user's in-app notification feed/read state.
 
-Session, class, student, attendance, notification, and audit identifiers are UUID strings. Payloads use `created_at`, and `attendance` rows contain `student_id`, `name`, `status`, `note`, and `updated_at`. Capture suggestions use `name`, confidence, and the non-attendance label `suggestion`; only a teacher's explicit review writes `present`, `absent`, or `pending`. Student attendance returns `summary.total_finalized` and a nullable `percentage` when there are no finalized records. Reports return `rows`, CSV text, and print-friendly HTML (`pdf_html`); audit entries use `timestamp`, `note`, and `metadata`; notification read state is `read_at`.
+Session, class, student, attendance, notification, and audit identifiers are UUID strings. Payloads use `created_at`, and `attendance` rows contain `student_id`, `roll_number`, `name`, `status`, `note`, `updated_at`, and a correction indicator where available. Capture suggestions use `name`, `roll_number`, confidence, and the non-attendance label `suggestion`; only a teacher's explicit review writes `present`, `absent`, or `pending`. Student attendance returns `summary.total_finalized` and a nullable `percentage` when there are no finalized records. Reports return `rows`, CSV text, and print-friendly HTML (`pdf_html`); audit entries use `timestamp`, `note`, and `metadata`; notification read state is `read_at`.
 
 ## Realtime
 

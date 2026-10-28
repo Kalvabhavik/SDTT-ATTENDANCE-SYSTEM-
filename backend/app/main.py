@@ -332,7 +332,7 @@ def _session_payload(row: dict[str, Any], user: dict[str, Any]) -> dict[str, Any
         att = (
             supa()
             .table("attendance")
-            .select("id, student_id, status, note, updated_at, profiles!attendance_student_id_fkey(name, email)")
+            .select("id, student_id, roll_number, status, note, updated_at, profiles!attendance_student_id_fkey(name, email)")
             .eq("session_id", row["id"])
             .order("student_id")
             .execute()
@@ -345,6 +345,7 @@ def _session_payload(row: dict[str, Any], user: dict[str, Any]) -> dict[str, Any
                 flat["name"] = prof["name"]
                 flat["email"] = prof["email"]
                 flat.pop("profiles", None)
+            flat["manually_corrected"] = bool(flat.get("note"))
             entries.append(flat)
         result["attendance"] = entries
 
@@ -556,11 +557,15 @@ def class_students(class_id: str, user: dict[str, Any] = Depends(current_user)) 
     resp = (
         supa()
         .table("enrollments")
-        .select("profiles(id, name, email, role)")
+        .select("roll_number, profiles(id, name, email, role)")
         .eq("class_id", class_id)
         .execute()
     )
-    return [e["profiles"] for e in (resp.data or []) if e.get("profiles")]
+    return [
+        {**e["profiles"], "roll_number": e.get("roll_number")}
+        for e in (resp.data or [])
+        if e.get("profiles")
+    ]
 
 
 @app.get("/api/sessions")
@@ -641,17 +646,23 @@ def create_session(
 
     # Seed attendance rows for all enrolled students
     students = (
-        supa().table("enrollments").select("student_id").eq("class_id", body.class_id).execute()
+        supa()
+        .table("enrollments")
+        .select("student_id, roll_number")
+        .eq("class_id", body.class_id)
+        .order("roll_number")
+        .execute()
     )
     att_rows = [
         {
             "session_id": session_id,
             "student_id": s["student_id"],
+            "roll_number": s.get("roll_number") or index + 1,
             "status": "pending",
             "updated_by": user["id"],
             "updated_at": now,
         }
-        for s in (students.data or [])
+        for index, s in enumerate(students.data or [])
     ]
     if att_rows:
         supa().table("attendance").insert(att_rows).execute()
@@ -702,7 +713,7 @@ async def capture(
     roster = (
         supa()
         .table("enrollments")
-        .select("student_id, profiles!enrollments_student_id_fkey(name)")
+        .select("student_id, roll_number, profiles!enrollments_student_id_fkey(name)")
         .eq("class_id", row["class_id"])
         .execute()
     )
@@ -727,13 +738,14 @@ async def capture(
             {
                 "session_id": session_id,
                 "student_id": student_id,
+                "roll_number": entry.get("roll_number"),
                 "confidence": confidence,
                 "label": "simulated",
                 "created_at": now,
             }
         )
         suggestions.append(
-            {"student_id": student_id, "name": name, "confidence": confidence, "status": "suggestion", "label": "simulated"}
+            {"student_id": student_id, "roll_number": entry.get("roll_number"), "name": name, "confidence": confidence, "status": "suggestion", "label": "simulated"}
         )
     if sugg_rows:
         supa().table("suggestions").insert(sugg_rows).execute()
@@ -773,7 +785,7 @@ def update_attendance(
         .update({"status": body.status, "note": body.note, "updated_by": user["id"], "updated_at": now})
         .eq("session_id", session_id)
         .eq("student_id", student_id)
-        .select("id, student_id, status, note, updated_at, profiles!attendance_student_id_fkey(name)")
+        .select("id, student_id, roll_number, status, note, updated_at, profiles!attendance_student_id_fkey(name)")
         .execute()
     )
     changed_row = changed.data[0] if isinstance(changed.data, list) and changed.data else changed.data
@@ -783,6 +795,7 @@ def update_attendance(
     prof = result.pop("profiles!attendance_student_id_fkey", None) or result.pop("profiles", None)
     if isinstance(prof, dict):
         result["name"] = prof["name"]
+    result["manually_corrected"] = bool(body.note)
 
     audit = _audit(
         session_id,

@@ -37,8 +37,10 @@ create table if not exists public.classes (
 create table if not exists public.enrollments (
   class_id   uuid not null references public.classes(id) on delete cascade,
   student_id uuid not null references public.profiles(id) on delete cascade,
+  roll_number integer check (roll_number is null or roll_number > 0),
   primary key (class_id, student_id)
 );
+create unique index if not exists uq_enrollments_class_roll on public.enrollments(class_id, roll_number) where roll_number is not null;
 
 -- sessions
 create table if not exists public.sessions (
@@ -55,6 +57,7 @@ create table if not exists public.attendance (
   id         uuid primary key default uuid_generate_v4(),
   session_id uuid not null references public.sessions(id) on delete cascade,
   student_id uuid not null references public.profiles(id),
+  roll_number integer check (roll_number is null or roll_number > 0),
   status     text not null check (status in ('pending', 'present', 'absent')) default 'pending',
   note       text,
   updated_by uuid not null references public.profiles(id),
@@ -107,9 +110,24 @@ create table if not exists public.notifications (
   read_at    timestamptz
 );
 
+-- Safe upgrade for databases created before the live roll-number grid.
+alter table public.enrollments add column if not exists roll_number integer;
+alter table public.attendance add column if not exists roll_number integer;
+do $$ begin
+  if not exists (select 1 from pg_constraint where conname = 'enrollments_roll_number_positive') then
+    alter table public.enrollments add constraint enrollments_roll_number_positive
+      check (roll_number is null or roll_number > 0);
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'attendance_roll_number_positive') then
+    alter table public.attendance add constraint attendance_roll_number_positive
+      check (roll_number is null or roll_number > 0);
+  end if;
+end $$;
+
 -- 3. Indexes ──────────────────────────────────────────────────
 create index if not exists idx_classes_teacher_created on public.classes(teacher_id, created_at desc);
 create index if not exists idx_enrollments_student_class on public.enrollments(student_id, class_id);
+create index if not exists idx_enrollments_class_roll on public.enrollments(class_id, roll_number);
 create index if not exists idx_sessions_class_created on public.sessions(class_id, created_at desc);
 create index if not exists idx_attendance_student    on public.attendance(student_id);
 create index if not exists idx_attendance_session_status on public.attendance(session_id, status);
