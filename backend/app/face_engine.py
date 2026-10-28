@@ -10,23 +10,29 @@ from __future__ import annotations
 
 import abc
 import hashlib
+import logging
 import math
 import os
+import threading
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional
 
 import numpy as np
 
+logger = logging.getLogger("attendrix.face_engine")
+
 try:
     import cv2
 except ImportError:
     cv2 = None
 
-try:
-    import onnxruntime as ort
-except ImportError:
-    ort = None
+# ONNX Runtime is optional and only needed when an ArcFace model is actually
+# provisioned. It is imported lazily in RealFaceEngine._init_models(). The
+# shipped deployment uses OpenCV's SFace recognizer, so importing ort at module
+# load would waste cold-start time without providing any benefit.
+ort = None
 
 
 @dataclass
@@ -623,9 +629,13 @@ class RealFaceEngine(FaceEngine):
         self._detector_type = "none"
         self._arcface_session: Any = None
         self._sface_recognizer: Any = None
+        self._inference_lock = threading.Lock()
+        self._detect_calls = 0
+        self._embedding_calls = 0
         self._init_models()
 
     def _init_models(self) -> None:
+        t0 = time.perf_counter()
         if cv2 is None:
             return
 
@@ -651,21 +661,43 @@ class RealFaceEngine(FaceEngine):
                 self._detector = cv2.CascadeClassifier(cascade_path)
                 self._detector_type = "haar"
 
-        # Initialize ArcFace ONNX if present
-        if ort is not None and self.arcface_path and Path(self.arcface_path).exists():
+        # Initialize ArcFace ONNX only when a model is actually provisioned.
+        if self.arcface_path and Path(self.arcface_path).exists():
             try:
-                self._arcface_session = ort.InferenceSession(self.arcface_path)
-            except Exception:
+                import onnxruntime as ort_runtime
+
+                self._arcface_session = ort_runtime.InferenceSession(self.arcface_path)
+            except Exception as e:
+                logger.warning(f"Failed to initialize ArcFace ONNX session: {e}")
                 self._arcface_session = None
 
         # Initialize SFace ONNX recognizer if present
         if self.sface_path and Path(self.sface_path).exists() and hasattr(cv2, "FaceRecognizerSF"):
             try:
                 self._sface_recognizer = cv2.FaceRecognizerSF.create(model=self.sface_path, config="")
-            except Exception:
+            except Exception as e:
+                logger.warning(f"Failed to initialize SFace recognizer: {e}")
                 self._sface_recognizer = None
 
+        elapsed_ms = (time.perf_counter() - t0) * 1000
+        rec_type = "sface" if self._sface_recognizer else ("arcface" if self._arcface_session else "none")
+        logger.info(f"[LIFECYCLE] FaceEngine models initialized in {elapsed_ms:.1f}ms: detector={self._detector_type}, recognizer={rec_type}")
+
     def detect_faces(self, img_bgr: np.ndarray, allow_fallback: Optional[bool] = None) -> list[FaceDetection]:
+        started = time.perf_counter()
+        with self._inference_lock:
+            result = self._detect_faces_locked(img_bgr, allow_fallback=allow_fallback)
+            self._detect_calls += 1
+            call_no = self._detect_calls
+        elapsed_ms = (time.perf_counter() - started) * 1000.0
+        if call_no == 1 or elapsed_ms >= 500.0:
+            logger.info(
+                f"[INFERENCE] detect_faces call={call_no} duration_ms={elapsed_ms:.1f} "
+                f"faces={len(result)} first_call={call_no == 1}"
+            )
+        return result
+
+    def _detect_faces_locked(self, img_bgr: np.ndarray, allow_fallback: Optional[bool] = None) -> list[FaceDetection]:
         if cv2 is None or img_bgr is None or img_bgr.size == 0:
             return []
 
@@ -826,6 +858,20 @@ class RealFaceEngine(FaceEngine):
         return []
 
     def extract_embedding(self, img_bgr: np.ndarray, detection: FaceDetection) -> np.ndarray:
+        started = time.perf_counter()
+        with self._inference_lock:
+            result = self._extract_embedding_locked(img_bgr, detection)
+            self._embedding_calls += 1
+            call_no = self._embedding_calls
+        elapsed_ms = (time.perf_counter() - started) * 1000.0
+        if call_no == 1 or elapsed_ms >= 500.0:
+            logger.info(
+                f"[INFERENCE] extract_embedding call={call_no} duration_ms={elapsed_ms:.1f} "
+                f"dim={len(result)} first_call={call_no == 1}"
+            )
+        return result
+
+    def _extract_embedding_locked(self, img_bgr: np.ndarray, detection: FaceDetection) -> np.ndarray:
         h, w = img_bgr.shape[:2]
         x1 = max(0, detection.bbox_x)
         y1 = max(0, detection.bbox_y)
@@ -940,15 +986,19 @@ class FakeFaceEngine(FaceEngine):
 
 # Global face engine instance
 _ENGINE_INSTANCE: Optional[FaceEngine] = None
+_ENGINE_LOCK = threading.Lock()
 
 
 def get_face_engine() -> FaceEngine:
     global _ENGINE_INSTANCE
     if _ENGINE_INSTANCE is None:
-        _ENGINE_INSTANCE = RealFaceEngine()
+        with _ENGINE_LOCK:
+            if _ENGINE_INSTANCE is None:
+                _ENGINE_INSTANCE = RealFaceEngine()
     return _ENGINE_INSTANCE
 
 
 def set_face_engine(engine: FaceEngine) -> None:
     global _ENGINE_INSTANCE
-    _ENGINE_INSTANCE = engine
+    with _ENGINE_LOCK:
+        _ENGINE_INSTANCE = engine

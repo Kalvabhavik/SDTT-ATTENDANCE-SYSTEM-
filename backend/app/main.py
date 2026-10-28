@@ -58,11 +58,18 @@ from app.config import (
     MIN_LUMINANCE,
     SESSION_DURATION_PRESETS,
     SESSION_GRACE_PERIOD_S,
+    STARTUP_DB_PROBE_TIMEOUT_S,
     WS_TICKET_TTL_SECONDS,
     validate_environment_config,
 )
 from app.db import supa, utc_now
 from app.face_engine import FaceDetection, get_face_engine
+from app.observability import (
+    InferenceBusyError,
+    RequestTimingMiddleware,
+    configure_logging,
+    inference_slot,
+)
 from app.security import (
     check_and_record_image_replay,
     check_login_rate_limit,
@@ -90,6 +97,9 @@ from app.verification import (
 
 logger = logging.getLogger("attendrix")
 
+# Configure stdout logging once for Render/production. No-op under pytest.
+configure_logging()
+
 # ── WebSocket state ───────────────────────────────────────────────────────────
 _ws_lock = threading.Lock()
 _ws_tickets: dict[str, tuple[str, float]] = {}
@@ -111,31 +121,70 @@ def _get_attendance_lock(session_id: str, student_id: str) -> threading.Lock:
         return _attendance_locks[key]
 
 
+def _read_upload(upload: Optional[UploadFile]) -> bytes:
+    """Read an uploaded file synchronously from the worker thread.
+
+    Endpoints that perform CPU-heavy image work run as sync ``def`` handlers so
+    Starlette executes them in its threadpool instead of on the asyncio event
+    loop. Those handlers must use the underlying spooled file object rather
+    than the async ``UploadFile.read()`` API.
+    """
+    if upload is None:
+        return b""
+    return upload.file.read()
+
+
+def _inference_busy_http(exc: InferenceBusyError) -> HTTPException:
+    """Translate a saturated inference queue into a retryable 503."""
+    return HTTPException(
+        status_code=503,
+        detail=f"{exc} [INFERENCE_BUSY]",
+        headers={"X-Error-Code": "INFERENCE_BUSY"},
+    )
+
 
 # ── Background Task: Auto-Close Expired Sessions ──────────────────────────────
+def _auto_close_expired_sessions() -> int:
+    """Close expired sessions using server time.
+
+    This is synchronous on purpose: it is invoked via ``asyncio.to_thread`` so
+    blocking Supabase/PostgREST I/O never stalls the event loop or health probe.
+    """
+    now_dt = datetime.now(timezone.utc)
+    db = supa()
+    open_sessions = (
+        db.table("sessions")
+        .select("*, classes(name, code, teacher_id)")
+        .eq("status", "open")
+        .execute()
+    )
+    closed = 0
+    for sess in open_sessions.data or []:
+        ends_at_str = sess.get("ends_at")
+        if not ends_at_str:
+            continue
+        try:
+            ends_at = datetime.fromisoformat(ends_at_str.replace("Z", "+00:00"))
+            if now_dt >= ends_at:
+                _close_session_internal(sess)
+                closed += 1
+        except Exception as e:
+            logger.error(f"Error checking session expiry: {e}")
+    return closed
+
+
 async def _session_auto_close_loop():
     """Background task running in lifespan to close expired sessions on server clock."""
     while True:
         try:
             await asyncio.sleep(AUTO_CLOSE_INTERVAL_S)
-            now_dt = datetime.now(timezone.utc)
-            db = supa()
-            open_sessions = (
-                db.table("sessions")
-                .select("*, classes(name, code, teacher_id)")
-                .eq("status", "open")
-                .execute()
-            )
-            for sess in open_sessions.data or []:
-                ends_at_str = sess.get("ends_at")
-                if not ends_at_str:
-                    continue
-                try:
-                    ends_at = datetime.fromisoformat(ends_at_str.replace("Z", "+00:00"))
-                    if now_dt >= ends_at:
-                        _close_session_internal(sess)
-                except Exception as e:
-                    logger.error(f"Error checking session expiry: {e}")
+            started = time.perf_counter()
+            closed = await asyncio.to_thread(_auto_close_expired_sessions)
+            if closed:
+                logger.info(
+                    f"[LIFECYCLE] auto_close closed={closed} "
+                    f"duration_ms={(time.perf_counter() - started) * 1000.0:.1f}"
+                )
         except asyncio.CancelledError:
             break
         except Exception as exc:
@@ -144,9 +193,28 @@ async def _session_auto_close_loop():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Verify DB connectivity on startup
+    started = time.perf_counter()
+
+    # Verify DB connectivity on startup without allowing a slow/unreachable
+    # database to delay Render's health check past the probe timeout.
+    probe_started = time.perf_counter()
     try:
-        supa().table("profiles").select("id").limit(1).execute()
+        await asyncio.wait_for(
+            asyncio.to_thread(
+                lambda: supa().table("profiles").select("id").limit(1).execute()
+            ),
+            timeout=STARTUP_DB_PROBE_TIMEOUT_S,
+        )
+        logger.info(
+            f"[LIFECYCLE] startup_db_probe status=ok "
+            f"duration_ms={(time.perf_counter() - probe_started) * 1000.0:.1f}"
+        )
+    except asyncio.TimeoutError:
+        logger.warning(
+            f"[LIFECYCLE] startup_db_probe status=timeout "
+            f"timeout_s={STARTUP_DB_PROBE_TIMEOUT_S} "
+            f"duration_ms={(time.perf_counter() - probe_started) * 1000.0:.1f}"
+        )
     except Exception as exc:
         if ATTENDANCE_ENV != "test":
             logger.warning(f"Database connection note: {exc}")
@@ -158,6 +226,10 @@ async def lifespan(app: FastAPI):
 
     # Launch auto-close background loop
     task = asyncio.create_task(_session_auto_close_loop())
+    logger.info(
+        f"[LIFECYCLE] startup_complete duration_ms={(time.perf_counter() - started) * 1000.0:.1f} "
+        f"face_engine=lazy env={ATTENDANCE_ENV}"
+    )
     yield
     task.cancel()
     try:
@@ -247,6 +319,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Application-side request timing (outermost): adds Server-Timing and logs one
+# structured line per request without ever recording query strings or bodies.
+app.add_middleware(RequestTimingMiddleware)
+
 
 # ── Global Exception Handler Shield ───────────────────────────────────────────
 @app.exception_handler(Exception)
@@ -293,6 +369,26 @@ def current_user(
         raise HTTPException(status_code=401, detail="User profile not found")
 
     profile = resp.data[0]
+    db_role = profile.get("role")
+    if not db_role or db_role not in ("student", "teacher", "controller", "admin"):
+        raise HTTPException(
+            status_code=403,
+            detail="User account has missing or invalid role assignment. [INVALID_ROLE]",
+            headers={"X-Error-Code": "INVALID_ROLE"},
+        )
+
+    # Fail closed on role inconsistency between token claims and database authority
+    token_role = (
+        payload.get("app_metadata", {}).get("role")
+        or payload.get("user_metadata", {}).get("role")
+    )
+    if token_role and token_role != db_role:
+        raise HTTPException(
+            status_code=403,
+            detail="Token role claim does not match authoritative database profile. [ROLE_MISMATCH]",
+            headers={"X-Error-Code": "ROLE_MISMATCH"},
+        )
+
     if profile.get("is_active") is False:
         raise HTTPException(
             status_code=401,
@@ -371,6 +467,16 @@ def _get_session_or_404(session_id: str) -> dict[str, Any]:
         row["class_name"] = row["classes"]["name"]
         row["class_code"] = row["classes"]["code"]
         row["teacher_id"] = row["classes"]["teacher_id"]
+    elif not row.get("teacher_id") and row.get("class_id"):
+        try:
+            cls_resp = supa().table("classes").select("name, code, teacher_id").eq("id", row["class_id"]).execute()
+            if cls_resp.data:
+                c = cls_resp.data[0]
+                row["class_name"] = c.get("name")
+                row["class_code"] = c.get("code")
+                row["teacher_id"] = c.get("teacher_id")
+        except Exception:
+            pass
 
     # Lazy auto-close check so expiry survives server restarts and offline time
     if row.get("status") == "open" and row.get("ends_at"):
@@ -626,6 +732,12 @@ class CreateStudentRequest(BaseModel):
     class_ids: list[str] = []
 
 
+class CreateTeacherRequest(BaseModel):
+    name: str = Field(min_length=2, max_length=100)
+    email: str = Field(min_length=5, max_length=120)
+    password: Optional[str] = Field(default="teach123", min_length=6, max_length=128)
+
+
 class RegistrationWindowRequest(BaseModel):
     is_open: bool
     note: Optional[str] = None
@@ -645,7 +757,8 @@ def _is_registration_window_open() -> bool:
 @app.get("/")
 @app.get("/health")
 @app.get("/api/health")
-def health() -> dict[str, str]:
+async def health() -> dict[str, str]:
+    # Deliberately dependency-free: no DB, model, filesystem, or network work.
     return {"status": "ok", "service": "attendrix-attendance-api"}
 
 
@@ -676,44 +789,21 @@ def login(req: LoginRequest, request: Request) -> dict[str, Any]:
         logger.warning(f"Error querying profiles table for {email}: {e}")
         prof = None
 
-    # Map user-facing role to DB role
-    requested_role = req.selected_role.lower() if req.selected_role else None
-    if requested_role in ("lecturer", "teacher"):
-        expected_role = "teacher"
-    elif requested_role == "student":
-        expected_role = "student"
-    elif requested_role in ("controller", "admin"):
-        expected_role = "controller"
-    else:
-        expected_role = None
-
-    # If account doesn't exist, handle first-time sign-up / auto-provisioning
+    # Fail closed: No auto-provisioning or privileged fallback profile creation
     if not prof:
-        if expected_role == "controller" or "controller" in email or "admin" in email:
-            # Controller account
-            new_id = str(uuid.uuid4())
-            try:
-                auth_res = supa().auth.admin.create_user({
-                    "email": email,
-                    "password": req.password or "admin123",
-                    "email_confirm": True,
-                    "user_metadata": {"name": "Academic Controller", "role": "teacher"},
-                })
-                new_id = auth_res.user.id
-            except Exception:
-                pass
-            prof = {
-                "id": new_id,
-                "name": "Academic Controller",
-                "email": email,
-                "role": "controller",
-            }
-        else:
-            raise HTTPException(
-                status_code=401,
-                detail="Invalid email or password",
-                headers={"X-Error-Code": "INVALID_CREDENTIALS"},
-            )
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid email or password",
+            headers={"X-Error-Code": "INVALID_CREDENTIALS"},
+        )
+
+    db_role = prof.get("role")
+    if not db_role or db_role not in ("student", "teacher", "controller", "admin"):
+        raise HTTPException(
+            status_code=403,
+            detail="Account has missing or invalid role assignment. Access denied. [INVALID_ROLE]",
+            headers={"X-Error-Code": "INVALID_ROLE"},
+        )
 
     if prof.get("is_active") is False:
         raise HTTPException(
@@ -722,25 +812,35 @@ def login(req: LoginRequest, request: Request) -> dict[str, Any]:
             headers={"X-Error-Code": "ACCOUNT_DEACTIVATED"},
         )
 
-    # Determine effective role (special-case controller if email is controller@demo.edu or role is controller)
-    effective_role = prof.get("role", "student")
-    if expected_role == "controller" or "controller" in email or "admin" in email:
-        effective_role = "controller"
+    # Server-enforced role from authoritative database profile ONLY
+    # Never derived from email substrings ('admin', 'controller') or request bodies
+    effective_role = db_role
 
-    # Check role mismatch if selected_role was specified (and not controller)
-    if expected_role and expected_role != "controller" and effective_role != expected_role:
-        role_label = (
-            "Student" if effective_role == "student"
-            else ("Controller" if effective_role == "controller" else "Lecturer")
-        )
-        selected_label = (
-            "Student" if expected_role == "student"
-            else ("Controller" if expected_role == "controller" else "Lecturer")
-        )
-        raise HTTPException(
-            status_code=403,
-            detail=f"Role mismatch: This account is registered as {role_label}, not {selected_label}.",
-        )
+    # Map and enforce user-facing selected_role if supplied
+    requested_role = req.selected_role.lower() if req.selected_role else None
+    if requested_role:
+        if requested_role in ("lecturer", "teacher"):
+            expected_role = "teacher"
+        elif requested_role == "student":
+            expected_role = "student"
+        elif requested_role in ("controller", "admin"):
+            expected_role = "controller"
+        else:
+            expected_role = None
+
+        if expected_role and effective_role != expected_role:
+            role_label = (
+                "Student" if effective_role == "student"
+                else ("Controller" if effective_role in ("controller", "admin") else "Lecturer")
+            )
+            selected_label = (
+                "Student" if expected_role == "student"
+                else ("Controller" if expected_role == "controller" else "Lecturer")
+            )
+            raise HTTPException(
+                status_code=403,
+                detail=f"Role mismatch: This account is registered as {role_label}, not {selected_label}.",
+            )
 
     # Issue verified token
     token = create_access_token(
@@ -768,7 +868,13 @@ def signup(req: SignupRequest) -> dict[str, Any]:
     """Dedicated endpoint for new student and teacher registrations."""
     email = req.email.strip().lower()
     user_role = (req.role or "student").strip().lower()
-    db_role = "teacher" if user_role in ("teacher", "lecturer") else "student"
+    if user_role in ("teacher", "lecturer", "controller", "admin"):
+        raise HTTPException(
+            status_code=403,
+            detail="Self-registration for teacher or controller privileges is prohibited. Staff accounts must be authorized by an administrator. [ROLE_ELEVATION_DENIED]",
+            headers={"X-Error-Code": "ROLE_ELEVATION_DENIED"},
+        )
+    db_role = "student"
     display_name = (req.name or email.split("@")[0].replace(".", " ")).strip().title()
 
     # Check if user already exists
@@ -864,7 +970,7 @@ def me(user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
 
 # ── Routes: Biometric Selfie Reference Enrollment ─────────────────────────────
 @app.post("/api/auth/enroll")
-async def enroll_reference_selfie(
+def enroll_reference_selfie(
     consent: bool = Form(...),
     photo: UploadFile = File(...),
     user: dict[str, Any] = Depends(current_user),
@@ -888,7 +994,7 @@ async def enroll_reference_selfie(
             detail="Biometric consent is required to enroll reference face verification.",
         )
 
-    image_bytes = await photo.read()
+    image_bytes = _read_upload(photo)
     img, err_code, err_msg = validate_image_payload(image_bytes, max_bytes=10485760)
     if err_code is not None:
         status_code = 413 if err_code == "IMAGE_TOO_LARGE" else (415 if err_code == "UNSUPPORTED_FORMAT" else 400)
@@ -898,27 +1004,32 @@ async def enroll_reference_selfie(
             headers={"X-Error-Code": err_code},
         )
 
-    engine = get_face_engine()
-    faces = engine.detect_faces(img, allow_fallback=True)
+    try:
+        with inference_slot("enroll_reference"):
+            engine = get_face_engine()
+            faces = engine.detect_faces(img, allow_fallback=True)
 
-    face_ok, face_err, face_msg = validate_single_face(faces)
-    if not face_ok:
-        raise HTTPException(
-            status_code=400,
-            detail=f"{face_msg} [{face_err}]",
-            headers={"X-Error-Code": face_err},
-        )
+            face_ok, face_err, face_msg = validate_single_face(faces)
+            if not face_ok:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"{face_msg} [{face_err}]",
+                    headers={"X-Error-Code": face_err},
+                )
 
-    q_ok, q_err, q_msg, q_metrics = assess_image_quality(img, faces[0])
-    if not q_ok:
-        raise HTTPException(
-            status_code=400,
-            detail=f"{q_msg} [{q_err}]",
-            headers={"X-Error-Code": q_err},
-        )
+            q_ok, q_err, q_msg, q_metrics = assess_image_quality(img, faces[0])
+            if not q_ok:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"{q_msg} [{q_err}]",
+                    headers={"X-Error-Code": q_err},
+                )
 
-    # Extract 512-dim embedding and encrypt it symmetrically
-    emb = engine.extract_embedding(img, faces[0])
+            # Extract 512-dim embedding and encrypt it symmetrically
+            emb = engine.extract_embedding(img, faces[0])
+    except InferenceBusyError as exc:
+        raise _inference_busy_http(exc)
+
     encrypted_emb = encrypt_face_embedding(emb)
     consent_ts = utc_now()
     model_version = "arcface-yunet-v1"
@@ -1060,11 +1171,11 @@ def classes(user: dict[str, Any] = Depends(current_user)) -> list[dict[str, Any]
 
 @app.get("/api/classes/{class_id}/students")
 def class_students(class_id: str, user: dict[str, Any] = Depends(current_user)) -> list[dict[str, Any]]:
-    if user.get("role") not in ("teacher", "controller"):
+    if user.get("role") not in ("teacher", "controller", "admin"):
         raise HTTPException(status_code=403, detail="Lecturer or Controller authorization required")
     cls = _get_class_or_404(class_id)
     if user.get("role") == "teacher":
-        _assert_class_access(cls, user)
+        _assert_class_access(cls, user, teacher_only=True)
     resp = (
         supa()
         .table("enrollments")
@@ -1079,7 +1190,7 @@ def class_students(class_id: str, user: dict[str, Any] = Depends(current_user)) 
 @app.get("/api/sessions")
 def sessions(user: dict[str, Any] = Depends(current_user)) -> list[dict[str, Any]]:
     now_iso = utc_now()
-    if user["role"] == "controller":
+    if user["role"] in ("controller", "admin"):
         resp = (
             supa()
             .table("sessions")
@@ -1088,11 +1199,15 @@ def sessions(user: dict[str, Any] = Depends(current_user)) -> list[dict[str, Any
             .execute()
         )
     elif user["role"] == "teacher":
+        teacher_classes = supa().table("classes").select("id").eq("teacher_id", user["id"]).execute().data or []
+        class_ids = [c["id"] for c in teacher_classes]
+        if not class_ids:
+            return []
         resp = (
             supa()
             .table("sessions")
             .select("*, classes(name, code, teacher_id)")
-            .eq("classes.teacher_id", user["id"])
+            .in_("class_id", class_ids)
             .order("created_at", desc=True)
             .execute()
         )
@@ -1216,7 +1331,7 @@ def get_session(session_id: str, user: dict[str, Any] = Depends(current_user)) -
 
 
 @app.post("/api/sessions/{session_id}/reference")
-async def teacher_set_session_reference(
+def teacher_set_session_reference(
     session_id: str,
     photo: Optional[UploadFile] = File(default=None),
     photo_base64: Optional[str] = Form(default=None),
@@ -1229,7 +1344,7 @@ async def teacher_set_session_reference(
 
     data_uri = ""
     if photo is not None:
-        p_bytes = await photo.read()
+        p_bytes = _read_upload(photo)
         if len(p_bytes) > 0:
             _, err_code, err_msg = validate_image_payload(p_bytes, max_bytes=10485760, min_width=1, min_height=1)
             if err_code is not None:
@@ -1357,7 +1472,7 @@ def _session_payload(row: dict[str, Any], user: dict[str, Any]) -> dict[str, Any
 
 # ── Routes: Continuous Front-Camera Sweep Check-in ────────────────────────────
 @app.post("/api/sessions/{session_id}/checkin")
-async def student_sweep_checkin(
+def student_sweep_checkin(
     session_id: str,
     attempt_id: str = Form(...),
     metadata: str = Form(...),
@@ -1390,7 +1505,7 @@ async def student_sweep_checkin(
     # Read uploaded frame bytes
     sweep_frames: list[SweepFrame] = []
     for idx, upload in enumerate(frames):
-        data = await upload.read()
+        data = _read_upload(upload)
         meta = frame_meta_list[idx] if idx < len(frame_meta_list) else {}
         sweep_frames.append(
             SweepFrame(
@@ -1426,16 +1541,26 @@ async def student_sweep_checkin(
     if lec_template.data:
         lec_emb = decrypt_face_embedding(lec_template.data["encrypted_embedding"])
 
-    # Execute 9-Rule Verification Pipeline
-    pipeline = VerificationPipeline()
-    outcome = pipeline.run(
-        session=row,
-        student_profile=user,
-        attempt_id=attempt_id,
-        frames=sweep_frames,
-        student_enrolled_embedding=st_emb,
-        lecturer_enrolled_embedding=lec_emb,
-    )
+    # Execute 9-Rule Verification Pipeline inside the process-wide inference
+    # gate. The gate is released before any attendance write occurs.
+    try:
+        with inference_slot("sweep_checkin"):
+            pipeline = VerificationPipeline()
+            outcome = pipeline.run(
+                session=row,
+                student_profile=user,
+                attempt_id=attempt_id,
+                frames=sweep_frames,
+                student_enrolled_embedding=st_emb,
+                lecturer_enrolled_embedding=lec_emb,
+            )
+    except InferenceBusyError as exc:
+        # No attempt, attendance, or filmstrip write happens when capacity is
+        # saturated, so a retry cannot be mistaken for a duplicate attempt.
+        for f in sweep_frames:
+            f.image_bytes = b""
+            f.img_bgr = None
+        raise _inference_busy_http(exc)
 
     filmstrip_paths: list[str] = []
     # If FLAGGED: retain key frames for lecturer review
@@ -2193,7 +2318,7 @@ def analyze_classroom_panorama(
 
 
 @app.post("/api/sessions/{session_id}/liveness-challenge")
-async def create_session_liveness_challenge(
+def create_session_liveness_challenge(
     session_id: str,
     user: dict[str, Any] = Depends(current_user),
 ) -> dict[str, Any]:
@@ -2229,7 +2354,7 @@ async def create_session_liveness_challenge(
 
 
 @app.post("/api/sessions/{session_id}/verify-attendance")
-async def verify_student_live_attendance(
+def verify_student_live_attendance(
     session_id: str,
     request: Request,
     face_image: UploadFile = File(...),
@@ -2274,12 +2399,12 @@ async def verify_student_live_attendance(
             f"for user {user.get('id')}. Disregarded per security policy: Only server-side CV inference authorizes attendance."
         )
 
-    # Read upload bytes asynchronously before acquiring serialization lock
-    face_bytes = await face_image.read()
-    room_bytes = (await classroom_image.read()) if classroom_image is not None else None
-    b_left = (await face_left.read()) if face_left is not None else None
-    b_right = (await face_right.read()) if face_right is not None else None
-    b_blink = (await face_blink.read()) if face_blink is not None else None
+    # Read upload bytes before acquiring serialization lock
+    face_bytes = _read_upload(face_image)
+    room_bytes = _read_upload(classroom_image) if classroom_image is not None else None
+    b_left = _read_upload(face_left) if face_left is not None else None
+    b_right = _read_upload(face_right) if face_right is not None else None
+    b_blink = _read_upload(face_blink) if face_blink is not None else None
 
     # Validate primary face image payload format and size limits immediately
     img_face, err_code, err_msg = validate_image_payload(face_bytes, max_bytes=10485760)
@@ -2426,183 +2551,189 @@ async def verify_student_live_attendance(
         # 4. Analyze live face frame & check for replay attack
         sha256_digest = hashlib.sha256(face_bytes).hexdigest()
         engine = get_face_engine()
-        phash_val = engine.compute_phash(img_face)
-
-        is_replay, replay_reason = check_and_record_image_replay(sha256_digest, phash_val)
-        if is_replay:
-            _audit(
-                session_id=session_id,
-                actor_id=user["id"],
-                action="attendance.replay_attack_blocked",
-                note=f"Replay attack blocked for {user.get('name', 'Student')}: {replay_reason}",
-            )
-            raise HTTPException(
-                status_code=400,
-                detail=f"Replay attack detected: {replay_reason}. Fresh camera capture is strictly required. [REPLAY_ATTACK_DETECTED]",
-                headers={"X-Error-Code": "REPLAY_ATTACK_DETECTED"},
-            )
 
         # Face Detection and Multi-factor Verification (Fails closed on model/pipeline error)
         try:
-            allow_fb = (os.environ.get("ATTENDANCE_ENV") == "test" and os.environ.get("STRICT_BIOMETRICS") != "1")
-            detected_faces = engine.detect_faces(img_face, allow_fallback=allow_fb)
-            face_ok, face_err, face_msg = validate_single_face(detected_faces)
-            if not face_ok:
-                _audit(
-                    session_id=session_id,
-                    actor_id=user["id"],
-                    action=f"attendance.{face_err.lower()}",
-                    note=f"Student {user.get('name', 'Student')} verification attempt failed: {face_msg}",
-                )
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"{face_msg} [{face_err}]",
-                    headers={"X-Error-Code": face_err},
-                )
-
-            primary_face = detected_faces[0]
-
-            # 5. Image Quality Screening & Passive Presentation Attack Detection
-            q_ok, q_err, q_msg, q_metrics = assess_image_quality(img_face, primary_face)
-            if not q_ok:
-                _audit(
-                    session_id=session_id,
-                    actor_id=user["id"],
-                    action=f"attendance.quality_failed.{q_err.lower()}",
-                    note=f"Image quality check failed: {q_msg}",
-                    metadata=q_metrics,
-                )
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"{q_msg} [{q_err}]",
-                    headers={"X-Error-Code": q_err},
-                )
-
-            if not allow_fb:
-                pa_res = engine.detect_presentation_attack(img_face, primary_face)
-                if pa_res.get("is_spoof"):
+            # Bound the entire CV section to protect the 512 MB Render instance.
+            with inference_slot("verify_attendance"):
+                # Record the replay hash only after inference capacity is
+                # admitted, so a 503 queue timeout never poisons retries.
+                phash_val = engine.compute_phash(img_face)
+                is_replay, replay_reason = check_and_record_image_replay(sha256_digest, phash_val)
+                if is_replay:
                     _audit(
                         session_id=session_id,
                         actor_id=user["id"],
-                        action="attendance.presentation_attack_blocked",
-                        note=f"Presentation attack flagged: {pa_res['message']}",
-                        metadata={"spoof_score": pa_res.get("spoof_score", 1.0)},
+                        action="attendance.replay_attack_blocked",
+                        note=f"Replay attack blocked for {user.get('name', 'Student')}: {replay_reason}",
                     )
                     raise HTTPException(
                         status_code=400,
-                        detail=f"Presentation attack detected: {pa_res['message']}. Please use a live camera.",
+                        detail=f"Replay attack detected: {replay_reason}. Fresh camera capture is strictly required. [REPLAY_ATTACK_DETECTED]",
+                        headers={"X-Error-Code": "REPLAY_ATTACK_DETECTED"},
                     )
 
-            # 7. Extract Feature Embedding and 1:N Student Match
-            live_emb = engine.extract_embedding(img_face, primary_face)
-            if len(live_emb) != len(user_reg_emb):
-                raise HTTPException(
-                    status_code=400,
-                    detail="Incompatible biometric model version or dimension mismatch. Re-enrollment required. [INVALID_ENROLLMENT_DATA]",
-                    headers={"X-Error-Code": "INVALID_ENROLLMENT_DATA"},
-                )
+                allow_fb = (os.environ.get("ATTENDANCE_ENV") == "test" and os.environ.get("STRICT_BIOMETRICS") != "1")
+                detected_faces = engine.detect_faces(img_face, allow_fallback=allow_fb)
+                face_ok, face_err, face_msg = validate_single_face(detected_faces)
+                if not face_ok:
+                    _audit(
+                        session_id=session_id,
+                        actor_id=user["id"],
+                        action=f"attendance.{face_err.lower()}",
+                        note=f"Student {user.get('name', 'Student')} verification attempt failed: {face_msg}",
+                    )
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"{face_msg} [{face_err}]",
+                        headers={"X-Error-Code": face_err},
+                    )
 
-            norm_live = float(np.linalg.norm(live_emb))
-            norm_reg = float(np.linalg.norm(user_reg_emb))
-            if norm_live > 0 and norm_reg > 0:
-                similarity = float(np.dot(live_emb, user_reg_emb) / (norm_live * norm_reg))
-            else:
-                similarity = 0.0
+                primary_face = detected_faces[0]
 
-            all_templates = db.table("face_templates").select("*").execute().data or []
-            all_profiles = {p["id"]: p for p in (db.table("profiles").select("*").execute().data or [])}
+                # 5. Image Quality Screening & Passive Presentation Attack Detection
+                q_ok, q_err, q_msg, q_metrics = assess_image_quality(img_face, primary_face)
+                if not q_ok:
+                    _audit(
+                        session_id=session_id,
+                        actor_id=user["id"],
+                        action=f"attendance.quality_failed.{q_err.lower()}",
+                        note=f"Image quality check failed: {q_msg}",
+                        metadata=q_metrics,
+                    )
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"{q_msg} [{q_err}]",
+                        headers={"X-Error-Code": q_err},
+                    )
 
-            scored_matches: list[dict[str, Any]] = []
-            for tmpl in all_templates:
-                tid = tmpl["user_id"]
-                try:
-                    other_emb = decrypt_face_embedding(tmpl.get("encrypted_embedding", ""))
-                    if not isinstance(other_emb, np.ndarray) or len(other_emb) != len(live_emb):
+                if not allow_fb:
+                    pa_res = engine.detect_presentation_attack(img_face, primary_face)
+                    if pa_res.get("is_spoof"):
+                        _audit(
+                            session_id=session_id,
+                            actor_id=user["id"],
+                            action="attendance.presentation_attack_blocked",
+                            note=f"Presentation attack flagged: {pa_res['message']}",
+                            metadata={"spoof_score": pa_res.get("spoof_score", 1.0)},
+                        )
+                        raise HTTPException(
+                            status_code=400,
+                            detail=f"Presentation attack detected: {pa_res['message']}. Please use a live camera.",
+                        )
+
+                # 7. Extract Feature Embedding and 1:N Student Match
+                live_emb = engine.extract_embedding(img_face, primary_face)
+                if len(live_emb) != len(user_reg_emb):
+                    raise HTTPException(
+                        status_code=400,
+                        detail="Incompatible biometric model version or dimension mismatch. Re-enrollment required. [INVALID_ENROLLMENT_DATA]",
+                        headers={"X-Error-Code": "INVALID_ENROLLMENT_DATA"},
+                    )
+
+                norm_live = float(np.linalg.norm(live_emb))
+                norm_reg = float(np.linalg.norm(user_reg_emb))
+                if norm_live > 0 and norm_reg > 0:
+                    similarity = float(np.dot(live_emb, user_reg_emb) / (norm_live * norm_reg))
+                else:
+                    similarity = 0.0
+
+                all_templates = db.table("face_templates").select("*").execute().data or []
+                all_profiles = {p["id"]: p for p in (db.table("profiles").select("*").execute().data or [])}
+
+                scored_matches: list[dict[str, Any]] = []
+                for tmpl in all_templates:
+                    tid = tmpl["user_id"]
+                    try:
+                        other_emb = decrypt_face_embedding(tmpl.get("encrypted_embedding", ""))
+                        if not isinstance(other_emb, np.ndarray) or len(other_emb) != len(live_emb):
+                            continue
+                        norm_other = float(np.linalg.norm(other_emb))
+                        if norm_live > 0 and norm_other > 0:
+                            sim_cand = float(np.dot(live_emb, other_emb) / (norm_live * norm_other))
+                        else:
+                            sim_cand = 0.0
+                        prof = all_profiles.get(tid, {})
+                        scored_matches.append({
+                            "user_id": tid,
+                            "name": prof.get("name", "Student"),
+                            "roll_number": prof.get("roll_number", "N/A"),
+                            "similarity": sim_cand,
+                        })
+                    except Exception:
                         continue
-                    norm_other = float(np.linalg.norm(other_emb))
-                    if norm_live > 0 and norm_other > 0:
-                        sim_cand = float(np.dot(live_emb, other_emb) / (norm_live * norm_other))
-                    else:
-                        sim_cand = 0.0
-                    prof = all_profiles.get(tid, {})
-                    scored_matches.append({
-                        "user_id": tid,
-                        "name": prof.get("name", "Student"),
-                        "roll_number": prof.get("roll_number", "N/A"),
-                        "similarity": sim_cand,
-                    })
-                except Exception:
-                    continue
 
-            scored_matches.sort(key=lambda m: m["similarity"], reverse=True)
-            best_candidate = scored_matches[0] if scored_matches else None
+                scored_matches.sort(key=lambda m: m["similarity"], reverse=True)
+                best_candidate = scored_matches[0] if scored_matches else None
 
-            # Calibrated Decision Thresholding
-            is_ambiguous = False
-            if best_candidate and best_candidate["user_id"] != user["id"] and best_candidate["similarity"] >= 0.65 and (best_candidate["similarity"] - similarity) > 0.15:
-                face_matched = False
-                face_decision_note = f"Proxy rejected: Scanned face matches {best_candidate['name']} ({best_candidate['roll_number']}), not your registered identity."
-            elif similarity >= 0.45:
-                face_matched = True
-                face_decision_note = f"Face verified: {user.get('name', 'Student')} ({user.get('roll_number', '')}) — {int(similarity * 100)}% match"
-            elif similarity >= 0.35:
-                face_matched = False
-                is_ambiguous = True
-                face_decision_note = f"Ambiguous biometric match: Scanned face has uncertain match confidence ({int(similarity * 100)}%). Flagged for lecturer review."
-            else:
-                face_matched = False
-                face_decision_note = f"Biometric mismatch: Scanned face does not match your registered reference (Confidence: {int(similarity * 100)}%)."
+                # Calibrated Decision Thresholding
+                is_ambiguous = False
+                if best_candidate and best_candidate["user_id"] != user["id"] and best_candidate["similarity"] >= 0.65 and (best_candidate["similarity"] - similarity) > 0.15:
+                    face_matched = False
+                    face_decision_note = f"Proxy rejected: Scanned face matches {best_candidate['name']} ({best_candidate['roll_number']}), not your registered identity."
+                elif similarity >= 0.45:
+                    face_matched = True
+                    face_decision_note = f"Face verified: {user.get('name', 'Student')} ({user.get('roll_number', '')}) — {int(similarity * 100)}% match"
+                elif similarity >= 0.35:
+                    face_matched = False
+                    is_ambiguous = True
+                    face_decision_note = f"Ambiguous biometric match: Scanned face has uncertain match confidence ({int(similarity * 100)}%). Flagged for lecturer review."
+                else:
+                    face_matched = False
+                    face_decision_note = f"Biometric mismatch: Scanned face does not match your registered reference (Confidence: {int(similarity * 100)}%)."
 
-            # 8. Classroom panorama verification
-            class_row = db.table("classes").select("*").eq("id", sess.get("class_id")).single().execute().data or {}
-            capacity = int(class_row.get("capacity") or 120)
-            hall_type = class_row.get("hall_type") or f"{capacity}-Seater Hall"
-            expected_room = class_row.get("room_number") or f"LH-{capacity}"
+                # 8. Classroom panorama verification
+                class_row = db.table("classes").select("*").eq("id", sess.get("class_id")).single().execute().data or {}
+                capacity = int(class_row.get("capacity") or 120)
+                hall_type = class_row.get("hall_type") or f"{capacity}-Seater Hall"
+                expected_room = class_row.get("room_number") or f"LH-{capacity}"
 
-            room_analysis = {
-                "room_matched": True,
-                "sir_detected": True,
-                "sir_name": "Lecturer",
-                "sir_confidence": 0.90,
-                "crowd_detected": True,
-                "crowd_count": 1,
-                "crowd_density_pct": 100.0,
-                "hall_capacity": capacity,
-                "hall_type": hall_type,
-                "room_number": expected_room,
-                "room_note": f"Classroom {expected_room} verified ({hall_type})",
-            }
-
-            if room_bytes is not None and len(room_bytes) > 0:
-                img_room = parse_image_frame(room_bytes)
-                if img_room is not None:
-                    room_analysis = analyze_classroom_panorama(img_room, class_row, engine, db, session_row=sess)
-
-            # Decode optional active liveness challenge frames
-            img_left = parse_image_frame(b_left) if b_left is not None and len(b_left) > 0 else None
-            img_right = parse_image_frame(b_right) if b_right is not None and len(b_right) > 0 else None
-            img_blink = parse_image_frame(b_blink) if b_blink is not None and len(b_blink) > 0 else None
-
-            challenges_provided = (face_left is not None or face_right is not None or face_blink is not None or (challenge_token is not None and challenge_token.strip()))
-            if not challenges_provided and allow_fb:
-                liveness_res = {
-                    "liveness_passed": True,
-                    "frontal_detected": True,
-                    "left_turn_detected": True,
-                    "right_turn_detected": True,
-                    "blink_detected": True,
-                    "message": "Simulated test environment: Legacy single-frame submission allowed.",
+                room_analysis = {
+                    "room_matched": True,
+                    "sir_detected": True,
+                    "sir_name": "Lecturer",
+                    "sir_confidence": 0.90,
+                    "crowd_detected": True,
+                    "crowd_count": 1,
+                    "crowd_density_pct": 100.0,
+                    "hall_capacity": capacity,
+                    "hall_type": hall_type,
+                    "room_number": expected_room,
+                    "room_note": f"Classroom {expected_room} verified ({hall_type})",
                 }
-            else:
-                liveness_res = engine.verify_active_liveness(
-                    frontal_img=img_face,
-                    left_img=img_left,
-                    right_img=img_right,
-                    blink_img=img_blink,
-                    expected_challenges=expected_challenges,
-                    allow_fallback=allow_fb,
-                )
-            liveness_ok = liveness_res.get("liveness_passed", False)
+
+                if room_bytes is not None and len(room_bytes) > 0:
+                    img_room = parse_image_frame(room_bytes)
+                    if img_room is not None:
+                        room_analysis = analyze_classroom_panorama(img_room, class_row, engine, db, session_row=sess)
+
+                # Decode optional active liveness challenge frames
+                img_left = parse_image_frame(b_left) if b_left is not None and len(b_left) > 0 else None
+                img_right = parse_image_frame(b_right) if b_right is not None and len(b_right) > 0 else None
+                img_blink = parse_image_frame(b_blink) if b_blink is not None and len(b_blink) > 0 else None
+
+                challenges_provided = (face_left is not None or face_right is not None or face_blink is not None or (challenge_token is not None and challenge_token.strip()))
+                if not challenges_provided and allow_fb:
+                    liveness_res = {
+                        "liveness_passed": True,
+                        "frontal_detected": True,
+                        "left_turn_detected": True,
+                        "right_turn_detected": True,
+                        "blink_detected": True,
+                        "message": "Simulated test environment: Legacy single-frame submission allowed.",
+                    }
+                else:
+                    liveness_res = engine.verify_active_liveness(
+                        frontal_img=img_face,
+                        left_img=img_left,
+                        right_img=img_right,
+                        blink_img=img_blink,
+                        expected_challenges=expected_challenges,
+                        allow_fallback=allow_fb,
+                    )
+                liveness_ok = liveness_res.get("liveness_passed", False)
+        except InferenceBusyError as exc:
+            raise _inference_busy_http(exc)
         except HTTPException:
             raise
         except Exception as cv_err:
@@ -2667,7 +2798,7 @@ async def verify_student_live_attendance(
             "idempotency_key": req_idempotency_key,
         }
 
-        # Transactional database persistence: fail closed on error
+        # Transactional database persistence: fail closed on error with base schema resilience
         try:
             if existing_att.data:
                 db.table("attendance").update(att_payload).eq("session_id", session_id).eq("student_id", user["id"]).execute()
@@ -2676,18 +2807,49 @@ async def verify_student_live_attendance(
         except HTTPException:
             raise
         except Exception as db_err:
-            logger.exception(f"Database transaction failure during attendance recording: {db_err}")
-            _audit(
-                session_id=session_id,
-                actor_id=user["id"],
-                action="attendance.transaction_failed",
-                note=f"Database transaction error during attendance write: {str(db_err)}",
-            )
-            raise HTTPException(
-                status_code=500,
-                detail="Database transaction failure during attendance persistence. [DATABASE_TRANSACTION_FAILED]",
-                headers={"X-Error-Code": "DATABASE_TRANSACTION_FAILED"},
-            )
+            err_str = str(db_err)
+            # Schema cache resilience: If database table is missing extended columns (attempted, attempt_timestamp, idempotency_key)
+            if any(col in err_str for col in ("attempt_timestamp", "attempted", "idempotency_key")) or "PGRST204" in err_str:
+                logger.warning(f"Database schema cache missing extended columns ({err_str}), falling back to base attendance schema.")
+                base_payload = {
+                    "session_id": session_id,
+                    "student_id": user["id"],
+                    "status": final_status,
+                    "note": note,
+                    "updated_at": now_iso,
+                    "updated_by": user["id"],
+                }
+                try:
+                    if existing_att.data:
+                        db.table("attendance").update(base_payload).eq("session_id", session_id).eq("student_id", user["id"]).execute()
+                    else:
+                        db.table("attendance").insert(base_payload).execute()
+                except Exception as fb_err:
+                    logger.exception(f"Database transaction failure during fallback attendance write: {fb_err}")
+                    _audit(
+                        session_id=session_id,
+                        actor_id=user["id"],
+                        action="attendance.transaction_failed",
+                        note=f"Database transaction error during attendance fallback write: {str(fb_err)}",
+                    )
+                    raise HTTPException(
+                        status_code=500,
+                        detail="Database transaction failure during attendance persistence. [DATABASE_TRANSACTION_FAILED]",
+                        headers={"X-Error-Code": "DATABASE_TRANSACTION_FAILED"},
+                    )
+            else:
+                logger.exception(f"Database transaction failure during attendance recording: {db_err}")
+                _audit(
+                    session_id=session_id,
+                    actor_id=user["id"],
+                    action="attendance.transaction_failed",
+                    note=f"Database transaction error during attendance write: {str(db_err)}",
+                )
+                raise HTTPException(
+                    status_code=500,
+                    detail="Database transaction failure during attendance persistence. [DATABASE_TRANSACTION_FAILED]",
+                    headers={"X-Error-Code": "DATABASE_TRANSACTION_FAILED"},
+                )
 
         # 7. Audit log with classified security action
         if best_candidate and best_candidate["user_id"] != user["id"] and best_candidate["similarity"] >= 0.65 and (best_candidate["similarity"] - similarity) > 0.15:
@@ -2746,7 +2908,7 @@ async def verify_student_live_attendance(
 
 
 @app.post("/api/sessions/{session_id}/verify-liveness")
-async def verify_student_liveness_only(
+def verify_student_liveness_only(
     session_id: str,
     face_frontal: UploadFile = File(...),
     face_left: Optional[UploadFile] = File(default=None),
@@ -2792,7 +2954,7 @@ async def verify_student_liveness_only(
             raise HTTPException(status_code=400, detail="Challenge token has already been used. Tokens are strictly single-use.")
         expected_challenges = token_payload.get("challenges", [])
 
-    frontal_bytes = await face_frontal.read()
+    frontal_bytes = _read_upload(face_frontal)
     img_front, front_err, front_msg = validate_image_payload(frontal_bytes, max_bytes=10485760)
     if front_err is not None:
         status_code = 413 if front_err == "IMAGE_TOO_LARGE" else (415 if front_err == "UNSUPPORTED_FORMAT" else 400)
@@ -2804,31 +2966,34 @@ async def verify_student_liveness_only(
 
     img_left = None
     if face_left is not None:
-        b = await face_left.read()
+        b = _read_upload(face_left)
         if len(b) > 0:
             img_left = parse_image_frame(b)
 
     img_right = None
     if face_right is not None:
-        b = await face_right.read()
+        b = _read_upload(face_right)
         if len(b) > 0:
             img_right = parse_image_frame(b)
 
     img_blink = None
     if face_blink is not None:
-        b = await face_blink.read()
+        b = _read_upload(face_blink)
         if len(b) > 0:
             img_blink = parse_image_frame(b)
 
     try:
-        engine = get_face_engine()
-        return engine.verify_active_liveness(
-            frontal_img=img_front,
-            left_img=img_left,
-            right_img=img_right,
-            blink_img=img_blink,
-            expected_challenges=expected_challenges,
-        )
+        with inference_slot("verify_liveness"):
+            engine = get_face_engine()
+            return engine.verify_active_liveness(
+                frontal_img=img_front,
+                left_img=img_left,
+                right_img=img_right,
+                blink_img=img_blink,
+                expected_challenges=expected_challenges,
+            )
+    except InferenceBusyError as exc:
+        raise _inference_busy_http(exc)
     except HTTPException:
         raise
     except Exception as cv_err:
@@ -2917,7 +3082,7 @@ def controller_create_class(body: CreateClassRequest, user: dict[str, Any] = Dep
 
 
 @app.post("/api/controller/classes/{class_id}/capture-room")
-async def controller_capture_class_room(
+def controller_capture_class_room(
     class_id: str,
     photo: Optional[UploadFile] = File(default=None),
     photo_base64: Optional[str] = Form(default=None),
@@ -2932,7 +3097,7 @@ async def controller_capture_class_room(
 
     image_bytes = b""
     if photo is not None:
-        image_bytes = await photo.read()
+        image_bytes = _read_upload(photo)
     elif photo_base64:
         import base64
         try:
@@ -3049,6 +3214,53 @@ def controller_create_student(body: CreateStudentRequest, user: dict[str, Any] =
     return created
 
 
+@app.get("/api/controller/teachers")
+def controller_get_teachers(user: dict[str, Any] = Depends(current_user)) -> list[dict[str, Any]]:
+    require_controller(user)
+    db = supa()
+    teachers = db.table("profiles").select("id, name, email, role, created_at").eq("role", "teacher").order("name").execute().data or []
+    return teachers
+
+
+@app.post("/api/controller/teachers")
+def controller_create_teacher(body: CreateTeacherRequest, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    require_controller(user)
+    db = supa()
+    email = body.email.strip().lower()
+    existing = db.table("profiles").select("id").eq("email", email).execute().data or []
+    if existing:
+        raise HTTPException(status_code=400, detail="Teacher or user with this email already exists.")
+
+    teacher_id = str(uuid.uuid4())
+    try:
+        auth_res = db.auth.admin.create_user({
+            "email": email,
+            "password": body.password or "teach123",
+            "email_confirm": True,
+            "user_metadata": {"name": body.name.strip(), "role": "teacher"},
+        })
+        teacher_id = auth_res.user.id
+    except Exception:
+        pass
+
+    teacher_profile = {
+        "id": teacher_id,
+        "name": body.name.strip(),
+        "email": email,
+        "role": "teacher",
+        "created_at": utc_now(),
+    }
+    resp = db.table("profiles").insert(teacher_profile).execute()
+    created = resp.data[0] if (resp and resp.data) else teacher_profile
+    _audit(
+        session_id=None,
+        actor_id=user["id"],
+        action="controller.teacher_authorized",
+        note=f"Academic Controller {user.get('name', 'Controller')} authorized teacher account {created.get('name')} ({email}).",
+    )
+    return created
+
+
 @app.post("/api/controller/students/{student_id}/unlock")
 def controller_unlock_student(student_id: str, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
     require_controller(user)
@@ -3160,7 +3372,7 @@ def controller_set_registration_window(
 
 
 @app.post("/api/controller/registry/import")
-async def controller_import_registry(
+def controller_import_registry(
     file: Optional[UploadFile] = File(default=None),
     csv_text: Optional[str] = Form(default=None),
     user: dict[str, Any] = Depends(current_user),
@@ -3171,7 +3383,7 @@ async def controller_import_registry(
 
     content = ""
     if file is not None:
-        raw_bytes = await file.read()
+        raw_bytes = _read_upload(file)
         try:
             content = raw_bytes.decode("utf-8-sig")
         except UnicodeDecodeError:
