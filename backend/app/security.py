@@ -77,8 +77,8 @@ def verify_jwt_token(token: str) -> dict[str, Any]:
         return payload
     except pyjwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Token has expired")
-    except pyjwt.InvalidTokenError as exc:
-        raise HTTPException(status_code=401, detail=f"Invalid token: {exc}")
+    except pyjwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Invalid token")
 
 
 # ── Token Revocation & Blacklist ──────────────────────────────────────────────
@@ -182,10 +182,10 @@ def verify_liveness_challenge_token(token: str) -> dict[str, Any]:
             status_code=400,
             detail="Liveness challenge token has expired. Please obtain a fresh challenge.",
         )
-    except pyjwt.InvalidTokenError as exc:
+    except pyjwt.InvalidTokenError:
         raise HTTPException(
             status_code=400,
-            detail=f"Invalid or forged liveness challenge token: {exc}",
+            detail="Invalid or forged liveness challenge token.",
         )
 
 
