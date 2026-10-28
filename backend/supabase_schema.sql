@@ -120,12 +120,36 @@ create table if not exists public.notifications (
   read_at    timestamptz
 );
 
--- 3. Indexes ──────────────────────────────────────────────────
+-- timetable: academic class schedules, rooms, and calendar events
+create table if not exists public.timetable (
+  id            uuid primary key default uuid_generate_v4(),
+  class_id      uuid not null references public.classes(id) on delete cascade,
+  day_of_week   integer not null check (day_of_week between 0 and 6), -- 0=Mon, 6=Sun
+  day_name      text not null,
+  start_time    text not null, -- e.g. '09:00'
+  end_time      text not null, -- e.g. '10:30'
+  room_number   text not null default 'LH-120',
+  is_cancelled  boolean not null default false,
+  academic_year text not null default '2026-2027',
+  semester      text not null default 'Fall 2026',
+  created_at    timestamptz not null default now()
+);
+
+-- 3. Indexes (Optimized for 120-260 seat query patterns) ──────
 create index if not exists idx_attendance_student    on public.attendance(student_id);
+create index if not exists idx_attendance_session    on public.attendance(session_id);
 create index if not exists idx_checkin_session       on public.checkin_attempts(session_id);
 create index if not exists idx_checkin_student       on public.checkin_attempts(student_id);
+create index if not exists idx_sessions_class        on public.sessions(class_id);
+create index if not exists idx_sessions_status       on public.sessions(status);
+create index if not exists idx_classes_teacher       on public.classes(teacher_id);
+create index if not exists idx_profiles_roll         on public.profiles(roll_number);
+create index if not exists idx_profiles_role         on public.profiles(role);
 create index if not exists idx_audit_session         on public.audit_log(session_id);
+create index if not exists idx_audit_actor           on public.audit_log(actor_id);
+create index if not exists idx_audit_timestamp       on public.audit_log(timestamp desc);
 create index if not exists idx_notifications_user    on public.notifications(user_id, created_at desc);
+create index if not exists idx_timetable_class       on public.timetable(class_id, day_of_week);
 
 -- 4. Trigger: auto-create profile on Supabase Auth signup ─────
 create or replace function public.handle_new_user()

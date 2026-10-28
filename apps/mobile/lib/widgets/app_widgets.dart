@@ -987,7 +987,14 @@ class LoadingStateView extends StatelessWidget {
                 border: Border.all(color: AppColors.accentIndigoBorder),
               ),
               child: const Center(
-                child: AppLottieLoader(size: 64),
+                child: SizedBox(
+                  width: 36,
+                  height: 36,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 3,
+                    valueColor: AlwaysStoppedAnimation(AppColors.primary),
+                  ),
+                ),
               ),
             ),
             const SizedBox(height: 20),

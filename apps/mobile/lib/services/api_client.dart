@@ -591,4 +591,67 @@ class ApiClient {
   Future<void> controllerUnlockStudent(String studentId) async {
     await _request('POST', '/controller/students/$studentId/unlock');
   }
+
+  Future<Map<String, dynamic>> timetable({String? classId, int? dayOfWeek}) async {
+    final query = <String, String>{};
+    if (classId != null) query['class_id'] = classId;
+    if (dayOfWeek != null) query['day_of_week'] = dayOfWeek.toString();
+    final data = await _request('GET', '/timetable', query: query);
+    return Map<String, dynamic>.from(data as Map);
+  }
+
+  Future<String?> googleCalendarUrl() async {
+    try {
+      final data = await _request('GET', '/timetable/google-calendar-url');
+      if (data is Map && data['google_calendar_url'] != null) {
+        return data['google_calendar_url'] as String;
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  String generateGoogleCalendarUrl({
+    required String title,
+    required String startTime,
+    required String endTime,
+    required String location,
+    String? details,
+  }) {
+    final cleanStart = startTime.replaceAll(':', '') + '00';
+    final cleanEnd = endTime.replaceAll(':', '') + '00';
+    final now = DateTime.now();
+    final dateStr = '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}';
+    final dates = '${dateStr}T${cleanStart}Z/${dateStr}T${cleanEnd}Z';
+    final uri = Uri.https('calendar.google.com', '/calendar/render', {
+      'action': 'TEMPLATE',
+      'text': title,
+      'dates': dates,
+      'details': details ?? 'Class lecture on Attendrix',
+      'location': location,
+    });
+    return uri.toString();
+  }
+
+  Future<String> recoverAccount({required String email, required String rollNumber}) async {
+    final data = await _request('POST', '/auth/recover-account', body: {
+      'email': email,
+      'roll_number': rollNumber,
+    });
+    final map = Map<String, dynamic>.from(data as Map);
+    return map['recovery_token'] as String;
+  }
+
+  Future<bool> resetPassword({required String recoveryToken, required String newPassword}) async {
+    final data = await _request('POST', '/auth/reset-password', body: {
+      'recovery_token': recoveryToken,
+      'new_password': newPassword,
+    });
+    final map = Map<String, dynamic>.from(data as Map);
+    return map['status'] == 'success';
+  }
+
+  Future<Map<String, dynamic>> duplicateStudents() async {
+    final data = await _request('GET', '/controller/students/duplicates');
+    return Map<String, dynamic>.from(data as Map);
+  }
 }

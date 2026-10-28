@@ -1,0 +1,75 @@
+{
+  "timestamp": "2026-10-28T19:09:57Z",
+  "environment": {
+    "platform": "linux",
+    "python_version": "3.14.8",
+    "inference_max_concurrency": 4,
+    "inference_queue_timeout_sec": 10.0
+  },
+  "acceptance_criteria": {
+    "warm_health_p95_under_300ms": true,
+    "warm_read_p95_under_500ms": true,
+    "zero_duplicates_120": true,
+    "zero_duplicates_240": true,
+    "zero_duplicates_260": true
+  },
+  "health_benchmark": {
+    "median_ms": 1.2272979997760558,
+    "p95_ms": 1.523638500202651,
+    "p99_ms": 1.780725999742576,
+    "samples": 100
+  },
+  "read_benchmark": {
+    "median_ms": 2.378819500336249,
+    "p95_ms": 2.776633699431841,
+    "p99_ms": 2.9882078202717826,
+    "samples": 100
+  },
+  "lecture_halls": {
+    "120_students": {
+      "class_size": 120,
+      "concurrency_pool": 32,
+      "success_count": 91,
+      "total_db_records": 91,
+      "zero_duplicate_guarantee": true,
+      "total_duration_sec": 1.647850102999655,
+      "throughput_rps": 72.82215765958242,
+      "p50_latency_ms": 424.14882300045065,
+      "p95_latency_ms": 480.7415490002768,
+      "p99_latency_ms": 508.49910672995975,
+      "memory_rss_before_mb": 388.28125,
+      "memory_rss_after_mb": 388.28125,
+      "memory_delta_mb": 0.0
+    },
+    "240_students": {
+      "class_size": 240,
+      "concurrency_pool": 32,
+      "success_count": 176,
+      "total_db_records": 176,
+      "zero_duplicate_guarantee": true,
+      "total_duration_sec": 3.997878039999705,
+      "throughput_rps": 60.03184629414501,
+      "p50_latency_ms": 503.745664500002,
+      "p95_latency_ms": 622.9040082504071,
+      "p99_latency_ms": 650.3832105298532,
+      "memory_rss_before_mb": 388.28125,
+      "memory_rss_after_mb": 388.28125,
+      "memory_delta_mb": 0.0
+    },
+    "260_students": {
+      "class_size": 260,
+      "concurrency_pool": 32,
+      "success_count": 186,
+      "total_db_records": 186,
+      "zero_duplicate_guarantee": true,
+      "total_duration_sec": 5.348616359000516,
+      "throughput_rps": 48.61070275913107,
+      "p50_latency_ms": 634.8211329996047,
+      "p95_latency_ms": 793.1685483498313,
+      "p99_latency_ms": 807.5617112001055,
+      "memory_rss_before_mb": 388.28125,
+      "memory_rss_after_mb": 388.28125,
+      "memory_delta_mb": 0.0
+    }
+  }
+}

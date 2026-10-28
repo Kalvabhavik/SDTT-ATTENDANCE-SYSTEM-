@@ -96,6 +96,162 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  Future<void> _showForgotPasswordDialog() async {
+    final emailCtrl = TextEditingController(text: emailController.text.trim());
+    final rollCtrl = TextEditingController(text: 'CS2026-001');
+    final tokenCtrl = TextEditingController();
+    final newPassCtrl = TextEditingController();
+    bool requestedToken = false;
+    String? statusMessage;
+    bool isSubmitting = false;
+
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              title: const Row(
+                children: [
+                  Icon(Icons.lock_reset_rounded, color: AppColors.primary),
+                  SizedBox(width: 8),
+                  Text('Account Recovery', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
+                ],
+              ),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Request a secure password recovery token or reset your credentials.',
+                      style: TextStyle(fontSize: 13, color: AppColors.slate),
+                    ),
+                    const SizedBox(height: 14),
+                    TextField(
+                      controller: emailCtrl,
+                      keyboardType: TextInputType.emailAddress,
+                      decoration: InputDecoration(
+                        labelText: 'Institutional Email',
+                        prefixIcon: const Icon(Icons.email_outlined, size: 20),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: rollCtrl,
+                      decoration: InputDecoration(
+                        labelText: 'Official Roll / Faculty ID',
+                        prefixIcon: const Icon(Icons.badge_outlined, size: 20),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                    ),
+                    if (requestedToken) ...[
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: tokenCtrl,
+                        decoration: InputDecoration(
+                          labelText: 'Reset Token (from email/logs)',
+                          prefixIcon: const Icon(Icons.key_rounded, size: 20),
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: newPassCtrl,
+                        obscureText: true,
+                        decoration: InputDecoration(
+                          labelText: 'New Password',
+                          prefixIcon: const Icon(Icons.lock_outline_rounded, size: 20),
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                      ),
+                    ],
+                    if (statusMessage != null) ...[
+                      const SizedBox(height: 12),
+                      Text(
+                        statusMessage!,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: statusMessage!.startsWith('Error') ? AppColors.rose : AppColors.primary,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(ctx).pop(),
+                  child: const Text('Cancel', style: TextStyle(color: AppColors.slate)),
+                ),
+                if (!requestedToken)
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primary,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    onPressed: isSubmitting
+                        ? null
+                        : () async {
+                            final email = emailCtrl.text.trim();
+                            final roll = rollCtrl.text.trim();
+                            if (email.isEmpty || roll.isEmpty) return;
+                            setDialogState(() => isSubmitting = true);
+                            final token = await widget.state.recoverAccount(email, roll);
+                            setDialogState(() {
+                              isSubmitting = false;
+                              if (token != null) {
+                                requestedToken = true;
+                                tokenCtrl.text = token;
+                                statusMessage = 'Recovery token generated! Enter your new password below.';
+                              } else {
+                                statusMessage = 'Error: ${widget.state.error ?? "Failed to request token"}';
+                              }
+                            });
+                          },
+                    child: const Text('Request Token', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                  )
+                else
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primary,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    onPressed: isSubmitting
+                        ? null
+                        : () async {
+                            final token = tokenCtrl.text.trim();
+                            final pass = newPassCtrl.text.trim();
+                            if (token.isEmpty || pass.isEmpty) return;
+                            setDialogState(() => isSubmitting = true);
+                            final ok = await widget.state.resetPassword(token, pass);
+                            setDialogState(() {
+                              isSubmitting = false;
+                              if (ok) {
+                                statusMessage = 'Password updated successfully! Please sign in.';
+                                passwordController.text = pass;
+                              } else {
+                                statusMessage = 'Error: ${widget.state.error ?? "Reset failed"}';
+                              }
+                            });
+                            if (ok) {
+                              await Future.delayed(const Duration(milliseconds: 1200));
+                              if (ctx.mounted) Navigator.of(ctx).pop();
+                            }
+                          },
+                    child: const Text('Reset Password', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                  ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final isLecturer = currentRole == 'lecturer' || currentRole == 'teacher';
@@ -352,7 +508,27 @@ class _LoginScreenState extends State<LoginScreen> {
                             return null;
                           },
                         ),
-                        const SizedBox(height: 22),
+                        const SizedBox(height: 6),
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: TextButton(
+                            onPressed: _showForgotPasswordDialog,
+                            style: TextButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                              minimumSize: Size.zero,
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            ),
+                            child: const Text(
+                              'Forgot password / Recover account?',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: AppColors.primary,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
 
                         // Login CTA Button (Forest Green)
                         AnimatedPressable(

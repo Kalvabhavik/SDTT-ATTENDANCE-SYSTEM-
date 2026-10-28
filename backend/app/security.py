@@ -228,6 +228,46 @@ def check_and_record_image_replay(sha256_hash: str, phash: str) -> tuple[bool, s
     return False, ""
 
 
+def create_recovery_token(
+    user_id: str,
+    email: str,
+    ttl_seconds: int = 900,
+) -> str:
+    """Issue a cryptographically signed HMAC-SHA256 recovery token (15-min default)."""
+    now = int(time.time())
+    nonce = str(uuid.uuid4())
+    payload = {
+        "sub": user_id,
+        "email": email,
+        "nonce": nonce,
+        "iat": now,
+        "exp": now + ttl_seconds,
+        "type": "account_recovery",
+    }
+    return pyjwt.encode(payload, ATTENDANCE_SECRET_KEY, algorithm="HS256")
+
+
+def verify_recovery_token(token: str) -> dict[str, Any]:
+    """Verify recovery token signature, expiration, and single-use nonce."""
+    try:
+        payload = pyjwt.decode(token, ATTENDANCE_SECRET_KEY, algorithms=["HS256"])
+        if payload.get("type") != "account_recovery":
+            raise HTTPException(status_code=400, detail="Invalid token type; expected account recovery.")
+        return payload
+    except pyjwt.ExpiredSignatureError:
+        raise HTTPException(
+            status_code=400,
+            detail="Account recovery token has expired. Please request a new recovery link. [RECOVERY_TOKEN_EXPIRED]",
+            headers={"X-Error-Code": "RECOVERY_TOKEN_EXPIRED"},
+        )
+    except pyjwt.InvalidTokenError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid or forged recovery token: {exc} [INVALID_RECOVERY_TOKEN]",
+            headers={"X-Error-Code": "INVALID_RECOVERY_TOKEN"},
+        )
+
+
 def reset_security_caches() -> None:
     """Reset security caches for testing isolation."""
     _consumed_challenge_nonces.clear()
@@ -235,4 +275,5 @@ def reset_security_caches() -> None:
     _submitted_phashes.clear()
     reset_revoked_tokens()
     reset_rate_limits()
+
 

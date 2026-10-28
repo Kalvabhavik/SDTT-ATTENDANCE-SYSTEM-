@@ -473,14 +473,57 @@ export async function setRegistrationWindow(isOpen: boolean, note?: string): Pro
   })
 }
 
-export async function importStudentRegistry(params: { file?: File; csvText?: string }): Promise<{
+export interface TimetableEntry {
+  id: string
+  class_id: string
+  class_name: string
+  class_code: string
+  section: string
+  day_of_week: number
+  day_name: string
+  start_time: string
+  end_time: string
+  room_number: string
+  faculty_name: string
+  faculty_email?: string
+  is_cancelled: boolean
+  academic_year: string
+  semester: string
+}
+
+export interface TimetableResponse {
+  timetable: TimetableEntry[]
+  today_classes: TimetableEntry[]
+  next_class: TimetableEntry | null
+  total_classes: number
+  current_day_of_week?: number
+}
+
+export interface DuplicateReport {
+  has_duplicates: boolean
+  duplicate_email_groups: Record<string, Array<{ id: string; name: string; email: string; roll_number: string }>>
+  duplicate_roll_groups: Record<string, Array<{ id: string; name: string; email: string; roll_number: string }>>
+  total_duplicate_conflicts: number
+  timestamp: string
+}
+
+export interface RosterImportPreviewResponse {
+  preview: boolean
   total_processed: number
-  imported: number
-  updated: number
+  valid_count: number
+  new_count: number
+  updated_count: number
   error_count: number
   errors: string[]
+  duplicate_warnings: string[]
+  matched_classes: string[]
+  unmatched_classes: string[]
+  sample_new_students: Array<{ name: string; email: string; roll_number: string; class_code?: string }>
+  sample_updates: Array<{ id: string; name: string; email: string; roll_number: string; class_code?: string }>
   message: string
-}> {
+}
+
+export async function importStudentRegistry(params: { file?: File; csvText?: string; preview?: boolean }): Promise<any> {
   const currentToken = token || window.localStorage.getItem('rollcall-token') || ''
   const headers: Record<string, string> = {}
   if (currentToken) headers['Authorization'] = `Bearer ${currentToken}`
@@ -489,7 +532,8 @@ export async function importStudentRegistry(params: { file?: File; csvText?: str
   if (params.file) formData.append('file', params.file)
   if (params.csvText) formData.append('csv_text', params.csvText)
 
-  const res = await fetch(`${API_BASE}/controller/registry/import`, {
+  const url = `${API_BASE}/controller/registry/import${params.preview ? '?preview=true' : '?preview=false'}`
+  const res = await fetch(url, {
     method: 'POST',
     headers,
     body: formData,
@@ -499,6 +543,119 @@ export async function importStudentRegistry(params: { file?: File; csvText?: str
     throw new Error(err.detail || 'Failed to import student registry')
   }
   return res.json()
+}
+
+export async function getDuplicateStudents(): Promise<DuplicateReport> {
+  if (isLocalMode()) {
+    return {
+      has_duplicates: false,
+      duplicate_email_groups: {},
+      duplicate_roll_groups: {},
+      total_duplicate_conflicts: 0,
+      timestamp: new Date().toISOString(),
+    }
+  }
+  return request<DuplicateReport>('/controller/students/duplicates')
+}
+
+export async function getTimetable(params?: { class_id?: string; day_of_week?: number }): Promise<TimetableResponse> {
+  if (isLocalMode()) {
+    return {
+      timetable: [
+        {
+          id: 'tt-1',
+          class_id: 'class-1',
+          class_name: 'Computer Networks',
+          class_code: 'CS-301',
+          section: 'Section A',
+          day_of_week: 0,
+          day_name: 'Monday',
+          start_time: '09:00',
+          end_time: '10:30',
+          room_number: 'LH-120',
+          faculty_name: 'Prof. Alan Turing',
+          is_cancelled: false,
+          academic_year: '2026-2027',
+          semester: 'Fall 2026',
+        },
+        {
+          id: 'tt-2',
+          class_id: 'class-1',
+          class_name: 'Computer Networks',
+          class_code: 'CS-301',
+          section: 'Section A',
+          day_of_week: 2,
+          day_name: 'Wednesday',
+          start_time: '09:00',
+          end_time: '10:30',
+          room_number: 'LH-120',
+          faculty_name: 'Prof. Alan Turing',
+          is_cancelled: false,
+          academic_year: '2026-2027',
+          semester: 'Fall 2026',
+        },
+      ],
+      today_classes: [
+        {
+          id: 'tt-1',
+          class_id: 'class-1',
+          class_name: 'Computer Networks',
+          class_code: 'CS-301',
+          section: 'Section A',
+          day_of_week: 0,
+          day_name: 'Monday',
+          start_time: '09:00',
+          end_time: '10:30',
+          room_number: 'LH-120',
+          faculty_name: 'Prof. Alan Turing',
+          is_cancelled: false,
+          academic_year: '2026-2027',
+          semester: 'Fall 2026',
+        },
+      ],
+      next_class: null,
+      total_classes: 2,
+    }
+  }
+  const q = new URLSearchParams()
+  if (params?.class_id) q.set('class_id', params.class_id)
+  if (params?.day_of_week !== undefined) q.set('day_of_week', String(params.day_of_week))
+  const qs = q.toString() ? `?${q.toString()}` : ''
+  return request<TimetableResponse>(`/timetable${qs}`)
+}
+
+export function getTimetableCalendarIcsUrl(): string {
+  const currentToken = token || window.localStorage.getItem('rollcall-token') || ''
+  const t = currentToken ? `?token=${encodeURIComponent(currentToken)}` : ''
+  return `${API_BASE}/timetable/calendar.ics${t}`
+}
+
+export async function getGoogleCalendarUrl(): Promise<{ google_calendar_url: string | null; message?: string }> {
+  if (isLocalMode()) {
+    return {
+      google_calendar_url: 'https://calendar.google.com/calendar/render?action=TEMPLATE&text=Class+Lecture',
+    }
+  }
+  return request<{ google_calendar_url: string | null; message?: string }>('/timetable/google-calendar-url')
+}
+
+export async function updateTimetableEntry(entryId: string, data: {
+  room_number?: string
+  start_time?: string
+  end_time?: string
+  day_of_week?: number
+  is_cancelled?: boolean
+}): Promise<any> {
+  return request(`/timetable/${encodeURIComponent(entryId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(data),
+  })
+}
+
+export async function cancelTimetableEntry(entryId: string): Promise<any> {
+  return request(`/timetable/${encodeURIComponent(entryId)}/cancel`, {
+    method: 'POST',
+  })
 }
 
 

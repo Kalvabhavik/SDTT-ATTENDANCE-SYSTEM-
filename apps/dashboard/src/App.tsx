@@ -4,7 +4,7 @@ import * as api from './api'
 import { demoClasses, demoRoster, demoSessions, demoStudent, demoTeacher, type AttendanceEntry, type AuditItem, type ClassItem, type Notification, type Report, type ReviewItem, type Session, type StudentAttendance, type User } from './types'
 import './styles.css'
 
-type Section = 'overview' | 'sessions' | 'attendance' | 'analysis' | 'notifications' | 'controller-classes' | 'controller-students'
+type Section = 'overview' | 'sessions' | 'attendance' | 'analysis' | 'notifications' | 'controller-classes' | 'controller-students' | 'calendar'
 type ConnectionState = 'connecting' | 'connected' | 'closed' | 'error'
 
 const formatDate = (value?: string, withTime = false) => value ? new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric', ...(withTime ? { hour: 'numeric', minute: '2-digit' } : {}) }).format(new Date(value)) : '—'
@@ -66,7 +66,7 @@ function App() {
 
       <nav aria-label="Primary navigation" className="main-nav">
         <NavButton active={section === 'overview'} icon={<TrendingUp size={18} />} label="Dashboard" onClick={() => { setSection('overview'); setMenuOpen(false) }} />
-        <NavButton active={false} icon={<Calendar size={18} />} label="Calendar" onClick={() => {}} />
+        <NavButton active={section === 'calendar'} icon={<Calendar size={18} />} label="Calendar" onClick={() => { setSection('calendar'); setMenuOpen(false) }} />
         <NavButton active={section === 'controller-classes'} icon={<Building size={18} />} label="Lecture Halls" hasChevron onClick={() => { setSection('controller-classes'); setMenuOpen(false) }} />
         
         {/* Roll Call with sub-tree (Image 1 Theme) */}
@@ -153,6 +153,7 @@ function App() {
         {section === 'attendance' && user.role !== 'controller' && (user.role === 'teacher' ? <TeacherHistory /> : <StudentAttendanceView />)}
         {section === 'analysis' && user.role === 'teacher' && <TeacherAnalysisView />}
         {section === 'notifications' && <NotificationsView />}
+        {section === 'calendar' && <CalendarView user={user} />}
       </div>
     </main>
   </div>
@@ -909,100 +910,474 @@ function AttendanceTable({
   disabled?: boolean
   studentView?: boolean
 }) {
+  const [search, setSearch] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState<'all' | 'present' | 'pending' | 'absent'>('all')
+  const [viewMode, setViewMode] = useState<'list' | 'matrix'>('list')
+  const [pageSize, setPageSize] = useState<number>(30)
+  const [page, setPage] = useState(1)
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search.trim().toLowerCase()), 200)
+    return () => clearTimeout(timer)
+  }, [search])
+
+  const filtered = entries.filter(e => {
+    if (statusFilter !== 'all' && e.status !== statusFilter) return false
+    if (debouncedSearch) {
+      const q = debouncedSearch
+      const name = (e.student_name || '').toLowerCase()
+      const email = (e.student_email || '').toLowerCase()
+      const id = (e.student_id || '').toLowerCase()
+      if (!name.includes(q) && !email.includes(q) && !id.includes(q)) return false
+    }
+    return true
+  })
+
+  const totalPages = pageSize === 0 ? 1 : Math.max(1, Math.ceil(filtered.length / pageSize))
+  const currentPage = Math.min(page, totalPages)
+  const paginated = pageSize === 0 ? filtered : filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize)
+
   return (
-    <div className="attendance-table">
-      <div className="attendance-table-head">
-        <span>{studentView ? 'Class / Date' : 'Student & Identity'}</span>
-        {!studentView && <span>Biometric & Liveness Verification</span>}
-        <span>Status</span>
-        {!studentView && <span>Actions</span>}
-      </div>
-      {entries.length ? (
-        entries.map(row => (
-          <div className="attendance-table-row" key={row.student_id}>
-            <div className="person-cell">
-              <div className="mini-avatar">
-                {studentView ? <BookOpen size={14} /> : initials(row.student_name)}
-              </div>
-              <div>
-                <strong>{row.student_name}</strong>
-                <span>
-                  {studentView
-                    ? formatDate(row.changed_at)
-                    : row.student_email || row.student_id}
-                </span>
-              </div>
+    <div className="attendance-table-container">
+      {!studentView && entries.length > 5 && (
+        <div className="table-controls-bar">
+          <div className="table-search-box">
+            <Search size={15} style={{ color: 'var(--muted)' }} />
+            <input
+              type="text"
+              placeholder="Search student or roll number..."
+              value={search}
+              onChange={e => { setSearch(e.target.value); setPage(1) }}
+            />
+            {search && (
+              <button style={{ border: 'none', background: 'transparent', cursor: 'pointer' }} onClick={() => setSearch('')}>
+                <X size={13} />
+              </button>
+            )}
+          </div>
+
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <div className="table-filter-pills">
+              {(['all', 'present', 'pending', 'absent'] as const).map(st => (
+                <button
+                  key={st}
+                  className={`filter-pill ${statusFilter === st ? 'active' : ''}`}
+                  onClick={() => { setStatusFilter(st); setPage(1) }}
+                >
+                  {st === 'all' ? `All (${entries.length})` : st === 'present' ? `Present (${entries.filter(e => e.status === 'present').length})` : st === 'pending' ? `Needs Review (${entries.filter(e => e.status === 'pending').length})` : `Absent (${entries.filter(e => e.status === 'absent').length})`}
+                </button>
+              ))}
             </div>
 
-            {!studentView && (
-              <div className="biometric-cell">
-                {row.status === 'present' ? (
-                  <span className="biometric-tag verified" title="Active liveness challenge verified (Yaw rotation & Eye blink) and ArcFace cosine similarity >= 0.68">
-                    <ScanFace size={13} />
-                    <span>ArcFace {row.confidence ? Math.round(row.confidence * 100) : 89}% · Liveness OK</span>
-                  </span>
-                ) : row.status === 'pending' ? (
-                  <span className="biometric-tag pending" title="Flagged: Pending supervisor verification">
-                    <AlertCircle size={13} />
-                    <span>Flagged · Pending Review</span>
-                  </span>
-                ) : (
-                  <span className="biometric-tag absent">
-                    <X size={13} />
-                    <span>Unrecorded / Absent</span>
-                  </span>
+            <button
+              className={`filter-pill ${viewMode === 'matrix' ? 'active' : ''}`}
+              onClick={() => setViewMode(v => v === 'matrix' ? 'list' : 'matrix')}
+              title="Toggle Compact Roll-Call Grid"
+            >
+              {viewMode === 'matrix' ? 'List View' : 'Roll-Call Matrix'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {viewMode === 'matrix' && !studentView ? (
+        <div className="matrix-grid">
+          {filtered.map(row => (
+            <div
+              key={row.student_id}
+              className={`matrix-chip ${row.status}`}
+              onClick={() => {
+                if (disabled || !onUpdate) return
+                const nextStatus = row.status === 'present' ? 'absent' : 'present'
+                onUpdate(row.student_id, nextStatus)
+              }}
+              title={`${row.student_name} (${row.student_email || row.student_id}) - ${statusCopy[row.status] || row.status}`}
+            >
+              <span className="matrix-roll">{row.student_name.split(' ').map(p => p[0]).join('').slice(0, 3).toUpperCase()}</span>
+              <span className="matrix-name">{row.student_name}</span>
+            </div>
+          ))}
+          {filtered.length === 0 && (
+            <p style={{ gridColumn: '1 / -1', textAlign: 'center', color: 'var(--muted)', padding: 20 }}>
+              No students match current filter.
+            </p>
+          )}
+        </div>
+      ) : (
+        <div className="attendance-table">
+          <div className="attendance-table-head">
+            <span>{studentView ? 'Class / Date' : 'Student & Identity'}</span>
+            {!studentView && <span>Biometric & Liveness Verification</span>}
+            <span>Status</span>
+            {!studentView && <span>Actions</span>}
+          </div>
+          {paginated.length ? (
+            paginated.map(row => (
+              <div className="attendance-table-row" key={row.student_id}>
+                <div className="person-cell">
+                  <div className="mini-avatar">
+                    {studentView ? <BookOpen size={14} /> : initials(row.student_name)}
+                  </div>
+                  <div>
+                    <strong>{row.student_name}</strong>
+                    <span>
+                      {studentView
+                        ? formatDate(row.changed_at)
+                        : row.student_email || row.student_id}
+                    </span>
+                  </div>
+                </div>
+
+                {!studentView && (
+                  <div className="biometric-cell">
+                    {row.status === 'present' ? (
+                      <span className="biometric-tag verified" title="Active liveness challenge verified (Yaw rotation & Eye blink) and ArcFace cosine similarity >= 0.68">
+                        <ScanFace size={13} />
+                        <span>ArcFace {row.confidence ? Math.round(row.confidence * 100) : 89}% · Liveness OK</span>
+                      </span>
+                    ) : row.status === 'pending' ? (
+                      <span className="biometric-tag pending" title="Flagged: Pending supervisor verification">
+                        <AlertCircle size={13} />
+                        <span>Flagged · Pending Review</span>
+                      </span>
+                    ) : (
+                      <span className="biometric-tag absent">
+                        <X size={13} />
+                        <span>Unrecorded / Absent</span>
+                      </span>
+                    )}
+                    {row.note && <span className="entry-note-chip">Note: {row.note}</span>}
+                  </div>
                 )}
-                {row.note && <span className="entry-note-chip">Note: {row.note}</span>}
+
+                <span className={`status-chip status-${row.status}`}>
+                  {row.status === 'present' ? <Check size={13} /> : row.status === 'absent' ? <X size={13} /> : <AlertCircle size={13} />}
+                  {statusCopy[row.status]}
+                </span>
+
+                {!studentView && (
+                  <div className="row-actions">
+                    <button
+                      className="status-action present"
+                      disabled={disabled}
+                      onClick={() => onUpdate?.(row.student_id, 'present')}
+                      aria-label={`Mark ${row.student_name} present`}
+                      title="Mark Present"
+                    >
+                      <Check size={14} />
+                    </button>
+                    <button
+                      className="status-action absent"
+                      disabled={disabled}
+                      onClick={() => onUpdate?.(row.student_id, 'absent')}
+                      aria-label={`Mark ${row.student_name} absent`}
+                      title="Mark Absent"
+                    >
+                      <X size={14} />
+                    </button>
+                    <button
+                      className="status-action edit"
+                      disabled={disabled}
+                      onClick={() => {
+                        const note = window.prompt('Correction note (required for institutional audit trail):', row.note || '')
+                        if (note !== null) onUpdate?.(row.student_id, row.status === 'pending' ? 'present' : row.status, note)
+                      }}
+                      aria-label={`Add audit note for ${row.student_name}`}
+                      title="Add Audit Note"
+                    >
+                      <Pencil size={14} />
+                    </button>
+                  </div>
+                )}
               </div>
-            )}
+            ))
+          ) : (
+            <EmptyState
+              icon={<Users />}
+              title="No attendance entries recorded"
+              body="No students match the current filter or attendance entries will populate dynamically as students complete active liveness sweeps."
+            />
+          )}
+        </div>
+      )}
 
-            <span className={`status-chip status-${row.status}`}>
-              {row.status === 'present' ? <Check size={13} /> : row.status === 'absent' ? <X size={13} /> : <AlertCircle size={13} />}
-              {statusCopy[row.status]}
+      {!studentView && filtered.length > pageSize && pageSize > 0 && (
+        <div className="pagination-bar">
+          <span>
+            Showing {(currentPage - 1) * pageSize + 1}–{Math.min(currentPage * pageSize, filtered.length)} of {filtered.length} students
+          </span>
+          <div className="pagination-actions">
+            <button
+              className="day-tab-btn"
+              disabled={currentPage <= 1}
+              onClick={() => setPage(p => Math.max(1, p - 1))}
+              style={{ padding: '4px 10px', fontSize: 12 }}
+            >
+              Previous
+            </button>
+            <span style={{ fontWeight: 600 }}>{currentPage} / {totalPages}</span>
+            <button
+              className="day-tab-btn"
+              disabled={currentPage >= totalPages}
+              onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+              style={{ padding: '4px 10px', fontSize: 12 }}
+            >
+              Next
+            </button>
+            <select
+              value={pageSize}
+              onChange={e => { setPageSize(Number(e.target.value)); setPage(1) }}
+              style={{ border: '1px solid var(--line)', borderRadius: 6, padding: '4px 8px', fontSize: 12, background: 'var(--surface)', color: 'var(--ink)' }}
+            >
+              <option value={30}>30 / page</option>
+              <option value={60}>60 / page</option>
+              <option value={120}>120 / page</option>
+              <option value={0}>All (No pagination)</option>
+            </select>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function CalendarView({ user }: { user: User }) {
+  const [data, setData] = useState<api.TimetableResponse | null>(null)
+  const [selectedDay, setSelectedDay] = useState<number | null>(null)
+  const [rescheduleEntry, setRescheduleEntry] = useState<api.TimetableEntry | null>(null)
+  const [newRoom, setNewRoom] = useState('')
+  const [newTime, setNewTime] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [notice, setNotice] = useState('')
+
+  const load = useCallback(async () => {
+    try {
+      const res = await api.getTimetable()
+      setData(res)
+    } catch {
+      // offline / local fallback
+    }
+  }, [])
+
+  useEffect(() => { load() }, [load])
+
+  async function handleGoogleCalendarExport() {
+    try {
+      const res = await api.getGoogleCalendarUrl()
+      if (res.google_calendar_url) {
+        window.open(res.google_calendar_url, '_blank')
+      } else {
+        alert(res.message || 'No upcoming classes to sync.')
+      }
+    } catch {
+      alert('Could not generate Google Calendar link.')
+    }
+  }
+
+  async function handleUpdateRoom(e: React.FormEvent) {
+    e.preventDefault()
+    if (!rescheduleEntry) return
+    setBusy(true)
+    try {
+      await api.updateTimetableEntry(rescheduleEntry.id, {
+        room_number: newRoom.trim() || undefined,
+        start_time: newTime.trim() || undefined,
+      })
+      setRescheduleEntry(null)
+      setNotice('Lecture room and schedule updated. Enrolled students have been notified.')
+      await load()
+    } catch {
+      alert('Could not update timetable.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function handleCancelClass(entry: api.TimetableEntry) {
+    if (!window.confirm(`Cancel ${entry.class_name} on ${entry.day_name}? Enrolled students will receive immediate alerts.`)) return
+    setBusy(true)
+    try {
+      await api.cancelTimetableEntry(entry.id)
+      setNotice(`Lecture cancelled for ${entry.class_name}.`)
+      await load()
+    } catch {
+      alert('Could not cancel lecture.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const entries = data?.timetable || []
+  const filtered = selectedDay === null ? entries : entries.filter(e => e.day_of_week === selectedDay)
+  const nextClass = data?.next_class
+  const isTeacherOrController = user.role === 'teacher' || user.role === 'controller'
+
+  const dayTabs = [
+    { label: 'All Days', val: null },
+    { label: 'Mon', val: 0 },
+    { label: 'Tue', val: 1 },
+    { label: 'Wed', val: 2 },
+    { label: 'Thu', val: 3 },
+    { label: 'Fri', val: 4 },
+    { label: 'Sat', val: 5 },
+  ]
+
+  return (
+    <div className="calendar-panel">
+      <PageIntro
+        eyebrow="Academic Schedule"
+        title="Weekly Timetable & Calendar"
+        description="Official institutional lecture timetable with automated Google Calendar synchronization and room management."
+        action={
+          <div className="timetable-quick-actions">
+            <button className="secondary-button" onClick={handleGoogleCalendarExport} title="Add next class directly to your Google Calendar">
+              <Calendar size={15} /> Add to Google Calendar
+            </button>
+            <button className="secondary-button" onClick={() => window.open(api.getTimetableCalendarIcsUrl(), '_blank')} title="Download RFC 5545 iCalendar stream (.ics)">
+              <Download size={15} /> Download .ics
+            </button>
+            <button className="secondary-button" onClick={load}><RefreshCw size={15} /> Refresh</button>
+          </div>
+        }
+      />
+
+      {notice && <div className="toast" role="status"><CheckCircle2 size={17} /> {notice}</div>}
+
+      {nextClass && (
+        <div className="timetable-header-card">
+          <div>
+            <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              Next Scheduled Lecture
             </span>
+            <h2 style={{ margin: '4px 0 6px', fontSize: 22, fontWeight: 800 }}>{nextClass.class_name}</h2>
+            <div style={{ display: 'flex', gap: 12, alignItems: 'center', fontSize: 13, color: 'var(--muted)', flexWrap: 'wrap' }}>
+              <span><strong>Code:</strong> {nextClass.class_code}</span>
+              <span><strong>Room:</strong> {nextClass.room_number}</span>
+              <span><strong>Time:</strong> {nextClass.start_time} – {nextClass.end_time}</span>
+              <span><strong>Faculty:</strong> {nextClass.faculty_name}</span>
+            </div>
+          </div>
+          <button className="primary-button" onClick={handleGoogleCalendarExport}>
+            <Calendar size={15} /> Sync with Google
+          </button>
+        </div>
+      )}
 
-            {!studentView && (
-              <div className="row-actions">
+      <div className="timetable-days-nav">
+        {dayTabs.map(tab => (
+          <button
+            key={String(tab.val)}
+            className={`day-tab-btn ${selectedDay === tab.val ? 'active' : ''}`}
+            onClick={() => setSelectedDay(tab.val)}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="timetable-grid">
+        {filtered.map(entry => (
+          <div key={entry.id} className={`timetable-card ${entry.is_cancelled ? 'cancelled' : ''}`}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div>
+                <span className="timetable-time-pill">
+                  <Clock size={12} /> {entry.start_time} – {entry.end_time}
+                </span>
+                <span style={{ marginLeft: 8, fontSize: 12, fontWeight: 700, color: 'var(--muted)' }}>
+                  {entry.day_name}
+                </span>
+              </div>
+              {entry.is_cancelled ? (
+                <span className="status-chip status-absent">Cancelled</span>
+              ) : (
+                <span className="status-chip status-present">{entry.section || 'Lecture'}</span>
+              )}
+            </div>
+
+            <h3 style={{ margin: '6px 0 2px', fontSize: 16, fontWeight: 800 }}>{entry.class_name}</h3>
+            <div style={{ fontSize: 12, color: 'var(--muted)', display: 'flex', flexDirection: 'column', gap: 3 }}>
+              <span><strong>Code:</strong> {entry.class_code} · <strong>Venue:</strong> {entry.room_number}</span>
+              <span><strong>Instructor:</strong> {entry.faculty_name}</span>
+            </div>
+
+            {isTeacherOrController && !entry.is_cancelled && (
+              <div style={{ display: 'flex', gap: 8, marginTop: 8, borderTop: '1px solid var(--line)', paddingTop: 10 }}>
                 <button
-                  className="status-action present"
-                  disabled={disabled}
-                  onClick={() => onUpdate?.(row.student_id, 'present')}
-                  aria-label={`Mark ${row.student_name} present`}
-                  title="Mark Present"
-                >
-                  <Check size={14} />
-                </button>
-                <button
-                  className="status-action absent"
-                  disabled={disabled}
-                  onClick={() => onUpdate?.(row.student_id, 'absent')}
-                  aria-label={`Mark ${row.student_name} absent`}
-                  title="Mark Absent"
-                >
-                  <X size={14} />
-                </button>
-                <button
-                  className="status-action edit"
-                  disabled={disabled}
+                  className="secondary-button small"
                   onClick={() => {
-                    const note = window.prompt('Correction note (required for institutional audit trail):', row.note || '')
-                    if (note !== null) onUpdate?.(row.student_id, row.status === 'pending' ? 'present' : row.status, note)
+                    setRescheduleEntry(entry)
+                    setNewRoom(entry.room_number)
+                    setNewTime(entry.start_time)
                   }}
-                  aria-label={`Add audit note for ${row.student_name}`}
-                  title="Add Audit Note"
+                  disabled={busy}
                 >
-                  <Pencil size={14} />
+                  <Pencil size={12} /> Change Room / Reschedule
+                </button>
+                <button
+                  className="secondary-button small"
+                  style={{ color: '#ef4444' }}
+                  onClick={() => handleCancelClass(entry)}
+                  disabled={busy}
+                >
+                  Cancel Class
                 </button>
               </div>
             )}
           </div>
-        ))
-      ) : (
-        <EmptyState
-          icon={<Users />}
-          title="No attendance entries recorded"
-          body="Attendance entries will populate dynamically as students complete active liveness sweeps."
-        />
+        ))}
+        {filtered.length === 0 && (
+          <div style={{ gridColumn: '1 / -1' }}>
+            <EmptyState
+              icon={<Calendar />}
+              title="No classes scheduled"
+              body="No lectures found for the selected day in your institutional timetable."
+            />
+          </div>
+        )}
+      </div>
+
+      {rescheduleEntry && (
+        <div className="modal-backdrop">
+          <div className="modal-content" style={{ maxWidth: 440 }}>
+            <div className="modal-header">
+              <h3>Reschedule {rescheduleEntry.class_code}</h3>
+              <button onClick={() => setRescheduleEntry(null)}><X size={18} /></button>
+            </div>
+            <form onSubmit={handleUpdateRoom}>
+              <p style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 16 }}>
+                Updating the room or time will immediately send push alerts to all enrolled students for <strong>{rescheduleEntry.class_name}</strong>.
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 16 }}>
+                <label style={{ fontSize: 13, fontWeight: 600 }}>
+                  Room / Venue Number
+                  <input
+                    type="text"
+                    value={newRoom}
+                    onChange={e => setNewRoom(e.target.value)}
+                    placeholder="e.g. LH-120 or Auditorium A"
+                    required
+                    style={{ width: '100%', marginTop: 4, padding: '8px 12px', borderRadius: 8, border: '1px solid var(--line)' }}
+                  />
+                </label>
+                <label style={{ fontSize: 13, fontWeight: 600 }}>
+                  Start Time
+                  <input
+                    type="text"
+                    value={newTime}
+                    onChange={e => setNewTime(e.target.value)}
+                    placeholder="e.g. 09:30 or 14:00"
+                    style={{ width: '100%', marginTop: 4, padding: '8px 12px', borderRadius: 8, border: '1px solid var(--line)' }}
+                  />
+                </label>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                <button type="button" className="secondary-button" onClick={() => setRescheduleEntry(null)}>Cancel</button>
+                <button type="submit" className="primary-button" disabled={busy}>Save & Alert Students</button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
     </div>
   )
@@ -1859,7 +2234,21 @@ function ControllerStudentsView() {
   const [notice, setNotice] = useState('')
   const [regWindowOpen, setRegWindowOpen] = useState(true)
   const [updatingWindow, setUpdatingWindow] = useState(false)
+  const [previewModalOpen, setPreviewModalOpen] = useState(false)
+  const [previewData, setPreviewData] = useState<api.RosterImportPreviewResponse | null>(null)
+  const [pendingFile, setPendingFile] = useState<File | null>(null)
+  const [dupReport, setDupReport] = useState<api.DuplicateReport | null>(null)
+  const [dupModalOpen, setDupModalOpen] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const scanDuplicates = useCallback(async () => {
+    try {
+      const rep = await api.getDuplicateStudents()
+      setDupReport(rep)
+    } catch {
+      // ignore
+    }
+  }, [])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -1870,10 +2259,11 @@ function ControllerStudentsView() {
       ])
       setStudents(data)
       setRegWindowOpen(win.is_open)
+      await scanDuplicates()
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [scanDuplicates])
 
   useEffect(() => { load() }, [load])
 
@@ -1891,20 +2281,39 @@ function ControllerStudentsView() {
     }
   }
 
-  async function handleCsvImport(e: React.ChangeEvent<HTMLInputElement>) {
+  async function handleCsvSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
     setSubmitting(true)
     try {
-      const res = await api.importStudentRegistry({ file })
-      setNotice(`Import successful: ${res.imported} added, ${res.updated} updated (${res.total_processed} total).`)
-      await load()
+      const preview = await api.importStudentRegistry({ file, preview: true })
+      setPendingFile(file)
+      setPreviewData(preview)
+      setPreviewModalOpen(true)
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'CSV import failed.'
-      alert(`Import error: ${msg}`)
+      const msg = err instanceof Error ? err.message : 'CSV validation preview failed.'
+      alert(`CSV Validation error: ${msg}`)
     } finally {
       setSubmitting(false)
       if (fileInputRef.current) fileInputRef.current.value = ''
+    }
+  }
+
+  async function handleConfirmImport() {
+    if (!pendingFile) return
+    setSubmitting(true)
+    try {
+      const res = await api.importStudentRegistry({ file: pendingFile, preview: false })
+      setPreviewModalOpen(false)
+      setPendingFile(null)
+      setPreviewData(null)
+      setNotice(`Import successful: ${res.imported} added, ${res.updated} updated (${res.total_processed} total).`)
+      await load()
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'CSV import commit failed.'
+      alert(`Import error: ${msg}`)
+    } finally {
+      setSubmitting(false)
     }
   }
 
@@ -1958,9 +2367,12 @@ function ControllerStudentsView() {
         description="Verify authorized college students, manage one-time biometric registration locks, and reset biometric enrollment on demand."
         action={
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-            <input type="file" ref={fileInputRef} accept=".csv" style={{ display: 'none' }} onChange={handleCsvImport} />
+            <input type="file" ref={fileInputRef} accept=".csv" style={{ display: 'none' }} onChange={handleCsvSelect} />
             <button className="secondary-button" onClick={() => fileInputRef.current?.click()} disabled={submitting}>
               <Upload size={16} /> Import Registry (CSV)
+            </button>
+            <button className="secondary-button" onClick={scanDuplicates} title="Scan for duplicate student profiles or roll numbers">
+              <ShieldAlert size={16} /> Scan Duplicates
             </button>
             <button className="primary-button" onClick={() => setModalOpen(true)}>
               <Plus size={16} /> Add College Student
@@ -1969,6 +2381,23 @@ function ControllerStudentsView() {
         }
       />
       {notice && <div className="toast" role="status"><CheckCircle2 size={17} /> {notice}<button onClick={() => setNotice('')}><X size={16} /></button></div>}
+
+      {dupReport?.has_duplicates && (
+        <div className="duplicate-alert-banner">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <AlertCircle size={20} style={{ color: '#d97706' }} />
+            <div>
+              <strong>Duplicate Student Conflicts Detected</strong>
+              <p style={{ margin: '2px 0 0', fontSize: 13 }}>
+                Found {dupReport.total_duplicate_conflicts} conflicting accounts sharing duplicate emails or roll numbers.
+              </p>
+            </div>
+          </div>
+          <button className="secondary-button small" onClick={() => setDupModalOpen(true)}>
+            Inspect Duplicates
+          </button>
+        </div>
+      )}
 
       <div className="panel" style={{ marginTop: 16, marginBottom: 20, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderLeft: `4px solid ${regWindowOpen ? 'var(--emerald)' : 'var(--rose)'}`, flexWrap: 'wrap', gap: 12 }}>
         <div>
@@ -2089,6 +2518,118 @@ function ControllerStudentsView() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {previewModalOpen && previewData && (
+        <div className="drawer-backdrop" onClick={() => setPreviewModalOpen(false)}>
+          <div className="modal-dialog" style={{ maxWidth: 680 }} onClick={e => e.stopPropagation()}>
+            <div className="modal-head">
+              <div>
+                <p className="eyebrow">Roster Validation Preview</p>
+                <h3>Official Roster Import Verification</h3>
+              </div>
+              <button className="icon-button" onClick={() => setPreviewModalOpen(false)}><X size={18} /></button>
+            </div>
+            
+            <p style={{ fontSize: 13, color: 'var(--muted)', margin: '8px 0 16px' }}>
+              Verify student records and enrollments before committing changes to the official institutional database.
+            </p>
+
+            <div className="preview-summary-grid">
+              <div className="preview-metric-box">
+                <strong>{previewData.total_processed}</strong>
+                <span>Total Rows</span>
+              </div>
+              <div className="preview-metric-box">
+                <strong style={{ color: '#10b981' }}>{previewData.new_count}</strong>
+                <span>New Students</span>
+              </div>
+              <div className="preview-metric-box">
+                <strong style={{ color: '#0284c7' }}>{previewData.updated_count}</strong>
+                <span>Updates</span>
+              </div>
+            </div>
+
+            {previewData.duplicate_warnings && previewData.duplicate_warnings.length > 0 && (
+              <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: 12, marginBottom: 16 }}>
+                <strong style={{ color: '#b45309', fontSize: 13 }}>In-file Duplicate Warnings:</strong>
+                <ul style={{ margin: '6px 0 0', paddingLeft: 18, fontSize: 12, color: '#92400e' }}>
+                  {previewData.duplicate_warnings.slice(0, 4).map((w, i) => <li key={i}>{w}</li>)}
+                </ul>
+              </div>
+            )}
+
+            {previewData.sample_new_students && previewData.sample_new_students.length > 0 && (
+              <div style={{ marginBottom: 16 }}>
+                <h4 style={{ fontSize: 13, marginBottom: 8 }}>Sample Students to be Added:</h4>
+                <div style={{ maxHeight: 180, overflowY: 'auto', border: '1px solid var(--line)', borderRadius: 8 }}>
+                  <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
+                    <thead style={{ background: 'var(--surface-subtle)', textAlign: 'left' }}>
+                      <tr>
+                        <th style={{ padding: 8 }}>Name</th>
+                        <th style={{ padding: 8 }}>Email</th>
+                        <th style={{ padding: 8 }}>Roll Number</th>
+                        <th style={{ padding: 8 }}>Class Code</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {previewData.sample_new_students.map((s, idx) => (
+                        <tr key={idx} style={{ borderTop: '1px solid var(--line)' }}>
+                          <td style={{ padding: 8 }}>{s.name}</td>
+                          <td style={{ padding: 8 }}>{s.email}</td>
+                          <td style={{ padding: 8 }}>{s.roll_number}</td>
+                          <td style={{ padding: 8 }}>{s.class_code || '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            <div className="modal-actions">
+              <button type="button" className="secondary-button" onClick={() => setPreviewModalOpen(false)}>Cancel</button>
+              <button type="button" className="primary-button" disabled={submitting} onClick={handleConfirmImport}>
+                {submitting ? 'Committing…' : `Confirm & Commit (${previewData.new_count} New, ${previewData.updated_count} Updates)`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {dupModalOpen && dupReport && (
+        <div className="drawer-backdrop" onClick={() => setDupModalOpen(false)}>
+          <div className="modal-dialog" style={{ maxWidth: 620 }} onClick={e => e.stopPropagation()}>
+            <div className="modal-head">
+              <h3>Duplicate Student Accounts</h3>
+              <button className="icon-button" onClick={() => setDupModalOpen(false)}><X size={18} /></button>
+            </div>
+            <p style={{ fontSize: 13, color: 'var(--muted)', margin: '8px 0 16px' }}>
+              The following accounts share duplicate email addresses or roll numbers. Controllers should unlock or correct these records.
+            </p>
+            <div style={{ maxHeight: 320, overflowY: 'auto' }}>
+              {Object.entries(dupReport.duplicate_email_groups || {}).map(([email, list]) => (
+                <div key={email} style={{ border: '1px solid var(--line)', borderRadius: 8, padding: 12, marginBottom: 10 }}>
+                  <span style={{ fontWeight: 700, fontSize: 13, color: '#ef4444' }}>Duplicate Email: {email}</span>
+                  <ul style={{ margin: '6px 0 0', paddingLeft: 18, fontSize: 12 }}>
+                    {list.map(s => <li key={s.id}>{s.name} ({s.roll_number || 'No roll'}) · ID: {s.id}</li>)}
+                  </ul>
+                </div>
+              ))}
+              {Object.entries(dupReport.duplicate_roll_groups || {}).map(([roll, list]) => (
+                <div key={roll} style={{ border: '1px solid var(--line)', borderRadius: 8, padding: 12, marginBottom: 10 }}>
+                  <span style={{ fontWeight: 700, fontSize: 13, color: '#f59e0b' }}>Duplicate Roll Number: {roll}</span>
+                  <ul style={{ margin: '6px 0 0', paddingLeft: 18, fontSize: 12 }}>
+                    {list.map(s => <li key={s.id}>{s.name} ({s.email}) · ID: {s.id}</li>)}
+                  </ul>
+                </div>
+              ))}
+            </div>
+            <div className="modal-actions" style={{ marginTop: 16 }}>
+              <button type="button" className="secondary-button" onClick={() => setDupModalOpen(false)}>Close</button>
+            </div>
           </div>
         </div>
       )}

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:flutter_floating_bottom_bar/flutter_floating_bottom_bar.dart';
 import 'package:percent_indicator/percent_indicator.dart';
@@ -1625,8 +1626,10 @@ class _StudentHomeState extends State<StudentHome> {
                             const SizedBox(height: 4),
                             Text(
                               openSessions.isNotEmpty
-                                  ? (openSessions.first.className.isNotEmpty ? openSessions.first.className : 'CS401: Distributed Systems')
-                                  : 'CS401: Distributed Systems',
+                                  ? (openSessions.first.className.isNotEmpty ? openSessions.first.className : 'Active Classroom Session')
+                                  : (state.nextClass != null
+                                      ? '${state.nextClass!['subject_code']}: ${state.nextClass!['subject_name']}'
+                                      : 'CS401: Distributed Systems'),
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(
                                 fontSize: 16,
@@ -1637,18 +1640,62 @@ class _StudentHomeState extends State<StudentHome> {
                             const SizedBox(height: 2),
                             Text(
                               openSessions.isNotEmpty
-                                  ? (openSessions.first.classCode.isNotEmpty ? '${openSessions.first.classCode} • LH-120' : 'LH-120 • 09:00 - 10:30 AM')
-                                  : 'LH-120 • 09:00 - 10:30 AM',
+                                  ? (openSessions.first.classCode.isNotEmpty ? '${openSessions.first.classCode} • Live in Progress' : 'LH-120 • In Session')
+                                  : (state.nextClass != null
+                                      ? '${state.nextClass!['room'] ?? "LH-120"} • ${state.nextClass!['start_time']} - ${state.nextClass!['end_time']}'
+                                      : 'LH-120 • 09:00 - 10:30 AM'),
                               style: const TextStyle(
                                 fontSize: 12,
                                 fontWeight: FontWeight.w500,
                                 color: AppColors.slate,
                               ),
                             ),
+                            if (state.nextClass?['faculty_name'] != null && openSessions.isEmpty) ...[
+                              const SizedBox(height: 2),
+                              Text(
+                                'Prof: ${state.nextClass!['faculty_name']}',
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppColors.primary,
+                                ),
+                              ),
+                            ],
                           ],
                         ),
                       ),
-                      const SizedBox(width: 10),
+                      const SizedBox(width: 8),
+                      // Google Calendar sync icon
+                      IconButton(
+                        icon: const Icon(Icons.calendar_month_outlined, color: AppColors.primary, size: 22),
+                        tooltip: 'Copy Google Calendar Link',
+                        onPressed: () {
+                          final cls = state.nextClass ?? {
+                            'subject_code': 'CS401',
+                            'subject_name': 'Distributed Systems',
+                            'start_time': '09:00',
+                            'end_time': '10:30',
+                            'room': 'LH-120',
+                            'faculty_name': 'Prof. Alan Turing',
+                          };
+                          final url = state.api.generateGoogleCalendarUrl(
+                            title: '${cls['subject_code']}: ${cls['subject_name']}',
+                            startTime: cls['start_time']?.toString() ?? '09:00',
+                            endTime: cls['end_time']?.toString() ?? '10:30',
+                            location: cls['room']?.toString() ?? 'Campus Hall',
+                            details: 'Lecture conducted by ${cls['faculty_name'] ?? 'Faculty'}. Verified on Attendrix.',
+                          );
+                          Clipboard.setData(ClipboardData(text: url));
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('Google Calendar link copied to clipboard for "${cls['subject_name']}"!'),
+                              backgroundColor: AppColors.primary,
+                              duration: const Duration(seconds: 3),
+                            ),
+                          );
+                        },
+                      ),
+                      const SizedBox(width: 4),
                       // Forest Green Pill Button "Mark Attendance"
                       GestureDetector(
                         onTap: () {
@@ -1666,7 +1713,7 @@ class _StudentHomeState extends State<StudentHome> {
                           }
                         },
                         child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                           decoration: BoxDecoration(
                             color: AppColors.primary,
                             borderRadius: BorderRadius.circular(24),
@@ -1683,7 +1730,7 @@ class _StudentHomeState extends State<StudentHome> {
                             style: TextStyle(
                               color: Colors.white,
                               fontWeight: FontWeight.w800,
-                              fontSize: 12.5,
+                              fontSize: 12,
                             ),
                           ),
                         ),
@@ -1691,6 +1738,105 @@ class _StudentHomeState extends State<StudentHome> {
                     ],
                   ),
                 ),
+                if (state.todayTimetable.isNotEmpty) ...[
+                  const SizedBox(height: 14),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'Today\'s Timetable',
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.ink,
+                        ),
+                      ),
+                      Text(
+                        '${state.todayTimetable.length} Classes',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.muted,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  ...state.todayTimetable.map((cls) {
+                    final isCancelled = cls['is_cancelled'] == true;
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                          color: isCancelled ? AppColors.rose.withValues(alpha: 0.3) : const Color(0xFFECEEF1),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 36,
+                            height: 36,
+                            decoration: BoxDecoration(
+                              color: isCancelled ? AppColors.rose.withValues(alpha: 0.1) : AppColors.cardSubtle,
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Icon(
+                              isCancelled ? Icons.event_busy_rounded : Icons.schedule_rounded,
+                              size: 18,
+                              color: isCancelled ? AppColors.rose : AppColors.primary,
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  '${cls['subject_code']}: ${cls['subject_name']}',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 13,
+                                    decoration: isCancelled ? TextDecoration.lineThrough : null,
+                                    color: isCancelled ? AppColors.muted : AppColors.ink,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  '${cls['start_time']} - ${cls['end_time']} • ${cls['room'] ?? "LH"}${cls['faculty_name'] != null ? " • ${cls['faculty_name']}" : ""}',
+                                  style: const TextStyle(fontSize: 11, color: AppColors.slate),
+                                ),
+                              ],
+                            ),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.calendar_month_outlined, size: 18, color: AppColors.primary),
+                            tooltip: 'Add to Google Calendar',
+                            onPressed: () {
+                              final url = state.api.generateGoogleCalendarUrl(
+                                title: '${cls['subject_code']}: ${cls['subject_name']}',
+                                startTime: cls['start_time']?.toString() ?? '09:00',
+                                endTime: cls['end_time']?.toString() ?? '10:30',
+                                location: cls['room']?.toString() ?? 'Campus Hall',
+                                details: 'Lecture by ${cls['faculty_name'] ?? 'Faculty'}.',
+                              );
+                              Clipboard.setData(ClipboardData(text: url));
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('Google Calendar link copied to clipboard for "${cls['subject_name']}"!'),
+                                  backgroundColor: AppColors.primary,
+                                  duration: const Duration(seconds: 2),
+                                ),
+                              );
+                            },
+                          ),
+                        ],
+                      ),
+                    );
+                  }),
+                ],
               ],
             ),
           ),

@@ -186,7 +186,7 @@ class InMemoryTableQuery:
             if "class_id" in row and "classes" not in row:
                 cls = next((c for c in self.db.tables.get("classes", []) if str(c.get("id")) == str(row.get("class_id"))), None)
                 if cls:
-                    row["classes"] = {"id": cls["id"], "name": cls["name"], "code": cls["code"], "teacher_id": cls.get("teacher_id")}
+                    row["classes"] = {"id": cls["id"], "name": cls["name"], "code": cls.get("code", ""), "teacher_id": cls.get("teacher_id")}
         return rows
 
 
@@ -333,6 +333,92 @@ class InMemoryDatabase:
         self.tables["face_templates"] = []
         self.tables["audit_log"] = []
         self.tables["notifications"] = []
+        self.tables["timetable"] = [
+            {
+                "id": "tt-11111111-1111-1111-1111-111111111111",
+                "class_id": class1_id,
+                "day_of_week": 0,
+                "day_name": "Monday",
+                "start_time": "09:00",
+                "end_time": "10:30",
+                "room_number": "LH-120",
+                "is_cancelled": False,
+                "academic_year": "2026-2027",
+                "semester": "Fall 2026",
+            },
+            {
+                "id": "tt-11111111-1111-1111-1111-111111111112",
+                "class_id": class1_id,
+                "day_of_week": 2,
+                "day_name": "Wednesday",
+                "start_time": "09:00",
+                "end_time": "10:30",
+                "room_number": "LH-120",
+                "is_cancelled": False,
+                "academic_year": "2026-2027",
+                "semester": "Fall 2026",
+            },
+            {
+                "id": "tt-11111111-1111-1111-1111-111111111113",
+                "class_id": class1_id,
+                "day_of_week": 4,
+                "day_name": "Friday",
+                "start_time": "09:00",
+                "end_time": "10:30",
+                "room_number": "LH-120",
+                "is_cancelled": False,
+                "academic_year": "2026-2027",
+                "semester": "Fall 2026",
+            },
+            {
+                "id": "tt-22222222-2222-2222-2222-222222222221",
+                "class_id": class2_id,
+                "day_of_week": 1,
+                "day_name": "Tuesday",
+                "start_time": "11:00",
+                "end_time": "12:30",
+                "room_number": "SEM-80",
+                "is_cancelled": False,
+                "academic_year": "2026-2027",
+                "semester": "Fall 2026",
+            },
+            {
+                "id": "tt-22222222-2222-2222-2222-222222222222",
+                "class_id": class2_id,
+                "day_of_week": 3,
+                "day_name": "Thursday",
+                "start_time": "11:00",
+                "end_time": "12:30",
+                "room_number": "SEM-80",
+                "is_cancelled": False,
+                "academic_year": "2026-2027",
+                "semester": "Fall 2026",
+            },
+            {
+                "id": "tt-33333333-3333-3333-3333-333333333331",
+                "class_id": class3_id,
+                "day_of_week": 0,
+                "day_name": "Monday",
+                "start_time": "14:00",
+                "end_time": "15:30",
+                "room_number": "AMP-240",
+                "is_cancelled": False,
+                "academic_year": "2026-2027",
+                "semester": "Fall 2026",
+            },
+            {
+                "id": "tt-44444444-4444-4444-4444-444444444441",
+                "class_id": class4_id,
+                "day_of_week": 3,
+                "day_name": "Thursday",
+                "start_time": "16:00",
+                "end_time": "17:30",
+                "room_number": "AUD-260",
+                "is_cancelled": False,
+                "academic_year": "2026-2027",
+                "semester": "Fall 2026",
+            },
+        ]
         self.tables["system_settings"] = [
             {
                 "id": "setting-reg-window",

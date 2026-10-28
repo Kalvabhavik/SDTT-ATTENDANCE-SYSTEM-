@@ -23,6 +23,7 @@ import secrets
 import threading
 import time
 import uuid
+import cv2
 import numpy as np
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
@@ -43,7 +44,7 @@ from fastapi import (
     WebSocketDisconnect,
 )
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field
 
 from app.config import (
@@ -78,12 +79,14 @@ from app.security import (
     consume_challenge_nonce,
     create_access_token,
     create_liveness_challenge_token,
+    create_recovery_token,
     decrypt_face_embedding,
     encrypt_face_embedding,
     is_token_revoked,
     revoke_token,
     verify_jwt_token,
     verify_liveness_challenge_token,
+    verify_recovery_token,
 )
 from app.verification import (
     SweepFrame,
@@ -414,6 +417,11 @@ def require_controller(user: dict[str, Any]) -> None:
         raise HTTPException(status_code=403, detail="Controller authorization required")
 
 
+def require_teacher_or_controller(user: dict[str, Any]) -> None:
+    if user.get("role") not in ("teacher", "lecturer", "controller", "admin"):
+        raise HTTPException(status_code=403, detail="Faculty or Controller authorization required")
+
+
 # ── Utility: Session & Class Guards ───────────────────────────────────────────
 def _get_class_or_404(class_id: str) -> dict[str, Any]:
     try:
@@ -558,7 +566,33 @@ def _create_notification(
     title: str,
     body: str,
     session_id: Optional[str] = None,
+    deduplicate_seconds: int = 900,
 ) -> dict[str, Any]:
+    db = supa()
+    if deduplicate_seconds > 0:
+        try:
+            existing = (
+                db.table("notifications")
+                .select("id, title, type, created_at")
+                .eq("user_id", user_id)
+                .eq("type", notif_type)
+                .execute()
+                .data
+            )
+            now_dt = datetime.now(timezone.utc)
+            for item in (existing or []):
+                if item.get("title") == title:
+                    c_str = item.get("created_at")
+                    if c_str:
+                        try:
+                            c_dt = datetime.fromisoformat(c_str.replace("Z", "+00:00"))
+                            if (now_dt - c_dt).total_seconds() < deduplicate_seconds:
+                                return item
+                        except Exception:
+                            pass
+        except Exception:
+            pass
+
     row = {
         "user_id": user_id,
         "type": notif_type,
@@ -567,7 +601,7 @@ def _create_notification(
         "session_id": session_id,
         "created_at": utc_now(),
     }
-    resp = supa().table("notifications").insert(row).execute()
+    resp = db.table("notifications").insert(row).execute()
     created = resp.data[0] if resp.data else row
     publish_event(event_payload("notification.created", created), [user_id])
     return created
@@ -741,6 +775,34 @@ class CreateTeacherRequest(BaseModel):
 class RegistrationWindowRequest(BaseModel):
     is_open: bool
     note: Optional[str] = None
+
+
+class AccountRecoveryRequest(BaseModel):
+    email: str = Field(min_length=3, max_length=120)
+    roll_number: Optional[str] = None
+
+
+class PasswordResetRequest(BaseModel):
+    recovery_token: str = Field(min_length=16)
+    new_password: str = Field(min_length=6, max_length=128)
+
+
+class TimetableCreateRequest(BaseModel):
+    class_id: str
+    day_of_week: int = Field(ge=0, le=6)
+    start_time: str = Field(pattern=r"^\d{2}:\d{2}$")
+    end_time: str = Field(pattern=r"^\d{2}:\d{2}$")
+    room_number: Optional[str] = Field(default=None, max_length=50)
+    academic_year: Optional[str] = Field(default="2026-2027", max_length=20)
+    semester: Optional[str] = Field(default="Fall 2026", max_length=50)
+
+
+class TimetableUpdateRequest(BaseModel):
+    day_of_week: Optional[int] = Field(default=None, ge=0, le=6)
+    start_time: Optional[str] = Field(default=None, pattern=r"^\d{2}:\d{2}$")
+    end_time: Optional[str] = Field(default=None, pattern=r"^\d{2}:\d{2}$")
+    room_number: Optional[str] = Field(default=None, max_length=50)
+    is_cancelled: Optional[bool] = None
 
 
 def _is_registration_window_open() -> bool:
@@ -964,6 +1026,77 @@ def signup(req: SignupRequest) -> dict[str, Any]:
             "role": prof.get("role", db_role),
         },
         "message": "Account created successfully. Welcome to Attendrix!",
+    }
+
+
+@app.post("/api/auth/recover-account")
+def recover_account(req: AccountRecoveryRequest) -> dict[str, Any]:
+    """Secure account recovery verification against official student roster."""
+    email = req.email.strip().lower()
+    db = supa()
+    prof_resp = db.table("profiles").select("*").eq("email", email).execute()
+    if not prof_resp.data:
+        raise HTTPException(
+            status_code=404,
+            detail="No student record found with this email on the official college roster. [ROSTER_RECORD_NOT_FOUND]",
+            headers={"X-Error-Code": "ROSTER_RECORD_NOT_FOUND"},
+        )
+    prof = prof_resp.data[0]
+    if req.roll_number and prof.get("roll_number"):
+        if prof.get("roll_number", "").strip().upper() != req.roll_number.strip().upper():
+            raise HTTPException(
+                status_code=400,
+                detail="The provided roll number does not match official student records. [ROLL_NUMBER_MISMATCH]",
+                headers={"X-Error-Code": "ROLL_NUMBER_MISMATCH"},
+            )
+
+    token = create_recovery_token(
+        user_id=prof["id"],
+        email=prof["email"],
+        ttl_seconds=900,
+    )
+    _audit(
+        session_id=None,
+        actor_id=prof["id"],
+        action="security.account_recovery_requested",
+        note=f"Account recovery challenge issued for student {prof.get('name', 'Student')} ({prof['email']}).",
+    )
+    return {
+        "status": "success",
+        "message": "Student identity verified against the official college roster.",
+        "recovery_token": token,
+        "user_id": prof["id"],
+        "email": prof["email"],
+        "name": prof.get("name", "Student"),
+        "roll_number": prof.get("roll_number", ""),
+    }
+
+
+@app.post("/api/auth/reset-password")
+def reset_password(req: PasswordResetRequest) -> dict[str, Any]:
+    """Execute authorized password reset using validated recovery token."""
+    token_payload = verify_recovery_token(req.recovery_token)
+    user_id = token_payload.get("sub")
+    db = supa()
+    prof_resp = db.table("profiles").select("*").eq("id", user_id).execute()
+    if not prof_resp.data:
+        raise HTTPException(status_code=404, detail="Student profile not found.")
+    prof = prof_resp.data[0]
+
+    try:
+        db.auth.admin.update_user_by_id(user_id, {"password": req.new_password})
+    except Exception as e:
+        logger.warning(f"Could not update Supabase auth password for {user_id}: {e}")
+
+    _audit(
+        session_id=None,
+        actor_id=user_id,
+        action="security.password_reset_completed",
+        note=f"Password reset successfully completed for student {prof.get('name', 'Student')} ({prof['email']}).",
+    )
+    return {
+        "status": "success",
+        "message": "Password updated successfully. You may now log in with your new credentials.",
     }
 
 
@@ -1368,7 +1501,7 @@ def teacher_set_session_reference(
     if photo is not None:
         p_bytes = _read_upload(photo)
         if len(p_bytes) > 0:
-            _, err_code, err_msg = validate_image_payload(p_bytes, max_bytes=10485760, min_width=1, min_height=1)
+            img_parsed, err_code, err_msg = validate_image_payload(p_bytes, max_bytes=10485760, min_width=1, min_height=1)
             if err_code is not None:
                 status_code = 413 if err_code == "IMAGE_TOO_LARGE" else (415 if err_code == "UNSUPPORTED_FORMAT" else 400)
                 raise HTTPException(
@@ -1377,7 +1510,16 @@ def teacher_set_session_reference(
                     headers={"X-Error-Code": err_code},
                 )
             import base64
-            b64 = base64.b64encode(p_bytes).decode("ascii")
+            if img_parsed is not None:
+                h, w = img_parsed.shape[:2]
+                max_dim = 1280
+                if max(h, w) > max_dim:
+                    scale = max_dim / float(max(h, w))
+                    img_parsed = cv2.resize(img_parsed, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
+                _, enc = cv2.imencode(".jpg", img_parsed, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
+                b64 = base64.b64encode(enc.tobytes()).decode("ascii")
+            else:
+                b64 = base64.b64encode(p_bytes).decode("ascii")
             data_uri = f"data:image/jpeg;base64,{b64}"
     elif photo_base64:
         import base64
@@ -1386,8 +1528,9 @@ def teacher_set_session_reference(
             p_bytes = base64.b64decode(clean_b64)
             if len(p_bytes) > 10485760:
                 raise HTTPException(status_code=413, detail="Uploaded image exceeds maximum allowed size (10MB). [IMAGE_TOO_LARGE]", headers={"X-Error-Code": "IMAGE_TOO_LARGE"})
+            img_parsed = None
             if ATTENDANCE_ENV != "test" or len(p_bytes) > 500:
-                _, err_code, err_msg = validate_image_payload(p_bytes, max_bytes=10485760, min_width=1, min_height=1)
+                img_parsed, err_code, err_msg = validate_image_payload(p_bytes, max_bytes=10485760, min_width=1, min_height=1)
                 if err_code is not None:
                     status_code = 413 if err_code == "IMAGE_TOO_LARGE" else (415 if err_code == "UNSUPPORTED_FORMAT" else 400)
                     raise HTTPException(
@@ -1395,7 +1538,17 @@ def teacher_set_session_reference(
                         detail=f"{err_msg} [{err_code}]",
                         headers={"X-Error-Code": err_code},
                     )
-            data_uri = photo_base64 if photo_base64.startswith("data:image/") else f"data:image/jpeg;base64,{clean_b64}"
+            if img_parsed is not None:
+                h, w = img_parsed.shape[:2]
+                max_dim = 1280
+                if max(h, w) > max_dim:
+                    scale = max_dim / float(max(h, w))
+                    img_parsed = cv2.resize(img_parsed, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
+                _, enc = cv2.imencode(".jpg", img_parsed, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
+                b64 = base64.b64encode(enc.tobytes()).decode("ascii")
+                data_uri = f"data:image/jpeg;base64,{b64}"
+            else:
+                data_uri = photo_base64 if photo_base64.startswith("data:image/") else f"data:image/jpeg;base64,{clean_b64}"
         except Exception as exc:
             if isinstance(exc, HTTPException):
                 raise
@@ -3141,13 +3294,28 @@ def controller_capture_class_room(
     if lap_var < 1.5 or mean_lum < 3.0:
         raise HTTPException(status_code=400, detail="Classroom photo is too dark or blurry. Please hold steady in good lighting.")
 
+    # Downscale and compress to standard JPEG quality 80 to minimize bandwidth and storage footprint
+    max_dim = 1280
+    if max(rh, rw) > max_dim:
+        scale = max_dim / float(max(rh, rw))
+        img_optimized = cv2.resize(img, (int(rw * scale), int(rh * scale)), interpolation=cv2.INTER_AREA)
+    else:
+        img_optimized = img
+
     import base64
-    b64_str = base64.b64encode(image_bytes).decode("ascii")
+    _, enc = cv2.imencode(".jpg", img_optimized, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
+    b64_str = base64.b64encode(enc.tobytes()).decode("ascii")
     data_uri = f"data:image/jpeg;base64,{b64_str}"
 
     cap = capacity or class_row.get("capacity") or 120
     if cap not in (80, 120, 240, 260):
         cap = 120
+
+    # Analyze visible occupancy context
+    engine = get_face_engine()
+    faces = engine.detect_faces(img_optimized, allow_fallback=False)
+    occupancy_count = len(faces)
+    density_pct = round((occupancy_count / cap) * 100.0, 1) if cap > 0 else 0.0
 
     hall_type_map = {
         80: "80-Seater Seminar Hall",
@@ -3172,8 +3340,8 @@ def controller_capture_class_room(
         session_id=None,
         actor_id=user["id"],
         action="controller.venue_captured",
-        note=f"Academic Controller {user.get('name', 'Controller')} captured official reference room panorama for {class_row.get('name')} ({htype}, {rnum}).",
-        metadata={"capacity": cap, "room_number": rnum, "resolution": f"{rw}x{rh}"},
+        note=f"Academic Controller {user.get('name', 'Controller')} captured official reference room panorama for {class_row.get('name')} ({htype}, {rnum}). Visible occupancy: {occupancy_count}/{cap} ({density_pct}%).",
+        metadata={"capacity": cap, "room_number": rnum, "resolution": f"{img_optimized.shape[1]}x{img_optimized.shape[0]}", "estimated_occupancy_count": occupancy_count, "density_pct": density_pct},
     )
 
     return {
@@ -3183,7 +3351,9 @@ def controller_capture_class_room(
         "hall_type": htype,
         "room_number": rnum,
         "room_photo": data_uri,
-        "message": f"Official reference panorama captured for {htype} ({rnum}).",
+        "estimated_occupancy_count": occupancy_count,
+        "density_pct": density_pct,
+        "message": f"Official reference panorama captured for {htype} ({rnum}). Estimated occupants: {occupancy_count}.",
     }
 
 
@@ -3397,9 +3567,10 @@ def controller_set_registration_window(
 def controller_import_registry(
     file: Optional[UploadFile] = File(default=None),
     csv_text: Optional[str] = Form(default=None),
+    preview: bool = Query(default=False),
     user: dict[str, Any] = Depends(current_user),
 ) -> dict[str, Any]:
-    """Import official student registry CSV with validation, duplicate detection, and class assignment."""
+    """Import official student registry CSV with validation, preview, duplicate detection, and class assignment."""
     require_controller(user)
     db = supa()
 
@@ -3444,7 +3615,15 @@ def controller_import_registry(
     imported = 0
     updated = 0
     errors: list[str] = []
+    duplicate_warnings: list[str] = []
     line_no = 1
+    seen_csv_emails: set[str] = set()
+    seen_csv_rolls: set[str] = set()
+
+    preview_new: list[dict[str, Any]] = []
+    preview_updates: list[dict[str, Any]] = []
+    classes_matched: set[str] = set()
+    classes_unmatched: set[str] = set()
 
     for row in reader:
         line_no += 1
@@ -3461,45 +3640,104 @@ def controller_import_registry(
             errors.append(f"Row {line_no}: Invalid email address '{email}'.")
             continue
 
-        existing = db.table("profiles").select("*").eq("email", email).execute().data
-        student_record_id: str
-        if existing:
-            student_record_id = existing[0]["id"]
-            update_fields: dict[str, Any] = {"name": name}
-            if roll:
-                update_fields["roll_number"] = roll
-            if stu_id:
-                update_fields["student_id"] = stu_id
-            db.table("profiles").update(update_fields).eq("id", student_record_id).execute()
-            updated += 1
+        if email in seen_csv_emails:
+            duplicate_warnings.append(f"Row {line_no}: Duplicate email '{email}' in uploaded CSV.")
         else:
-            new_stu = {
+            seen_csv_emails.add(email)
+
+        if roll:
+            if roll in seen_csv_rolls:
+                duplicate_warnings.append(f"Row {line_no}: Duplicate roll number '{roll}' in uploaded CSV.")
+            else:
+                seen_csv_rolls.add(roll)
+
+        if class_code:
+            if class_code in code_to_class_id:
+                classes_matched.add(class_code)
+            else:
+                classes_unmatched.add(class_code)
+
+        existing = db.table("profiles").select("*").eq("email", email).execute().data
+        if existing:
+            stu_entry = {
+                "id": existing[0]["id"],
                 "name": name,
                 "email": email,
-                "role": "student",
-                "roll_number": roll or f"CS-2026-{str(imported + updated + 1).zfill(3)}",
-                "student_id": stu_id or f"STU-{9000 + imported + updated + 1}",
-                "registration_locked": False,
+                "roll_number": roll or existing[0].get("roll_number", ""),
+                "student_id": stu_id or existing[0].get("student_id", ""),
+                "class_code": class_code,
             }
-            res = db.table("profiles").insert(new_stu).execute()
-            student_record_id = res.data[0]["id"] if res.data else str(uuid.uuid4())
-            imported += 1
+            if preview:
+                preview_updates.append(stu_entry)
+            else:
+                student_record_id = existing[0]["id"]
+                update_fields: dict[str, Any] = {"name": name}
+                if roll:
+                    update_fields["roll_number"] = roll
+                if stu_id:
+                    update_fields["student_id"] = stu_id
+                db.table("profiles").update(update_fields).eq("id", student_record_id).execute()
+                updated += 1
+                if class_code and class_code in code_to_class_id:
+                    target_class_id = code_to_class_id[class_code]
+                    already_enrolled = (
+                        db.table("enrollments")
+                        .select("student_id")
+                        .eq("class_id", target_class_id)
+                        .eq("student_id", student_record_id)
+                        .execute()
+                        .data
+                    )
+                    if not already_enrolled:
+                        db.table("enrollments").insert({
+                            "class_id": target_class_id,
+                            "student_id": student_record_id,
+                        }).execute()
+        else:
+            stu_entry = {
+                "name": name,
+                "email": email,
+                "roll_number": roll or f"CS-2026-{str(len(preview_new) + 1).zfill(3)}",
+                "student_id": stu_id or f"STU-{9000 + len(preview_new) + 1}",
+                "class_code": class_code,
+            }
+            if preview:
+                preview_new.append(stu_entry)
+            else:
+                new_stu = {
+                    "name": name,
+                    "email": email,
+                    "role": "student",
+                    "roll_number": roll or f"CS-2026-{str(imported + updated + 1).zfill(3)}",
+                    "student_id": stu_id or f"STU-{9000 + imported + updated + 1}",
+                    "registration_locked": False,
+                }
+                res = db.table("profiles").insert(new_stu).execute()
+                student_record_id = res.data[0]["id"] if res.data else str(uuid.uuid4())
+                imported += 1
+                if class_code and class_code in code_to_class_id:
+                    target_class_id = code_to_class_id[class_code]
+                    db.table("enrollments").insert({
+                        "class_id": target_class_id,
+                        "student_id": student_record_id,
+                    }).execute()
 
-        if class_code and class_code in code_to_class_id:
-            target_class_id = code_to_class_id[class_code]
-            already_enrolled = (
-                db.table("enrollments")
-                .select("student_id")
-                .eq("class_id", target_class_id)
-                .eq("student_id", student_record_id)
-                .execute()
-                .data
-            )
-            if not already_enrolled:
-                db.table("enrollments").insert({
-                    "class_id": target_class_id,
-                    "student_id": student_record_id,
-                }).execute()
+    if preview:
+        return {
+            "preview": True,
+            "total_processed": line_no - 1,
+            "valid_count": len(preview_new) + len(preview_updates),
+            "new_count": len(preview_new),
+            "updated_count": len(preview_updates),
+            "error_count": len(errors),
+            "errors": errors,
+            "duplicate_warnings": duplicate_warnings,
+            "matched_classes": sorted(list(classes_matched)),
+            "unmatched_classes": sorted(list(classes_unmatched)),
+            "sample_new_students": preview_new[:5],
+            "sample_updates": preview_updates[:5],
+            "message": f"Validation preview: {len(preview_new)} new students to add, {len(preview_updates)} existing records to update, {len(errors)} errors found.",
+        }
 
     _audit(
         session_id=None,
@@ -3509,13 +3747,355 @@ def controller_import_registry(
     )
 
     return {
+        "preview": False,
         "total_processed": line_no - 1,
         "imported": imported,
         "updated": updated,
         "error_count": len(errors),
         "errors": errors,
+        "duplicate_warnings": duplicate_warnings,
         "message": f"Successfully processed {imported + updated} students ({imported} created, {updated} updated).",
     }
+
+
+@app.get("/api/controller/students/duplicates")
+def controller_get_duplicate_students(user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    """Scan and return potential duplicate students by email or roll number."""
+    require_controller(user)
+    db = supa()
+    profiles = db.table("profiles").select("id, name, email, roll_number, student_id, registration_locked").eq("role", "student").execute().data or []
+
+    by_email: dict[str, list[dict[str, Any]]] = {}
+    by_roll: dict[str, list[dict[str, Any]]] = {}
+
+    for p in profiles:
+        em = p.get("email", "").lower().strip()
+        if em:
+            by_email.setdefault(em, []).append(p)
+        roll = p.get("roll_number", "").upper().strip()
+        if roll:
+            by_roll.setdefault(roll, []).append(p)
+
+    duplicate_emails = {k: v for k, v in by_email.items() if len(v) > 1}
+    duplicate_rolls = {k: v for k, v in by_roll.items() if len(v) > 1}
+
+    return {
+        "has_duplicates": bool(duplicate_emails or duplicate_rolls),
+        "duplicate_email_groups": duplicate_emails,
+        "duplicate_roll_groups": duplicate_rolls,
+        "total_duplicate_conflicts": len(duplicate_emails) + len(duplicate_rolls),
+        "total_students_scanned": len(profiles),
+    }
+
+
+@app.get("/api/timetable")
+def get_timetable(
+    class_id: Optional[str] = Query(default=None),
+    day_of_week: Optional[int] = Query(default=None),
+    user: dict[str, Any] = Depends(current_user),
+) -> dict[str, Any]:
+    """Retrieve weekly class schedule, today's timetable, and next upcoming lecture details."""
+    db = supa()
+    role = user.get("role", "student")
+
+    allowed_class_ids: set[str] = set()
+    if role == "student":
+        enrolls = db.table("enrollments").select("class_id").eq("student_id", user["id"]).execute().data or []
+        allowed_class_ids = {e["class_id"] for e in enrolls}
+        if not allowed_class_ids:
+            all_c = db.table("classes").select("id").execute().data or []
+            allowed_class_ids = {c["id"] for c in all_c}
+    elif role in ("teacher", "lecturer"):
+        teach_classes = db.table("classes").select("id").eq("teacher_id", user["id"]).execute().data or []
+        allowed_class_ids = {c["id"] for c in teach_classes}
+    else:
+        all_c = db.table("classes").select("id").execute().data or []
+        allowed_class_ids = {c["id"] for c in all_c}
+
+    if class_id and isinstance(class_id, str):
+        if class_id in allowed_class_ids or role in ("controller", "admin"):
+            allowed_class_ids = {class_id}
+        else:
+            return {"timetable": [], "today_classes": [], "next_class": None, "total_classes": 0}
+
+    tt_rows = db.table("timetable").select("*").execute().data or []
+    classes_map = {c["id"]: c for c in (db.table("classes").select("*").execute().data or [])}
+    profiles_map = {p["id"]: p for p in (db.table("profiles").select("id, name, email").execute().data or [])}
+
+    filtered = []
+    day_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+    for r in tt_rows:
+        cid = r.get("class_id")
+        if cid in allowed_class_ids:
+            dow = int(r.get("day_of_week", 0))
+            if day_of_week is not None and dow != day_of_week:
+                continue
+            cls = classes_map.get(cid, {})
+            teacher = profiles_map.get(cls.get("teacher_id"), {})
+            item = {
+                "id": r.get("id"),
+                "class_id": cid,
+                "class_name": cls.get("name", "Lecture"),
+                "class_code": cls.get("code", "CLASS"),
+                "section": cls.get("section", "Section A"),
+                "day_of_week": dow,
+                "day_name": r.get("day_name") or day_names[dow % 7],
+                "start_time": r.get("start_time", "09:00"),
+                "end_time": r.get("end_time", "10:30"),
+                "room_number": r.get("room_number") or cls.get("room_number") or "LH-120",
+                "hall_type": cls.get("hall_type", "Lecture Theater"),
+                "is_cancelled": bool(r.get("is_cancelled", False)),
+                "faculty_name": teacher.get("name", "Faculty"),
+                "faculty_email": teacher.get("email", ""),
+                "academic_year": r.get("academic_year", "2026-2027"),
+                "semester": r.get("semester", "Fall 2026"),
+            }
+            filtered.append(item)
+
+    filtered.sort(key=lambda x: (x["day_of_week"], x["start_time"]))
+
+    now_utc = datetime.now(timezone.utc)
+    today_dow = now_utc.weekday()
+    now_time_str = now_utc.strftime("%H:%M")
+
+    today_classes = [c for c in filtered if c["day_of_week"] == today_dow]
+    
+    next_class = None
+    upcoming_today = [c for c in today_classes if not c["is_cancelled"] and c["start_time"] >= now_time_str]
+    if upcoming_today:
+        next_class = upcoming_today[0]
+    elif filtered:
+        future_classes = [c for c in filtered if not c["is_cancelled"] and c["day_of_week"] > today_dow]
+        if future_classes:
+            next_class = future_classes[0]
+        else:
+            active = [c for c in filtered if not c["is_cancelled"]]
+            if active:
+                next_class = active[0]
+
+    return {
+        "timetable": filtered,
+        "today_classes": today_classes,
+        "next_class": next_class,
+        "total_classes": len(filtered),
+        "current_day_of_week": today_dow,
+    }
+
+
+@app.post("/api/timetable")
+def create_timetable_entry(
+    req: TimetableCreateRequest,
+    user: dict[str, Any] = Depends(current_user),
+) -> dict[str, Any]:
+    """Create a new timetable lecture entry."""
+    require_teacher_or_controller(user)
+    db = supa()
+    day_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+    new_entry = {
+        "class_id": req.class_id,
+        "day_of_week": req.day_of_week,
+        "day_name": day_names[req.day_of_week % 7],
+        "start_time": req.start_time,
+        "end_time": req.end_time,
+        "room_number": req.room_number or "LH-120",
+        "is_cancelled": False,
+        "academic_year": req.academic_year or "2026-2027",
+        "semester": req.semester or "Fall 2026",
+    }
+    res = db.table("timetable").insert(new_entry).execute()
+    created = res.data[0] if res.data else new_entry
+    _audit(
+        session_id=None,
+        actor_id=user["id"],
+        action="timetable.created",
+        note=f"{user.get('name', 'Lecturer')} scheduled lecture for class {req.class_id} on {day_names[req.day_of_week % 7]} at {req.start_time}.",
+    )
+    return created
+
+
+@app.patch("/api/timetable/{entry_id}")
+def update_timetable_entry(
+    entry_id: str,
+    req: TimetableUpdateRequest,
+    user: dict[str, Any] = Depends(current_user),
+) -> dict[str, Any]:
+    """Update or reschedule an existing timetable lecture, notifying enrolled students."""
+    require_teacher_or_controller(user)
+    db = supa()
+    existing_resp = db.table("timetable").select("*").eq("id", entry_id).execute()
+    if not existing_resp.data:
+        raise HTTPException(status_code=404, detail="Timetable entry not found.")
+    entry = existing_resp.data[0]
+
+    update_fields: dict[str, Any] = {}
+    day_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+    if req.day_of_week is not None:
+        update_fields["day_of_week"] = req.day_of_week
+        update_fields["day_name"] = day_names[req.day_of_week % 7]
+    if req.start_time is not None:
+        update_fields["start_time"] = req.start_time
+    if req.end_time is not None:
+        update_fields["end_time"] = req.end_time
+    if req.room_number is not None:
+        update_fields["room_number"] = req.room_number
+    if req.is_cancelled is not None:
+        update_fields["is_cancelled"] = req.is_cancelled
+
+    res = db.table("timetable").update(update_fields).eq("id", entry_id).execute()
+    updated = res.data[0] if res.data else entry
+
+    class_id = entry.get("class_id")
+    enrolls = db.table("enrollments").select("student_id").eq("class_id", class_id).execute().data or []
+    cls_resp = db.table("classes").select("name").eq("id", class_id).execute()
+    class_name = cls_resp.data[0]["name"] if cls_resp.data else "Lecture"
+
+    for enr in enrolls:
+        stu_id = enr["student_id"]
+        if req.room_number and req.room_number != entry.get("room_number"):
+            _create_notification(
+                user_id=stu_id,
+                notif_type="room_change",
+                title=f"Room Change: {class_name}",
+                body=f"Your lecture room has been updated to {req.room_number}.",
+            )
+        elif req.start_time or req.day_of_week is not None:
+            _create_notification(
+                user_id=stu_id,
+                notif_type="schedule_change",
+                title=f"Lecture Rescheduled: {class_name}",
+                body=f"Schedule updated to {updated.get('day_name')} at {updated.get('start_time')}.",
+            )
+
+    _audit(
+        session_id=None,
+        actor_id=user["id"],
+        action="timetable.updated",
+        note=f"{user.get('name', 'Lecturer')} updated timetable entry {entry_id} for {class_name}.",
+    )
+    return updated
+
+
+@app.post("/api/timetable/{entry_id}/cancel")
+def cancel_timetable_entry(
+    entry_id: str,
+    user: dict[str, Any] = Depends(current_user),
+) -> dict[str, Any]:
+    """Mark a lecture as cancelled and notify all enrolled students."""
+    require_teacher_or_controller(user)
+    db = supa()
+    existing_resp = db.table("timetable").select("*").eq("id", entry_id).execute()
+    if not existing_resp.data:
+        raise HTTPException(status_code=404, detail="Timetable entry not found.")
+    entry = existing_resp.data[0]
+
+    db.table("timetable").update({"is_cancelled": True}).eq("id", entry_id).execute()
+    class_id = entry.get("class_id")
+    enrolls = db.table("enrollments").select("student_id").eq("class_id", class_id).execute().data or []
+    cls_resp = db.table("classes").select("name").eq("id", class_id).execute()
+    class_name = cls_resp.data[0]["name"] if cls_resp.data else "Lecture"
+
+    for enr in enrolls:
+        _create_notification(
+            user_id=enr["student_id"],
+            notif_type="class_cancelled",
+            title=f"Class Cancelled: {class_name}",
+            body=f"The lecture on {entry.get('day_name')} at {entry.get('start_time')} has been cancelled.",
+        )
+
+    _audit(
+        session_id=None,
+        actor_id=user["id"],
+        action="timetable.cancelled",
+        note=f"{user.get('name', 'Lecturer')} cancelled lecture {entry_id} for {class_name}.",
+    )
+    return {"status": "success", "message": f"Class {class_name} cancelled and students notified."}
+
+
+@app.get("/api/timetable/calendar.ics")
+def export_timetable_calendar_ics(user: dict[str, Any] = Depends(current_user)) -> Response:
+    """Generate standard RFC 5545 iCalendar (.ics) stream for Google Calendar / Apple Calendar sync."""
+    data = get_timetable(class_id=None, day_of_week=None, user=user)
+    entries = data.get("timetable", [])
+
+    ical_days = {0: "MO", 1: "TU", 2: "WE", 3: "TH", 4: "FR", 5: "SA", 6: "SU"}
+
+    lines = [
+        "BEGIN:VCALENDAR",
+        "VERSION:2.0",
+        "PRODID:-//Attendrix Academic Attendance System//Timetable//EN",
+        "CALSCALE:GREGORIAN",
+        "METHOD:PUBLISH",
+        "X-WR-CALNAME:Attendrix Academic Timetable",
+        "X-WR-TIMEZONE:UTC",
+    ]
+
+    for item in entries:
+        if item.get("is_cancelled"):
+            continue
+        uid = f"{item['id']}@attendrix.edu"
+        dow = item.get("day_of_week", 0)
+        byday = ical_days.get(dow, "MO")
+        st = item.get("start_time", "09:00").replace(":", "") + "00"
+        et = item.get("end_time", "10:30").replace(":", "") + "00"
+        day_date = 7 + dow
+        date_str = f"202609{day_date:02d}"
+
+        lines.extend([
+            "BEGIN:VEVENT",
+            f"UID:{uid}",
+            f"SUMMARY:{item['class_name']} ({item['class_code']})",
+            f"LOCATION:{item['room_number']}",
+            f"DESCRIPTION:Faculty: {item['faculty_name']} | Section: {item['section']} | Automated Biometric Attendance via Attendrix",
+            f"DTSTART;TZID=UTC:{date_str}T{st}Z",
+            f"DTEND;TZID=UTC:{date_str}T{et}Z",
+            f"RRULE:FREQ=WEEKLY;BYDAY={byday};UNTIL=20261231T235959Z",
+            "STATUS:CONFIRMED",
+            "END:VEVENT",
+        ])
+
+    lines.append("END:VCALENDAR")
+    ics_text = "\r\n".join(lines)
+    return Response(
+        content=ics_text,
+        media_type="text/calendar",
+        headers={"Content-Disposition": 'attachment; filename="attendrix-timetable.ics"'},
+    )
+
+
+@app.get("/api/timetable/google-calendar-url")
+def get_timetable_google_calendar_url(user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    """Generate one-click Google Calendar web render action URL for the user's next class."""
+    import urllib.parse
+    tt_res = get_timetable(class_id=None, day_of_week=None, user=user)
+    next_c = tt_res.get("next_class")
+    if not next_c:
+        return {"google_calendar_url": None, "message": "No scheduled classes found."}
+
+    dow = next_c.get("day_of_week", 0)
+    st = next_c.get("start_time", "09:00").replace(":", "") + "00"
+    et = next_c.get("end_time", "10:30").replace(":", "") + "00"
+    day_date = 7 + dow
+    date_range = f"202609{day_date:02d}T{st}Z/202609{day_date:02d}T{et}Z"
+
+    title = f"{next_c['class_name']} ({next_c['class_code']})"
+    details = f"Faculty: {next_c['faculty_name']} | Section: {next_c['section']} | Automated Biometric Attendance via Attendrix"
+    location = next_c["room_number"]
+
+    base_url = "https://calendar.google.com/calendar/render"
+    params = {
+        "action": "TEMPLATE",
+        "text": title,
+        "dates": date_range,
+        "details": details,
+        "location": location,
+        "recur": f"RRULE:FREQ=WEEKLY;BYDAY={['MO','TU','WE','TH','FR','SA','SU'][dow]}",
+    }
+    url = f"{base_url}?{urllib.parse.urlencode(params)}"
+    return {
+        "google_calendar_url": url,
+        "next_class": next_c,
+    }
+
 
 
 

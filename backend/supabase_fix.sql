@@ -122,6 +122,34 @@ create policy "audit_controller_read_all" on public.audit_log
     exists (select 1 from public.profiles p where p.id = auth.uid() and p.role in ('controller', 'admin'))
   );
 
--- 12. Reload schema cache for PostgREST API
+-- 12. Create timetable table if not exists & performance indexes
+create table if not exists public.timetable (
+  id            uuid primary key default gen_random_uuid(),
+  class_id      uuid not null references public.classes(id) on delete cascade,
+  day_of_week   integer not null check (day_of_week between 0 and 6),
+  day_name      text not null,
+  start_time    text not null,
+  end_time      text not null,
+  room_number   text not null default 'LH-120',
+  is_cancelled  boolean not null default false,
+  academic_year text not null default '2026-2027',
+  semester      text not null default 'Fall 2026',
+  created_at    timestamptz not null default now()
+);
+
+alter table public.timetable enable row level security;
+create policy "timetable_read_all" on public.timetable for select using (true);
+
+create index if not exists idx_attendance_session    on public.attendance(session_id);
+create index if not exists idx_sessions_class        on public.sessions(class_id);
+create index if not exists idx_sessions_status       on public.sessions(status);
+create index if not exists idx_classes_teacher       on public.classes(teacher_id);
+create index if not exists idx_profiles_roll         on public.profiles(roll_number);
+create index if not exists idx_profiles_role         on public.profiles(role);
+create index if not exists idx_audit_actor           on public.audit_log(actor_id);
+create index if not exists idx_audit_timestamp       on public.audit_log(timestamp desc);
+create index if not exists idx_timetable_class       on public.timetable(class_id, day_of_week);
+
+-- 13. Reload schema cache for PostgREST API
 notify pgrst, 'reload schema';
 

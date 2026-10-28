@@ -24,6 +24,10 @@ class AppState extends ChangeNotifier {
   StudentAttendance? studentAttendance;
   AttendanceSession? activeSession;
   List<CheckinReviewItem> reviewItems = [];
+  Map<String, dynamic>? timetableData;
+
+  Map<String, dynamic>? get nextClass => timetableData?['next_class'] as Map<String, dynamic>?;
+  List<dynamic> get todayTimetable => (timetableData?['today_classes'] as List<dynamic>?) ?? [];
 
   bool busy = false;
   String? error;
@@ -97,6 +101,9 @@ class AppState extends ChangeNotifier {
     classes = await api.classes();
     sessions = await api.sessions();
     notifications = await api.notifications();
+    try {
+      timetableData = await api.timetable();
+    } catch (_) {}
     if (isController) {
       await loadControllerData();
     } else if (isStudent) {
@@ -104,6 +111,36 @@ class AppState extends ChangeNotifier {
       await checkEnrollment();
     }
     notifyListeners();
+  }
+
+  Future<String?> recoverAccount(String email, String rollNumber) async {
+    busy = true;
+    error = null;
+    notifyListeners();
+    try {
+      return await api.recoverAccount(email: email.trim(), rollNumber: rollNumber.trim());
+    } on ApiException catch (e) {
+      error = e.message;
+      return null;
+    } finally {
+      busy = false;
+      notifyListeners();
+    }
+  }
+
+  Future<bool> resetPassword(String token, String newPassword) async {
+    busy = true;
+    error = null;
+    notifyListeners();
+    try {
+      return await api.resetPassword(recoveryToken: token, newPassword: newPassword);
+    } on ApiException catch (e) {
+      error = e.message;
+      return false;
+    } finally {
+      busy = false;
+      notifyListeners();
+    }
   }
 
   Future<bool> createClassroom({
