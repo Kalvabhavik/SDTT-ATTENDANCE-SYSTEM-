@@ -3,17 +3,28 @@ from __future__ import annotations
 
 import copy
 import fnmatch
+import json
+import logging
 import os
+import time
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Optional
 
 from app.config import (
     ATTENDANCE_ENV,
+    DB_SLOW_QUERY_MS,
+    ENABLE_DB_TIMING,
     SUPABASE_ANON_KEY,
     SUPABASE_SERVICE_ROLE_KEY,
     SUPABASE_URL,
 )
+
+logger = logging.getLogger("attendrix.db")
+
+# PostgREST builder methods that describe the intended operation. Chained
+# filters (eq, order, limit, ...) must not overwrite the operation label.
+_TIMED_QUERY_ACTIONS = {"select", "insert", "update", "delete", "upsert"}
 
 try:
     from supabase import Client, create_client
@@ -339,6 +350,92 @@ _shared_client: Optional[Any] = None
 _in_memory_db: Optional[InMemoryDatabase] = None
 
 
+class _TimedQuery:
+    """Transparent query-builder proxy that logs slow PostgREST operations.
+
+    It delegates every builder method and only measures ``execute()``. Table
+    names and durations are logged; row data and filters are never logged.
+    """
+
+    def __init__(self, query: Any, table_name: str, operation: str = "query"):
+        self._query = query
+        self._table_name = table_name
+        self._operation = operation
+
+    def __getattr__(self, name: str) -> Any:
+        attr = getattr(self._query, name)
+        if not callable(attr):
+            return attr
+
+        def delegated(*args: Any, **kwargs: Any) -> Any:
+            result = attr(*args, **kwargs)
+            if hasattr(result, "execute"):
+                operation = name if name in _TIMED_QUERY_ACTIONS else self._operation
+                return _TimedQuery(result, self._table_name, operation)
+            return result
+
+        return delegated
+
+    def execute(self) -> Any:
+        started = time.perf_counter()
+        failed = False
+        try:
+            return self._query.execute()
+        except Exception:
+            failed = True
+            logger.warning(
+                json.dumps(
+                    {
+                        "event": "db_query",
+                        "table": self._table_name,
+                        "operation": self._operation,
+                        "status": "error",
+                        "duration_ms": round(
+                            (time.perf_counter() - started) * 1000.0, 1
+                        ),
+                        "pid": os.getpid(),
+                    },
+                    separators=(",", ":"),
+                )
+            )
+            raise
+        finally:
+            elapsed_ms = (time.perf_counter() - started) * 1000.0
+            if not failed and elapsed_ms >= DB_SLOW_QUERY_MS:
+                logger.warning(
+                    json.dumps(
+                        {
+                            "event": "db_query_slow",
+                            "table": self._table_name,
+                            "operation": self._operation,
+                            "status": "ok",
+                            "duration_ms": round(elapsed_ms, 1),
+                            "pid": os.getpid(),
+                        },
+                        separators=(",", ":"),
+                    )
+                )
+
+
+class _TimedClient:
+    """Client proxy that applies slow-query timing to table operations."""
+
+    def __init__(self, client: Any):
+        self._client = client
+
+    def table(self, table_name: str) -> _TimedQuery:
+        return _TimedQuery(self._client.table(table_name), table_name)
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._client, name)
+
+
+def _wrap_client(client: Any) -> Any:
+    if not ENABLE_DB_TIMING or ATTENDANCE_ENV == "test":
+        return client
+    return _TimedClient(client)
+
+
 def get_in_memory_db() -> InMemoryDatabase:
     global _in_memory_db
     if _in_memory_db is None:
@@ -355,11 +452,13 @@ def supa() -> Any:
     if _shared_client is None:
         if create_client and SUPABASE_URL and not SUPABASE_URL.startswith("https://placeholder"):
             try:
-                _shared_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+                _shared_client = _wrap_client(
+                    create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+                )
             except Exception:
-                _shared_client = get_in_memory_db()
+                _shared_client = _wrap_client(get_in_memory_db())
         else:
-            _shared_client = get_in_memory_db()
+            _shared_client = _wrap_client(get_in_memory_db())
 
     return _shared_client
 

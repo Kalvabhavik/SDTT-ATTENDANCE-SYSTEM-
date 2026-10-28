@@ -27,3 +27,11 @@ services:
         value: "28800"
       - key: ATTENDANCE_MAX_CAPTURE_BYTES
         value: "10485760"
+      - key: ATTENDANCE_MAX_CONCURRENT_INFERENCE
+        value: "1"
+      - key: ATTENDANCE_ENABLE_REQUEST_TIMING
+        value: "1"
+      - key: ATTENDANCE_STARTUP_DB_PROBE_TIMEOUT_S
+        value: "3"
+      - key: ATTENDANCE_INFERENCE_QUEUE_TIMEOUT_S
+        value: "60"
