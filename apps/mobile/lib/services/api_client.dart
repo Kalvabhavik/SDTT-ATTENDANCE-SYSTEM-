@@ -125,8 +125,61 @@ class ApiClient {
   }
 
   Future<AuthSession> login(String email, String password, {String? selectedRole}) async {
+    final cleanEmail = email.trim();
+    // Connect directly to Supabase Auth instead of Render to eliminate cold start latency
+    try {
+      final supaUri = Uri.parse('${AppConfig.supabaseUrl}/auth/v1/token?grant_type=password');
+      final resp = await _client.post(
+        supaUri,
+        headers: {
+          'apikey': AppConfig.supabaseAnonKey,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: jsonEncode({
+          'email': cleanEmail,
+          'password': password,
+        }),
+      ).timeout(const Duration(seconds: 10));
+
+      if (resp.statusCode == 200) {
+        final decoded = jsonDecode(resp.body) as Map<String, dynamic>;
+        final token = decoded['access_token']?.toString() ?? '';
+        final userObj = decoded['user'] is Map ? Map<String, dynamic>.from(decoded['user'] as Map) : <String, dynamic>{};
+        final meta = userObj['user_metadata'] is Map ? Map<String, dynamic>.from(userObj['user_metadata'] as Map) : <String, dynamic>{};
+
+        final role = (meta['role']?.toString() ?? userObj['role']?.toString() ?? selectedRole ?? 'student').toLowerCase();
+        final user = User(
+          id: userObj['id']?.toString() ?? '',
+          name: meta['name']?.toString() ?? userObj['name']?.toString() ?? 'User',
+          email: userObj['email']?.toString() ?? cleanEmail,
+          role: role,
+          rollNumber: meta['roll_number']?.toString() ?? userObj['roll_number']?.toString(),
+          studentId: meta['student_id']?.toString() ?? userObj['student_id']?.toString(),
+          registrationLocked: meta['registration_locked'] == true,
+        );
+        final session = AuthSession(accessToken: token, user: user);
+        accessToken = session.accessToken;
+        return session;
+      } else if (resp.statusCode == 400 || resp.statusCode == 401) {
+        dynamic errBody;
+        try {
+          errBody = jsonDecode(resp.body);
+        } catch (_) {}
+        final msg = errBody is Map ? (errBody['error_description'] ?? errBody['msg'] ?? errBody['message']) : null;
+        throw ApiException(
+          msg?.toString() ?? 'Invalid email or password. [INVALID_CREDENTIALS]',
+          statusCode: resp.statusCode,
+          errorCode: 'INVALID_CREDENTIALS',
+        );
+      }
+    } catch (e) {
+      if (e is ApiException) rethrow;
+      // Network error or timeout: fall back to backend endpoint
+    }
+
     final body = <String, dynamic>{
-      'email': email.trim(),
+      'email': cleanEmail,
       'password': password,
       if (selectedRole != null) 'selected_role': selectedRole,
     };

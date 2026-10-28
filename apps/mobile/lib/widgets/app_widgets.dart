@@ -2,6 +2,7 @@ import 'dart:async' as async;
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:lottie/lottie.dart';
 
 /// Premium Academic Technology Design Palette
 class AppColors {
@@ -920,6 +921,43 @@ class AppTextField extends StatelessWidget {
 }
 
 /// Explicit Loading State View with academic styling and step indicators
+class AppLottieLoader extends StatelessWidget {
+  const AppLottieLoader({
+    super.key,
+    this.size = 72,
+    this.color,
+  });
+
+  final double size;
+  final Color? color;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: size,
+      height: size,
+      child: Lottie.asset(
+        'assets/animations/loading.json',
+        width: size,
+        height: size,
+        fit: BoxFit.contain,
+        errorBuilder: (context, error, stackTrace) {
+          return Center(
+            child: SizedBox(
+              width: size > 30 ? 28 : size * 0.8,
+              height: size > 30 ? 28 : size * 0.8,
+              child: CircularProgressIndicator(
+                strokeWidth: size > 30 ? 3 : 2,
+                valueColor: AlwaysStoppedAnimation(color ?? AppColors.primary),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
 class LoadingStateView extends StatelessWidget {
   const LoadingStateView({
     super.key,
@@ -941,17 +979,15 @@ class LoadingStateView extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Container(
-              width: 64,
-              height: 64,
-              padding: const EdgeInsets.all(16),
+              width: 80,
+              height: 80,
               decoration: BoxDecoration(
                 color: AppColors.accentIndigoBg,
                 shape: BoxShape.circle,
                 border: Border.all(color: AppColors.accentIndigoBorder),
               ),
-              child: const CircularProgressIndicator(
-                strokeWidth: 3.5,
-                valueColor: AlwaysStoppedAnimation(AppColors.primary),
+              child: const Center(
+                child: AppLottieLoader(size: 64),
               ),
             ),
             const SizedBox(height: 20),
@@ -1399,13 +1435,9 @@ class _AppDebouncedButtonState extends State<AppDebouncedButton> {
       style: widget.style,
       onPressed: enabled ? _handleTap : null,
       child: widget.isBusy
-          ? const SizedBox(
-              width: 20,
-              height: 20,
-              child: CircularProgressIndicator(
-                strokeWidth: 2.2,
-                valueColor: AlwaysStoppedAnimation(Colors.white),
-              ),
+          ? const AppLottieLoader(
+              size: 26,
+              color: Colors.white,
             )
           : widget.child,
     );

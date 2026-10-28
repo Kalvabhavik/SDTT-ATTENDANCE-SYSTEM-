@@ -197,3 +197,50 @@ def test_retry_with_different_idempotency_key_blocked_400():
     )
     assert res2.status_code == 400
     assert res2.headers.get("X-Error-Code") == "ATTEMPT_LIMIT_REACHED"
+
+
+def test_database_schema_cache_mismatch_falls_back_cleanly():
+    """Verify that when PostgREST schema cache is missing attempt_timestamp/idempotency_key, attendance persistence falls back to base schema and succeeds."""
+    token = create_access_token(STUDENT_ID, "student1@demo.edu", "student", "Ada Lovelace")
+    headers = {"Authorization": f"Bearer {token}", "Idempotency-Key": "schema-cache-test-key"}
+    face_bytes = _create_synthetic_face_jpg()
+
+    # Reset attendance record for student
+    db = supa()
+    db.table("attendance").delete().eq("session_id", SESSION_ID).eq("student_id", STUDENT_ID).execute()
+
+    original_table = supa().table
+
+    def schema_mismatch_table(table_name: str):
+        query = original_table(table_name)
+        if table_name == "attendance":
+            class MismatchQuery:
+                def __getattr__(self, name):
+                    if name in ("insert", "update"):
+                        def failing_op(payload, *args, **kwargs):
+                            # If payload has attempt_timestamp, simulate PostgREST schema cache rejection
+                            if isinstance(payload, dict) and "attempt_timestamp" in payload:
+                                class FailingExec:
+                                    def execute(self):
+                                        raise Exception("{'message': \"Could not find the 'attempt_timestamp' column of 'attendance' in the schema cache\", 'code': 'PGRST204'}")
+                                    def eq(self, *a, **k):
+                                        return self
+                                return FailingExec()
+                            # Otherwise fall back to base query
+                            real_op = getattr(query, name)
+                            return real_op(payload, *args, **kwargs)
+                        return failing_op
+                    return getattr(query, name)
+            return MismatchQuery()
+        return query
+
+    client_shield = TestClient(app, raise_server_exceptions=False)
+    with patch.object(supa(), "table", side_effect=schema_mismatch_table):
+        res = client_shield.post(
+            f"/api/sessions/{SESSION_ID}/verify-attendance",
+            headers=headers,
+            files={"face_image": ("face.jpg", face_bytes, "image/jpeg")},
+        )
+        assert res.status_code == 200, f"Expected 200 with fallback, got {res.status_code}: {res.text}"
+        assert res.json().get("status") == "present"
+

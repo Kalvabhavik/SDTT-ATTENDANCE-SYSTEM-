@@ -97,7 +97,7 @@ class RoleSelectionScreen extends StatelessWidget {
                       const SizedBox(height: 6),
                       const Center(
                         child: Text(
-                          'Zero-Proxy Verification • Active Liveness • 180° Classroom Sweep',
+                          'Zero-Proxy Verification • Active Liveness • Instant Verification',
                           textAlign: TextAlign.center,
                           style: TextStyle(
                             fontSize: 12.5,
@@ -123,7 +123,7 @@ class RoleSelectionScreen extends StatelessWidget {
                       _RoleCard(
                         title: 'Student Portal',
                         badge: 'ACTIVE LIVENESS',
-                        description: 'Self-verify presence with 4-step head pose & blink liveness plus 180° classroom sweep.',
+                        description: 'Self-verify presence with 4-step head pose & blink liveness and instant AI verification.',
                         icon: Icons.face_retouching_natural_rounded,
                         iconBg: AppColors.accentIndigoBg,
                         iconColor: AppColors.primary,

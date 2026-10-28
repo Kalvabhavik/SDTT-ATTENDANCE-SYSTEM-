@@ -77,8 +77,16 @@ def verify_jwt_token(token: str) -> dict[str, Any]:
         return payload
     except pyjwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Token has expired")
-    except pyjwt.InvalidTokenError:
-        raise HTTPException(status_code=401, detail="Invalid token")
+    except Exception as exc:
+        # Fall back to verifying native Supabase Auth tokens (e.g. ES256)
+        try:
+            from app.db import supa
+            res = supa().auth.get_user(token)
+            if res and res.user:
+                return pyjwt.decode(token, options={"verify_signature": False})
+        except Exception:
+            pass
+        raise HTTPException(status_code=401, detail=f"Invalid token: {exc}")
 
 
 # ── Token Revocation & Blacklist ──────────────────────────────────────────────
@@ -182,10 +190,10 @@ def verify_liveness_challenge_token(token: str) -> dict[str, Any]:
             status_code=400,
             detail="Liveness challenge token has expired. Please obtain a fresh challenge.",
         )
-    except pyjwt.InvalidTokenError:
+    except pyjwt.InvalidTokenError as exc:
         raise HTTPException(
             status_code=400,
-            detail="Invalid or forged liveness challenge token.",
+            detail=f"Invalid or forged liveness challenge token: {exc}",
         )
 
 

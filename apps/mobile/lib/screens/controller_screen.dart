@@ -406,11 +406,7 @@ class _ControllerScreenState extends State<ControllerScreen> {
                             }
                           },
                     icon: isSaving
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                          )
+                        ? const AppLottieLoader(size: 20, color: Colors.white)
                         : const Icon(Icons.cloud_upload_rounded),
                     label: Text(isSaving ? 'Uploading & Analyzing…' : 'Save Reference Template'),
                     style: ElevatedButton.styleFrom(

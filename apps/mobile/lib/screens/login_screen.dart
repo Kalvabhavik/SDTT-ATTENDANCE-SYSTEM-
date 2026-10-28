@@ -372,13 +372,9 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                             child: Center(
                               child: widget.state.busy
-                                  ? const SizedBox(
-                                      width: 22,
-                                      height: 22,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2.5,
-                                        valueColor: AlwaysStoppedAnimation(Colors.white),
-                                      ),
+                                  ? const AppLottieLoader(
+                                      size: 38,
+                                      color: Colors.white,
                                     )
                                   : FittedBox(
                                       fit: BoxFit.scaleDown,

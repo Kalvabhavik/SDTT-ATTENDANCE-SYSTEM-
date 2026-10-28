@@ -20,7 +20,7 @@ create table if not exists public.profiles (
   id       uuid primary key references auth.users(id) on delete cascade,
   name     text        not null,
   email    text        not null unique,
-  role     text        not null check (role in ('teacher', 'student')),
+  role     text        not null check (role in ('teacher', 'student', 'controller', 'admin')),
   created_at timestamptz not null default now()
 );
 
@@ -55,13 +55,16 @@ create table if not exists public.sessions (
 
 -- attendance
 create table if not exists public.attendance (
-  id         uuid primary key default uuid_generate_v4(),
-  session_id uuid not null references public.sessions(id) on delete cascade,
-  student_id uuid not null references public.profiles(id),
-  status     text not null check (status in ('pending', 'present', 'absent')) default 'pending',
-  note       text,
-  updated_by uuid not null references public.profiles(id),
-  updated_at timestamptz not null default now(),
+  id                uuid primary key default uuid_generate_v4(),
+  session_id        uuid not null references public.sessions(id) on delete cascade,
+  student_id        uuid not null references public.profiles(id),
+  status            text not null check (status in ('pending', 'present', 'absent')) default 'pending',
+  note              text,
+  updated_by        uuid not null references public.profiles(id),
+  updated_at        timestamptz not null default now(),
+  attempted         boolean not null default false,
+  attempt_timestamp timestamptz,
+  idempotency_key   text,
   unique (session_id, student_id)
 );
 
@@ -133,7 +136,7 @@ begin
     new.id,
     coalesce(new.raw_user_meta_data->>'name', split_part(new.email, '@', 1)),
     new.email,
-    coalesce(new.raw_user_meta_data->>'role', 'student')
+    'student' -- Server-enforced: New self-registered accounts are strictly 'student'. Privileged roles must be authorized.
   )
   on conflict (id) do nothing;
   return new;
@@ -239,6 +242,32 @@ create policy "audit_teacher" on public.audit_log
       join public.classes c on c.id = s.class_id
       where s.id = session_id and c.teacher_id = auth.uid()
     )
+  );
+
+-- Controller RLS: Academic Controller and Admin access
+create policy "profiles_controller_read_all" on public.profiles
+  for select using (
+    exists (select 1 from public.profiles p where p.id = auth.uid() and p.role in ('controller', 'admin'))
+  );
+
+create policy "classes_controller_all" on public.classes
+  for all using (
+    exists (select 1 from public.profiles p where p.id = auth.uid() and p.role in ('controller', 'admin'))
+  );
+
+create policy "enrollments_controller_all" on public.enrollments
+  for all using (
+    exists (select 1 from public.profiles p where p.id = auth.uid() and p.role in ('controller', 'admin'))
+  );
+
+create policy "sessions_controller_read_all" on public.sessions
+  for select using (
+    exists (select 1 from public.profiles p where p.id = auth.uid() and p.role in ('controller', 'admin'))
+  );
+
+create policy "audit_controller_read_all" on public.audit_log
+  for select using (
+    exists (select 1 from public.profiles p where p.id = auth.uid() and p.role in ('controller', 'admin'))
   );
 
 -- ============================================================

@@ -20,6 +20,8 @@ dependencies:
   flutter_animate: ^4.5.2
   google_fonts: ^6.2.1
   percent_indicator: ^4.2.4
+  supabase_flutter: ^2.18.3
+  lottie: ^3.7.0
 
 dev_dependencies:
   flutter_test:
@@ -28,3 +30,5 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/animations/

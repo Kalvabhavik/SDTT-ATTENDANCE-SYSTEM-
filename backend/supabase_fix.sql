@@ -50,10 +50,15 @@ alter table public.checkin_attempts drop constraint if exists checkin_attempts_s
 alter table public.checkin_attempts add constraint checkin_attempts_state_check
   check (state in ('evaluating', 'verified', 'flagged', 'rejected', 'error'));
 
--- 7. Enable Row Level Security (RLS) on face_templates
+-- 7. Add missing columns to attendance table (1-attempt policy & idempotency tracking)
+alter table public.attendance add column if not exists attempted boolean not null default false;
+alter table public.attendance add column if not exists attempt_timestamp timestamptz;
+alter table public.attendance add column if not exists idempotency_key text;
+
+-- 8. Enable Row Level Security (RLS) on face_templates
 alter table public.face_templates enable row level security;
 
--- 8. Set RLS policies for face_templates
+-- 9. Set RLS policies for face_templates
 drop policy if exists "face_templates_read_own" on public.face_templates;
 create policy "face_templates_read_own" on public.face_templates
   for select using (auth.uid() = user_id);
@@ -70,5 +75,53 @@ drop policy if exists "face_templates_delete_own" on public.face_templates;
 create policy "face_templates_delete_own" on public.face_templates
   for delete using (auth.uid() = user_id);
 
--- 9. Reload schema cache for PostgREST API
+-- 10. Secure trigger for public user signup (strictly enforce 'student' role, disallow self-elevation)
+create or replace function public.handle_new_user()
+returns trigger language plpgsql security definer as $$
+begin
+  insert into public.profiles (id, name, email, role)
+  values (
+    new.id,
+    coalesce(new.raw_user_meta_data->>'name', split_part(new.email, '@', 1)),
+    new.email,
+    'student' -- Server-enforced: New self-registered accounts are strictly 'student'. Privileged roles must be authorized.
+  )
+  on conflict (id) do nothing;
+  return new;
+end;
+$$;
+
+-- 11. Controller RLS Policies
+drop policy if exists "profiles_controller_read_all" on public.profiles;
+create policy "profiles_controller_read_all" on public.profiles
+  for select using (
+    exists (select 1 from public.profiles p where p.id = auth.uid() and p.role in ('controller', 'admin'))
+  );
+
+drop policy if exists "classes_controller_all" on public.classes;
+create policy "classes_controller_all" on public.classes
+  for all using (
+    exists (select 1 from public.profiles p where p.id = auth.uid() and p.role in ('controller', 'admin'))
+  );
+
+drop policy if exists "enrollments_controller_all" on public.enrollments;
+create policy "enrollments_controller_all" on public.enrollments
+  for all using (
+    exists (select 1 from public.profiles p where p.id = auth.uid() and p.role in ('controller', 'admin'))
+  );
+
+drop policy if exists "sessions_controller_read_all" on public.sessions;
+create policy "sessions_controller_read_all" on public.sessions
+  for select using (
+    exists (select 1 from public.profiles p where p.id = auth.uid() and p.role in ('controller', 'admin'))
+  );
+
+drop policy if exists "audit_controller_read_all" on public.audit_log;
+create policy "audit_controller_read_all" on public.audit_log
+  for select using (
+    exists (select 1 from public.profiles p where p.id = auth.uid() and p.role in ('controller', 'admin'))
+  );
+
+-- 12. Reload schema cache for PostgREST API
 notify pgrst, 'reload schema';
+

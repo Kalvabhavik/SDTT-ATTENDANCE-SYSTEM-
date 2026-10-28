@@ -10,7 +10,6 @@ import '../state/app_state.dart';
 import '../widgets/app_widgets.dart';
 import 'notifications_screen.dart';
 import 'session_screen.dart';
-import 'sweep_capture_screen.dart';
 import 'controller_screen.dart';
 import 'live_face_verification_screen.dart';
 
@@ -58,37 +57,39 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             )
           : null,
-      body: BottomBar(
-        showIcon: false,
-        layout: BottomBarLayout(
-          width: 330,
-          borderRadius: BorderRadius.circular(36),
-          offset: 16,
-        ),
-        motion: const BottomBarMotion.cupertino(preset: BottomBarCupertinoMotion.snappy),
-        scrollBehavior: const BottomBarScrollBehavior(
-          hideOnScroll: false,
-        ),
-        theme: BottomBarThemeData(
-          barDecoration: BoxDecoration(
-            color: Colors.white,
+      body: SafeArea(
+        child: BottomBar(
+          showIcon: false,
+          layout: BottomBarLayout(
+            width: 330,
             borderRadius: BorderRadius.circular(36),
-            border: Border.all(color: const Color(0xFFECEEF1), width: 1.2),
-            boxShadow: const [
-              BoxShadow(
-                color: Color(0x1F0D7A5F),
-                blurRadius: 20,
-                offset: Offset(0, 8),
-              ),
-            ],
+            offset: 16,
           ),
+          motion: const BottomBarMotion.cupertino(preset: BottomBarCupertinoMotion.snappy),
+          scrollBehavior: const BottomBarScrollBehavior(
+            hideOnScroll: false,
+          ),
+          theme: BottomBarThemeData(
+            barDecoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(36),
+              border: Border.all(color: const Color(0xFFECEEF1), width: 1.2),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x1F0D7A5F),
+                  blurRadius: 20,
+                  offset: Offset(0, 8),
+                ),
+              ],
+            ),
+          ),
+          body: widget.state.isController
+              ? _buildControllerBody()
+              : isTeacher
+                  ? _buildTeacherBody()
+                  : _buildStudentBody(),
+          child: _buildFloatingDockContent(),
         ),
-        body: widget.state.isController
-            ? _buildControllerBody()
-            : isTeacher
-                ? _buildTeacherBody()
-                : _buildStudentBody(),
-        child: _buildFloatingDockContent(),
       ),
     );
   }
@@ -117,6 +118,29 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  Future<void> _startSessionForClass(Classroom classroom) async {
+    final chosenDuration = await showDialog<int>(
+      context: context,
+      builder: (ctx) => _DurationPresetDialog(classroom: classroom),
+    );
+    if (chosenDuration == null) return;
+
+    final ok = await widget.state.startSession(classroom.id, durationMinutes: chosenDuration);
+    if (!mounted) return;
+    if (ok) {
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(builder: (_) => SessionScreen(state: widget.state)),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(widget.state.error ?? 'Could not start session.'),
+          backgroundColor: AppColors.rose,
+        ),
+      );
+    }
+  }
+
   Widget _buildTeacherBody() {
     switch (tab) {
       case 0:
@@ -136,9 +160,9 @@ class _HomeScreenState extends State<HomeScreen> {
       case 2:
         return NotificationsScreen(state: widget.state);
       case 3:
-        return TeacherHome(
+        return _TeacherClassesOverview(
           state: widget.state,
-          onOpenSession: () => setState(() => tab = 1),
+          onStartSession: _startSessionForClass,
         );
       default:
         return TeacherHome(
@@ -156,11 +180,10 @@ class _HomeScreenState extends State<HomeScreen> {
           onOpenClasses: () => setState(() => tab = 3),
         );
       case 1:
-        final openSessions = widget.state.sessions.where((s) => s.isOpen).toList();
-        if (openSessions.isNotEmpty) {
-          return SweepCaptureScreen(state: widget.state, session: openSessions.first);
-        }
-        return ControllerScreen(state: widget.state);
+        return _ControllerLiveMonitor(
+          state: widget.state,
+          onOpenController: () => setState(() => tab = 3),
+        );
       case 2:
         return NotificationsScreen(state: widget.state);
       case 3:
@@ -2075,28 +2098,6 @@ class _StudentHomeState extends State<StudentHome> {
                           ),
                         ),
                       ),
-                      const SizedBox(height: 8),
-                      Center(
-                        child: TextButton.icon(
-                          onPressed: isExpired
-                              ? null
-                              : () {
-                                  Navigator.of(context).push(
-                                    MaterialPageRoute(
-                                      builder: (_) => SweepCaptureScreen(
-                                        state: state,
-                                        session: session,
-                                      ),
-                                    ),
-                                  );
-                                },
-                          icon: const Icon(Icons.cameraswitch_outlined, size: 16),
-                          label: const Text(
-                            'Alternative: 360° Sweep Capture',
-                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-                          ),
-                        ),
-                      ),
                     ],
                   ),
                 ),
@@ -3277,3 +3278,339 @@ class _MiniFeatureBadge extends StatelessWidget {
     );
   }
 }
+
+class _TeacherClassesOverview extends StatelessWidget {
+  const _TeacherClassesOverview({
+    required this.state,
+    this.onStartSession,
+  });
+
+  final AppState state;
+  final ValueChanged<Classroom>? onStartSession;
+
+  @override
+  Widget build(BuildContext context) {
+    return RefreshIndicator(
+      onRefresh: state.retryHome,
+      color: AppColors.primary,
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 110),
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Class Management',
+                    style: TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.w900,
+                      color: AppColors.ink,
+                      letterSpacing: -0.5,
+                    ),
+                  ),
+                  SizedBox(height: 3),
+                  Text(
+                    'Assigned classrooms and course rosters',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.muted,
+                    ),
+                  ),
+                ],
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: AppColors.primaryLight.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  '${state.classes.length} Classes',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.primary,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          if (state.classes.isEmpty)
+            const EmptyState(
+              icon: Icons.school_outlined,
+              title: 'No Classes Assigned',
+              message: 'Assigned courses and classes will appear here.',
+            )
+          else
+            ...state.classes.map((c) {
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 14),
+                child: AppCard(
+                  padding: const EdgeInsets.all(18),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            width: 44,
+                            height: 44,
+                            decoration: BoxDecoration(
+                              color: AppColors.accentIndigoBg,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: const Center(
+                              child: Icon(Icons.school_rounded, color: AppColors.primary, size: 22),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  c.name,
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w800,
+                                    color: AppColors.ink,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  '${c.code} • ${c.roomNumber} • ${c.capacity} Seats',
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w500,
+                                    color: AppColors.slate,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 14),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Row(
+                            children: [
+                              const Icon(Icons.people_outline_rounded, size: 16, color: AppColors.muted),
+                              const SizedBox(width: 6),
+                              Text(
+                                '${c.capacity} Max Hall Size',
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppColors.slate,
+                                ),
+                              ),
+                            ],
+                          ),
+                          FilledButton.icon(
+                            style: FilledButton.styleFrom(
+                              backgroundColor: AppColors.primary,
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                            ),
+                            onPressed: () => onStartSession?.call(c),
+                            icon: const Icon(Icons.play_arrow_rounded, size: 16),
+                            label: const Text(
+                              'Start Session',
+                              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }),
+        ],
+      ),
+    );
+  }
+}
+
+class _ControllerLiveMonitor extends StatelessWidget {
+  const _ControllerLiveMonitor({
+    required this.state,
+    this.onOpenController,
+  });
+
+  final AppState state;
+  final VoidCallback? onOpenController;
+
+  @override
+  Widget build(BuildContext context) {
+    final openSessions = state.sessions.where((s) => s.isOpen).toList();
+    final closedSessions = state.sessions.where((s) => !s.isOpen).toList();
+
+    return RefreshIndicator(
+      onRefresh: state.retryHome,
+      color: AppColors.primary,
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 110),
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Live Session Monitor',
+                    style: TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.w900,
+                      color: AppColors.ink,
+                      letterSpacing: -0.5,
+                    ),
+                  ),
+                  SizedBox(height: 3),
+                  Text(
+                    'Campus-wide real-time attendance roll calls',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.muted,
+                    ),
+                  ),
+                ],
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: openSessions.isNotEmpty
+                      ? AppColors.emerald.withValues(alpha: 0.15)
+                      : const Color(0xFFF1F5F9),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  '${openSessions.length} Active',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                    color: openSessions.isNotEmpty ? AppColors.emerald : AppColors.slate,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          if (openSessions.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 20),
+              child: AppCard(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  children: [
+                    const Icon(Icons.radio_button_checked_rounded, size: 40, color: AppColors.muted),
+                    const SizedBox(height: 12),
+                    const Text(
+                      'No Active Roll Calls',
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppColors.ink),
+                    ),
+                    const SizedBox(height: 6),
+                    const Text(
+                      'All lectures and sessions are currently closed. New live roll calls will appear here automatically.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 12, color: AppColors.slate),
+                    ),
+                    const SizedBox(height: 16),
+                    OutlinedButton.icon(
+                      onPressed: onOpenController,
+                      icon: const Icon(Icons.tune_rounded, size: 16),
+                      label: const Text('Open System Controller'),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          else ...[
+            const Text(
+              'Active In-Progress Sessions',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppColors.ink),
+            ),
+            const SizedBox(height: 12),
+            ...openSessions.map((s) => Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: AppCard(
+                padding: const EdgeInsets.all(16),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 10,
+                      height: 10,
+                      decoration: const BoxDecoration(
+                        color: AppColors.emerald,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            s.className.isNotEmpty ? s.className : 'Session ${s.id.substring(0, 8)}',
+                            style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            '${s.verifiedCount} Verified Present • Hall: ${s.classCode}',
+                            style: const TextStyle(fontSize: 12, color: AppColors.slate),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            )),
+          ],
+          if (closedSessions.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            const Text(
+              'Recent Concluded Sessions',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppColors.ink),
+            ),
+            const SizedBox(height: 12),
+            ...closedSessions.take(5).map((s) => Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: AppCard(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                child: Row(
+                  children: [
+                    const Icon(Icons.check_circle_outline_rounded, color: AppColors.muted, size: 18),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        s.className.isNotEmpty ? s.className : 'Session ${s.id.substring(0, 8)}',
+                        style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5),
+                      ),
+                    ),
+                    Text(
+                      '${s.verifiedCount} Present',
+                      style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12.5, color: AppColors.slate),
+                    ),
+                  ],
+                ),
+              ),
+            )),
+          ],
+        ],
+      ),
+    );
+  }
+}
+

@@ -7,6 +7,10 @@ class AppConfig {
   static const String usbBaseUrl = 'http://localhost:8000/api';
   static const String lanBaseUrl = 'http://10.0.4.99:8000/api';
 
+  static const String supabaseUrl = 'https://weldmwxlhhhwsedkozli.supabase.co';
+  static const String supabaseAnonKey =
+      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndlbGRtd3hsaGhod3NlZGtvemxpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTI2ODcyMTYsImV4cCI6MjEwODI2MzIxNn0.71uYa19AwHDujvDkfllGv_QsPyn-kd_LqZjr9N1u-98';
+
   static String _apiBaseUrl = const String.fromEnvironment(
     'API_BASE_URL',
     defaultValue: cloudBaseUrl,

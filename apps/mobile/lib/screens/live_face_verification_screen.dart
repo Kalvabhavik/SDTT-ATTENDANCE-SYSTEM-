@@ -176,7 +176,7 @@ class _LiveFaceVerificationScreenState
 
   void _startAutoScanCountdown() {
     _countdownTimer?.cancel();
-    _secondsLeft = 3;
+    _secondsLeft = 5;
     _countdownTimer = Timer.periodic(const Duration(seconds: 1), (t) {
       if (!mounted) {
         t.cancel();
@@ -267,7 +267,7 @@ class _LiveFaceVerificationScreenState
     // Default preview stream format (YUV420 on Android) ensures hardware compatibility
     final controller = CameraController(
       camera,
-      ResolutionPreset.high,
+      ResolutionPreset.medium,
       enableAudio: false,
     );
 
@@ -367,6 +367,7 @@ class _LiveFaceVerificationScreenState
   // ─────────────────────────────────────────────────────────────────────────
   Future<void> _advanceLivenessStage() async {
     if (_isProcessing) return;
+    _countdownTimer?.cancel();
     setState(() {
       _isProcessing = true;
       _errorMessage = null;
@@ -400,7 +401,7 @@ class _LiveFaceVerificationScreenState
         setState(() {
           _livenessStage = LivenessStage.turnLeft;
           _isProcessing = false;
-          _secondsLeft = 3;
+          _secondsLeft = 5;
         });
         _startAutoScanCountdown();
       } else if (_livenessStage == LivenessStage.turnLeft) {
@@ -408,7 +409,7 @@ class _LiveFaceVerificationScreenState
         setState(() {
           _livenessStage = LivenessStage.turnRight;
           _isProcessing = false;
-          _secondsLeft = 3;
+          _secondsLeft = 5;
         });
         _startAutoScanCountdown();
       } else if (_livenessStage == LivenessStage.turnRight) {
@@ -416,7 +417,7 @@ class _LiveFaceVerificationScreenState
         setState(() {
           _livenessStage = LivenessStage.blink;
           _isProcessing = false;
-          _secondsLeft = 3;
+          _secondsLeft = 5;
         });
         _startAutoScanCountdown();
       } else if (_livenessStage == LivenessStage.blink) {
@@ -429,25 +430,12 @@ class _LiveFaceVerificationScreenState
         setState(() {
           _livenessStage = LivenessStage.completed;
           _challengeRecorded = true;
+          _currentStep = VerificationStep.verifying;
           _isProcessing = false;
         });
 
-        // Advance to classroom panorama step
-        await Future.delayed(const Duration(milliseconds: 700));
-
-        if (mounted) {
-          int backIndex = _cameras.indexWhere(
-            (c) => c.lensDirection == CameraLensDirection.back,
-          );
-          if (backIndex != -1 && backIndex != _selectedCameraIndex) {
-            _selectedCameraIndex = backIndex;
-            await _setupCameraController(_cameras[_selectedCameraIndex]);
-          }
-
-          setState(() {
-            _currentStep = VerificationStep.classroomRoom;
-          });
-        }
+        // Submit dual verification directly (no classroom panorama sweep required)
+        await _submitDualVerification();
       }
     } catch (e) {
       if (mounted) {
@@ -1116,9 +1104,9 @@ class _LiveFaceVerificationScreenState
                 const SizedBox(height: 2),
                 Text(
                   _currentStep == VerificationStep.liveFace
-                      ? 'Step 1/2: Student Liveness Check'
+                      ? 'Student Biometric Liveness Check'
                       : _currentStep == VerificationStep.classroomRoom
-                          ? 'Step 2/2: Classroom Physical Match'
+                          ? 'Classroom Physical Verification'
                           : _currentStep == VerificationStep.verifying
                               ? 'Neural Engine Processing...'
                               : 'Verification Complete',
@@ -1808,14 +1796,7 @@ class _LiveFaceVerificationScreenState
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const SizedBox(
-              width: 56,
-              height: 56,
-              child: CircularProgressIndicator(
-                strokeWidth: 4,
-                valueColor: AlwaysStoppedAnimation(AppColors.primaryLight),
-              ),
-            ),
+            const AppLottieLoader(size: 76),
             const SizedBox(height: 24),
             const Text(
               'Analyzing Biometrics & Room',
@@ -2307,7 +2288,7 @@ class _LiveFaceVerificationScreenState
                 ),
                 child: const Center(
                   child: Icon(
-                    Icons.qr_code_scanner_rounded,
+                    Icons.camera_alt_rounded,
                     color: Colors.white,
                     size: 34,
                   ),
@@ -2317,7 +2298,7 @@ class _LiveFaceVerificationScreenState
             const SizedBox(height: 10),
             Text(
               _challengeRecorded
-                  ? 'Motion challenges recorded • Preparing Room Sweep'
+                  ? 'Biometric challenges recorded • Verifying Attendance...'
                   : 'Auto-scan in ${_secondsLeft}s • $actionLabel',
               style: const TextStyle(
                 color: Colors.white70,

@@ -308,13 +308,9 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
                   ),
                   child: Center(
                     child: isEnrolling
-                        ? const SizedBox(
-                            width: 22,
-                            height: 22,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2.5,
-                              valueColor: AlwaysStoppedAnimation(Colors.white),
-                            ),
+                        ? const AppLottieLoader(
+                            size: 32,
+                            color: Colors.white,
                           )
                         : Text(
                             'Enroll Biometric Reference',
