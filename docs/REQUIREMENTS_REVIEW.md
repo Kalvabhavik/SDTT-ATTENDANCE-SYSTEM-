@@ -8,18 +8,18 @@ The final line narrows notifications to the app only: no email. The prototype im
 
 ## Requirement-to-component mapping
 
-- Teacher capture, class/session start, seeded roster review, manual attendance-status corrections, and finalization belong in the Flutter teacher flow and web teacher dashboard. This prototype does not include class enrollment or student roster creation/deletion.
+- Teacher session start, live roster review, manual attendance corrections, review-queue decisions, and finalization belong in the Flutter teacher flow and web lecturer dashboard. Controller flows now support student enrollment, roster import, and reference-template management.
 - Student history, dates, totals, percentage, and notifications are restricted to the logged-in student's own profile in both clients.
-- Session records, statuses, users/roles, audit entries, and notifications live in one SQLite-backed FastAPI service for the prototype.
+- Session records, statuses, users/roles, audit entries, biometric reference metadata, and notifications are served by the FastAPI database adapter, using configured Supabase/PostgREST persistence in deployment and an in-memory adapter for isolated tests.
 - A single REST API carries writes and reads; authenticated, short-lived WebSocket tickets and event messages keep the app and website views current.
-- CSV export and print-to-PDF are available from teacher report views. Audit events record session creation, capture, simulated suggestions, edits, and finalization with actor and timestamps.
-- Teacher confirmation is the only way to turn a suggestion into a final attendance status. Remaining pending students are explicitly marked absent by the teacher during finalization.
+- CSV, Excel-compatible, and print/report exports are available from authorized lecturer/controller views. Audit events record session creation, sweep submissions, verification decisions, review actions, manual corrections, and finalization with actor and timestamps.
+- A verified decision is written only after the ordered backend rules complete. Flagged decisions enter the lecturer review queue; manual roll-call remains available as the explicit opt-out path.
 
 ## Safety boundary for this prototype
 
-The reference brief identifies facial data as sensitive, calls for appropriate notice and consent, an opt-out/manual route, minimal retention, protected templates, access controls, and fairness assessment. This implementation therefore uses fictional seed students and simulated match suggestions. It does not run face recognition, create face embeddings, retain uploaded photos, or silently decide who attended. The capture request returns a mock review list and does not persist the upload in application storage; multipart parsing may use request-scoped temporary storage. Keep real student data and photos out of the demo.
+The reference brief identifies facial data as sensitive, calls for appropriate notice and consent, an opt-out/manual route, minimal retention, protected templates, access controls, and fairness assessment. The merged implementation performs reference-template enrollment and a nine-rule continuous sweep verification pipeline, stores encrypted reference templates, purges raw sweep frames after processing, and routes uncertain cases to lecturer review. This is an implementation feature, not a claim of perfect accuracy or proxy-attendance elimination. Production deployments still require institution-approved consent, retention, deletion, access, and fairness governance.
 
-A future real-recognition pilot would need an approved model and license, lawful consent and age-appropriate governance, a deletion schedule, threat model, secure encrypted deployment, data-subject controls, liveness/anti-spoofing analysis if needed, and consented evaluation across lighting, pose, distance, occlusion, and demographic groups. The brief's ≥95% true-positive and latency values are target metrics to measure, not claims about this prototype.
+The verification pipeline uses liveness and presentation-attack defenses, but it still requires consented evaluation across lighting, pose, distance, occlusion, device type, and demographic groups. The brief's ≥95% true-positive and latency values are target metrics to measure, not claims about this implementation. Physical-device camera behavior and live lecture-hall deployment remain environment-dependent validation items.
 
 ## Delivery sequence
 
@@ -27,4 +27,4 @@ The implementation follows the user's sequence: first Flutter source and teacher
 
 ## Explicit out-of-scope items for this first prototype
 
-Production hosting, real face recognition, production authentication/MFA, encrypted managed PostgreSQL, FCM credentials and actual push delivery, legal compliance certification, and accuracy/fairness claims are not configured. The data model and service boundaries should make these later phases possible without pretending they are already delivered.
+Production hosting, institution-specific MFA, FCM credentials and actual push delivery, legal compliance certification, and accuracy/fairness guarantees are not configured. The implementation provides the security and data-lifecycle hooks, but deployment owners must configure secrets, database persistence, retention, and institutional policy before real student use.
