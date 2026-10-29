@@ -275,92 +275,35 @@ function TeacherOverview({ user, onNavigate }: { user: User; onNavigate: (s: Sec
 
   const displayClasses = classes.length ? classes : api.isLocalMode() ? demoClasses : []
   const displaySessions = sessions.length ? sessions : api.isLocalMode() ? demoSessions : []
+  const totalStudents = displayClasses.reduce((sum, current) => sum + (current.student_count || 0), 0)
+  const finalizedSessions = displaySessions.filter(session => session.status === 'finalized').length
+  const openSessions = displaySessions.filter(session => session.status === 'open').length
+  const attendanceRate = displaySessions.length
+    ? Math.round(
+        displaySessions.reduce((sum, session) => {
+          const total = Math.max(1, session.total_enrolled || session.present_count || session.absent_count || 0)
+          const rate = (session.present_count ?? 0) / total
+          return sum + rate
+        }, 0) / displaySessions.length * 100
+      )
+    : 0
 
-  const matrixRows = [
-    {
-      name: 'Rachel Kim',
-      role: 'CS-401 • Roll #01 • Batch A',
-      avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=80&auto=format&fit=crop&q=80',
-      days: [
-        { status: 'mint', text: 'Present', icon: 'check' },
-        { status: 'mint', text: 'Present', icon: 'check' },
-        { status: 'mint', text: 'Present', icon: 'check' },
-        { status: 'mint', text: 'Present', icon: 'check' },
-        { status: 'mint', text: 'Present', icon: 'check' },
-        { status: 'off' },
-        { status: 'off' },
-      ],
-    },
-    {
-      name: 'Brooklyn Jones',
-      role: 'CS-401 • Roll #02 • Batch A',
-      avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=80&auto=format&fit=crop&q=80',
-      days: [
-        { status: 'amber', text: 'Late (10m)', icon: 'clock' },
-        { status: 'mint', text: 'Present', icon: 'check' },
-        { status: 'mint', text: 'Present', icon: 'check' },
-        { status: 'red', text: 'Absent', icon: 'absent' },
-        { status: 'mint', text: 'Present', icon: 'check' },
-        { status: 'off' },
-        { status: 'off' },
-      ],
-    },
-    {
-      name: 'Eleanor Pena',
-      role: 'CS-401 • Roll #03 • Batch A',
-      avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=80&auto=format&fit=crop&q=80',
-      days: [
-        { status: 'mint', text: 'Present', icon: 'check' },
-        { status: 'mint', text: 'Present', icon: 'check' },
-        { status: 'amber', text: 'Late (5m)', icon: 'clock' },
-        { status: 'mint', text: 'Present', icon: 'check' },
-        { status: 'purple', text: 'Excused OD', icon: 'smile' },
-        { status: 'off' },
-        { status: 'off' },
-      ],
-    },
-    {
-      name: 'Darlene Robert',
-      role: 'CS-401 • Roll #04 • Batch A',
-      avatar: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=80&auto=format&fit=crop&q=80',
-      days: [
-        { status: 'mint', text: 'Present', icon: 'check' },
-        { status: 'mint', text: 'Present', icon: 'check' },
-        { status: 'mint', text: 'Present', icon: 'check' },
-        { status: 'mint', text: 'Present', icon: 'check' },
-        { status: 'mint', text: 'Present', icon: 'check' },
-        { status: 'off' },
-        { status: 'off' },
-      ],
-    },
-    {
-      name: 'Marcus Vance',
-      role: 'CS-401 • Roll #05 • Batch A',
-      avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=80&auto=format&fit=crop&q=80',
-      days: [
-        { status: 'mint', text: 'Present', icon: 'check' },
-        { status: 'amber', text: 'Late (12m)', icon: 'clock' },
-        { status: 'mint', text: 'Present', icon: 'check' },
-        { status: 'purple', text: 'Medical OD', icon: 'smile' },
-        { status: 'mint', text: 'Present', icon: 'check' },
-        { status: 'off' },
-        { status: 'off' },
-      ],
-    },
-  ]
+  const filteredClasses = displayClasses.filter(current => {
+    const query = filterText.trim().toLowerCase()
+    if (!query) return true
+    return [current.name, current.code, current.room, current.schedule].filter(Boolean).join(' ').toLowerCase().includes(query)
+  })
 
-  const filteredRows = matrixRows.filter(r =>
-    r.name.toLowerCase().includes(filterText.toLowerCase()) ||
-    r.role.toLowerCase().includes(filterText.toLowerCase())
-  )
+  const recentSessions = [...displaySessions]
+    .sort((a, b) => new Date(b.started_at).getTime() - new Date(a.started_at).getTime())
+    .slice(0, 4)
 
   return (
     <>
-      {/* Sage Page Header (Image 1 Theme) */}
       <div className="sage-page-header">
         <div>
-          <h1 className="sage-title">Student Lecture Attendance</h1>
-          <p className="sage-subtitle">Analyze classroom roll call, biometric verification & student lecture participation</p>
+          <h1 className="sage-title">Dashboard overview</h1>
+          <p className="sage-subtitle">Current class health, recent activity, and quick access to attendance records.</p>
         </div>
         <button
           className="sage-download-btn"
@@ -376,144 +319,130 @@ function TeacherOverview({ user, onNavigate }: { user: User; onNavigate: (s: Sec
         </button>
       </div>
 
-      {/* 4 Sage Metric Cards (Image 1) */}
       <div className="sage-metric-grid">
         <div className="sage-metric-card">
           <div className="sage-metric-header">
-            <div className="sage-metric-icon">
-              <Check size={12} strokeWidth={3} />
-            </div>
-            <span className="sage-metric-label">Present Today</span>
+            <div className="sage-metric-icon"><BookOpen size={12} strokeWidth={2.5} /></div>
+            <span className="sage-metric-label">Courses</span>
           </div>
-          <div className="sage-metric-val">412</div>
-          <div className="sage-metric-sub">91.5% in lecture hall</div>
+          <div className="sage-metric-val">{displayClasses.length}</div>
+          <div className="sage-metric-sub">Active lectures</div>
         </div>
 
         <div className="sage-metric-card">
           <div className="sage-metric-header">
-            <div className="sage-metric-icon">
-              <Clock size={12} strokeWidth={2.5} />
-            </div>
-            <span className="sage-metric-label">Late Entry</span>
+            <div className="sage-metric-icon"><Calendar size={12} strokeWidth={2.5} /></div>
+            <span className="sage-metric-label">Sessions</span>
           </div>
-          <div className="sage-metric-val">14</div>
-          <div className="sage-metric-sub">Joined after 10 mins</div>
+          <div className="sage-metric-val">{displaySessions.length}</div>
+          <div className="sage-metric-sub">{finalizedSessions} finalized · {openSessions} running</div>
         </div>
 
         <div className="sage-metric-card">
           <div className="sage-metric-header">
-            <div className="sage-metric-icon">
-              <Smile size={12} strokeWidth={2.5} />
-            </div>
-            <span className="sage-metric-label">Excused / OD</span>
+            <div className="sage-metric-icon"><Users size={12} strokeWidth={2.5} /></div>
+            <span className="sage-metric-label">Students</span>
           </div>
-          <div className="sage-metric-val">18</div>
-          <div className="sage-metric-sub">Medical & On-Duty approved</div>
+          <div className="sage-metric-val">{totalStudents}</div>
+          <div className="sage-metric-sub">Across all active courses</div>
         </div>
 
         <div className="sage-metric-card">
           <div className="sage-metric-header">
-            <div className="sage-metric-icon">
-              <Coffee size={12} strokeWidth={2.5} />
-            </div>
-            <span className="sage-metric-label">Absent / Under 75%</span>
+            <div className="sage-metric-icon"><TrendingUp size={12} strokeWidth={2.5} /></div>
+            <span className="sage-metric-label">Attendance</span>
           </div>
-          <div className="sage-metric-val">06</div>
-          <div className="sage-metric-sub">Eligibility threshold warning</div>
+          <div className="sage-metric-val">{attendanceRate}%</div>
+          <div className="sage-metric-sub">Average presence rate</div>
         </div>
       </div>
 
-      {/* Search & Filter Ribbon (Image 1) */}
       <div className="sage-filter-ribbon">
         <div className="sage-ribbon-top">
           <div className="sage-filter-search">
             <Search size={15} />
             <input
               type="text"
-              placeholder="Search student name or roll number ..."
+              placeholder="Search classes or rooms"
               value={filterText}
               onChange={e => setFilterText(e.target.value)}
             />
           </div>
           <div className="sage-filter-actions">
-            <button className="sage-filter-btn" type="button">
-              <Filter size={14} /> Filter Classes
+            <button className="sage-filter-btn" type="button" onClick={() => onNavigate('calendar')}>
+              <Calendar size={14} /> Calendar
             </button>
-            <button className="sage-date-btn" type="button">
-              <Calendar size={14} /> Fall Semester 2026
+            <button className="sage-date-btn" type="button" onClick={() => onNavigate('attendance')}>
+              <Check size={14} /> Attendance
             </button>
           </div>
         </div>
         <div className="sage-filter-tags">
-          <span className="sage-tag">Excused / OD <X size={12} /></span>
-          <span className="sage-tag">Absent <X size={12} /></span>
-          <span className="sage-tag">Present <X size={12} /></span>
+          <span className="sage-tag"><Check size={12} /> {finalizedSessions} finalized</span>
+          <span className="sage-tag"><Clock size={12} /> {openSessions} open</span>
+          <span className="sage-tag"><Filter size={12} /> {filteredClasses.length} matches</span>
         </div>
       </div>
 
-      {/* Weekly Matrix Table (Image 1) */}
-      <div className="sage-table-card">
-        <div style={{ overflowX: 'auto' }}>
-          <table className="sage-matrix-table">
-            <thead>
-              <tr>
-                <th className="col-employee">Student & Roll No</th>
-                <th>Monday <span className="day-num">19</span></th>
-                <th>Tuesday <span className="day-num">20</span></th>
-                <th>Wednesday <span className="day-num">21</span></th>
-                <th>Thursday <span className="day-num">22</span></th>
-                <th>Friday <span className="day-num">23</span></th>
-                <th className="col-off">Saturday <span className="day-num">24</span></th>
-                <th className="col-off">Sunday <span className="day-num">25</span></th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredRows.map((row, idx) => (
-                <tr key={idx}>
-                  <td className="col-employee">
-                    <div className="employee-cell">
-                      <img src={row.avatar} alt={row.name} className="employee-avatar" />
-                      <div className="employee-info">
-                        <strong>{row.name}</strong>
-                        <span>{row.role}</span>
-                      </div>
-                    </div>
-                  </td>
-                  {row.days.map((day, dIdx) => (
-                    <td key={dIdx} className={day.status === 'off' ? 'col-off' : ''}>
-                      {day.status !== 'off' && (
-                        <span className={`pastel-chip ${day.status}`}>
-                          {day.icon === 'check' && <Check size={11} strokeWidth={3} />}
-                          {day.icon === 'clock' && <Clock size={11} strokeWidth={2.5} />}
-                          {day.icon === 'smile' && <Smile size={11} strokeWidth={2.5} />}
-                          {day.icon === 'absent' && <X size={11} strokeWidth={3} />}
-                          <span>{day.text}</span>
-                        </span>
-                      )}
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Classroom Roll-call Session Management Section */}
-      <div style={{ marginTop: 36 }}>
-        <div className="section-heading">
-          <div>
-            <p className="eyebrow">Academic Roll Call & Hall Management</p>
-            <h2>Lecture Halls & Active Sessions</h2>
+      <div className="simple-dashboard-grid">
+        <div className="panel">
+          <div className="panel-heading">
+            <div>
+              <p className="eyebrow">Recent activity</p>
+              <h3>Recent sessions</h3>
+            </div>
+            <button className="text-button" onClick={() => onNavigate('attendance')}>View all <ArrowRight size={15} /></button>
           </div>
-          <button className="text-button" onClick={() => onNavigate('sessions')}>
-            Open Live Roll Call Desk <ArrowRight size={15} />
-          </button>
+
+          <div className="simple-session-list">
+            {loading ? (
+              <p className="muted">Loading session data…</p>
+            ) : recentSessions.length ? (
+              recentSessions.map(session => (
+                <div className="simple-session-row" key={session.id}>
+                  <div className="simple-session-date">
+                    <strong>{new Intl.DateTimeFormat('en-US', { day: '2-digit' }).format(new Date(session.started_at))}</strong>
+                    <span>{new Intl.DateTimeFormat('en-US', { month: 'short' }).format(new Date(session.started_at))}</span>
+                  </div>
+                  <div className="simple-session-copy">
+                    <strong>{session.class_name || 'Class session'}</strong>
+                    <span>{formatDate(session.started_at, true)} · {session.status === 'open' ? 'Running' : 'Finalized'}</span>
+                  </div>
+                  <span className={`status-chip ${session.status === 'open' ? 'status-pending' : 'status-present'}`}>
+                    {session.status === 'open' ? 'Open' : 'Finalized'}
+                  </span>
+                </div>
+              ))
+            ) : (
+              <EmptyState icon={<Calendar />} title="No sessions yet" body="Sessions will appear here as they are created and finalized." />
+            )}
+          </div>
         </div>
-        <div className="class-grid">
-          {displayClasses.map(item => (
-            <ClassCard key={item.id} item={item} onStart={() => onNavigate('sessions')} />
-          ))}
+
+        <div className="panel">
+          <div className="panel-heading">
+            <div>
+              <p className="eyebrow">Courses</p>
+              <h3>Class overview</h3>
+            </div>
+            <button className="text-button" onClick={() => onNavigate('controller-classes')}>Manage <ArrowRight size={15} /></button>
+          </div>
+
+          <div className="simple-class-list">
+            {filteredClasses.length ? (
+              filteredClasses.slice(0, 5).map(course => (
+                <div className="simple-class-row" key={course.id}>
+                  <div className="simple-class-badge">{course.code?.slice(0, 2).toUpperCase() || 'CL'}</div>
+                  <div className="simple-class-copy">
+                    <strong>{course.name}</strong>
+                    <span>{course.room || 'Room TBD'} · {course.student_count || 0} students</span>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <EmptyState icon={<BookOpen />} title="No courses found" body="Try another search term or add a class." />
+            )}
+          </div>
         </div>
       </div>
     </>
