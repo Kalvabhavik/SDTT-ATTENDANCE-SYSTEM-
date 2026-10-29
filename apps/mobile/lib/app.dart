@@ -37,7 +37,7 @@ class _AttendanceAppState extends State<AttendanceApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Classroom Attendance',
+      title: 'Attendrix',
       debugShowCheckedModeBanner: false,
       theme: buildTheme().copyWith(
         pageTransitionsTheme: const PageTransitionsTheme(

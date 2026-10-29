@@ -12,8 +12,17 @@ export interface ControllerClass {
   hall_type?: string
   room_photo?: string
   student_count?: number
+  teacher_id?: string | null
   teacher_name?: string
+  teacher_email?: string
+  is_lab?: boolean
   reference_captured_at?: string
+}
+export interface ControllerTeacher {
+  id: string
+  name: string
+  email: string
+  role?: string
 }
 export interface ControllerStudent {
   id: string

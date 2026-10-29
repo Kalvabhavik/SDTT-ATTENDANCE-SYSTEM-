@@ -33,18 +33,16 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       backgroundColor: AppColors.background,
       extendBody: true,
-      appBar: (tab == 2 || tab == 3)
+      appBar: (!isStudent && (tab == 2 || tab == 3))
           ? AppBar(
               elevation: 0,
               backgroundColor: AppColors.background,
               title: Text(
                 tab == 2
                     ? 'Notifications & Alerts'
-                    : isStudent
-                        ? 'Attendance Records'
-                        : isTeacher
-                            ? 'Assigned Classes'
-                            : 'Classrooms & Roster',
+                    : isTeacher
+                        ? 'Assigned Classes'
+                        : 'Classrooms & Roster',
                 style: const TextStyle(
                   fontWeight: FontWeight.w800,
                   fontSize: 18,
@@ -100,21 +98,31 @@ class _HomeScreenState extends State<HomeScreen> {
       case 0:
         return StudentHome(
           state: widget.state,
-          onOpenClockIn: () => setState(() => tab = 1),
+          onOpenClockIn: () => setState(() => tab = 3),
+          onOpenProfile: () => setState(() => tab = 1),
+          onOpenCalendar: () => setState(() => tab = 2),
         );
       case 1:
-        return _StudentAttendanceClockIn(
+        return _StudentProfileView(
           state: widget.state,
           onBack: () => setState(() => tab = 0),
         );
       case 2:
-        return NotificationsScreen(state: widget.state);
+        return _StudentCalendarView(
+          state: widget.state,
+          onBack: () => setState(() => tab = 0),
+        );
       case 3:
-        return _StudentRecordsOverview(state: widget.state);
+        return _StudentAttendanceClockIn(
+          state: widget.state,
+          onBack: () => setState(() => tab = 0),
+        );
       default:
         return StudentHome(
           state: widget.state,
-          onOpenClockIn: () => setState(() => tab = 1),
+          onOpenClockIn: () => setState(() => tab = 3),
+          onOpenProfile: () => setState(() => tab = 1),
+          onOpenCalendar: () => setState(() => tab = 2),
         );
     }
   }
@@ -199,38 +207,52 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildFloatingDockContent() {
     final isTeacher = widget.state.isTeacher;
-    final isStudent = !widget.state.isTeacher && !widget.state.isController;
+    final isController = widget.state.isController;
+    final isStudent = !isTeacher && !isController;
+
+    if (isStudent) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceAround,
+          children: [
+            _buildDockItem(icon: Icons.home_rounded, index: 0, label: 'Home'),
+            _buildDockItem(icon: Icons.person_rounded, index: 1, label: 'Profile'),
+            _buildDockItem(icon: Icons.calendar_month_rounded, index: 2, label: 'Schedule'),
+            _buildDockItem(icon: Icons.access_time_rounded, index: 3, label: 'Clock In'),
+          ],
+        ),
+      );
+    }
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
-          _buildDockItem(icon: Icons.home_rounded, index: 0),
+          _buildDockItem(icon: Icons.home_rounded, index: 0, label: 'Home'),
           _buildDockItem(
-            icon: isStudent
-                ? Icons.access_time_rounded
-                : isTeacher
-                    ? Icons.videocam_outlined
-                    : Icons.camera_alt_outlined,
+            icon: isTeacher
+                ? Icons.videocam_outlined
+                : Icons.camera_alt_outlined,
             index: 1,
+            label: isTeacher ? 'Sessions' : 'Monitor',
           ),
-          _buildDockItem(icon: Icons.chat_bubble_outline_rounded, index: 2),
+          _buildDockItem(icon: Icons.chat_bubble_outline_rounded, index: 2, label: 'Alerts'),
           _buildDockItem(
-            icon: isStudent
-                ? Icons.folder_outlined
-                : isTeacher
-                    ? Icons.school_outlined
-                    : Icons.meeting_room_outlined,
+            icon: isTeacher
+                ? Icons.school_outlined
+                : Icons.meeting_room_outlined,
             index: 3,
+            label: isTeacher ? 'Classes' : 'Halls',
           ),
-          _buildDockItem(icon: Icons.settings_outlined, index: 4),
+          _buildDockItem(icon: Icons.settings_outlined, index: 4, label: 'Settings'),
         ],
       ),
     );
   }
 
-  Widget _buildDockItem({required IconData icon, required int index}) {
+  Widget _buildDockItem({required IconData icon, required int index, String label = ''}) {
     final isSelected = tab == index;
     return GestureDetector(
       onTap: () {
@@ -242,17 +264,35 @@ class _HomeScreenState extends State<HomeScreen> {
       },
       behavior: HitTestBehavior.opaque,
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        width: 44,
-        height: 44,
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
+        padding: isSelected && label.isNotEmpty
+            ? const EdgeInsets.symmetric(horizontal: 14, vertical: 7)
+            : const EdgeInsets.all(8),
         decoration: BoxDecoration(
-          color: isSelected ? AppColors.primary : Colors.transparent,
-          shape: BoxShape.circle,
+          color: isSelected ? const Color(0xFFE0F2FE) : Colors.transparent,
+          borderRadius: BorderRadius.circular(20),
         ),
-        child: Icon(
-          icon,
-          size: 20,
-          color: isSelected ? Colors.white : const Color(0xFF64748B),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              size: 20,
+              color: isSelected ? const Color(0xFF0284C7) : const Color(0xFF64748B),
+            ),
+            if (isSelected && label.isNotEmpty) ...[
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: const TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w800,
+                  color: Color(0xFF0284C7),
+                ),
+              ),
+            ],
+          ],
         ),
       ),
     );
@@ -1417,21 +1457,28 @@ class ControllerHome extends StatelessWidget {
 // STUDENT HOME
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ─────────────────────────────────────────────────────────────────────────────
+// STUDENT HOME (Image 1 Screen 1: Modern Sky Blue Attendance Interface)
+// ─────────────────────────────────────────────────────────────────────────────
+
 class StudentHome extends StatefulWidget {
   const StudentHome({
     super.key,
     required this.state,
     this.onOpenClockIn,
+    this.onOpenCalendar,
+    this.onOpenProfile,
   });
   final AppState state;
   final VoidCallback? onOpenClockIn;
+  final VoidCallback? onOpenCalendar;
+  final VoidCallback? onOpenProfile;
 
   @override
   State<StudentHome> createState() => _StudentHomeState();
 }
 
 class _StudentHomeState extends State<StudentHome> {
-  String filter = 'all'; // 'all', 'present', 'absent', 'pending'
   Timer? _timer;
 
   @override
@@ -1448,750 +1495,774 @@ class _StudentHomeState extends State<StudentHome> {
     super.dispose();
   }
 
+  void _showLeaveDialog() {
+    String reason = 'Medical Leave';
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDlgState) => AlertDialog(
+          backgroundColor: Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Row(
+            children: [
+              Icon(Icons.event_busy_rounded, color: Color(0xFFFF6584)),
+              SizedBox(width: 8),
+              Text('Request Leave / Absence', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: AppColors.ink)),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Select reason for absence today:', style: TextStyle(fontSize: 12, color: AppColors.slate)),
+              const SizedBox(height: 12),
+              for (final r in ['Medical Leave', 'Official College Duty', 'Family Emergency', 'Academic Competition'])
+                RadioListTile<String>(
+                  title: Text(r, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                  value: r,
+                  groupValue: reason,
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  activeColor: const Color(0xFF0284C7),
+                  onChanged: (val) {
+                    if (val != null) setDlgState(() => reason = val);
+                  },
+                ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel', style: TextStyle(color: AppColors.slate)),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF0284C7),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              onPressed: () {
+                Navigator.pop(ctx);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Absence notice "$reason" recorded for college attendance.'),
+                    backgroundColor: const Color(0xFF0284C7),
+                  ),
+                );
+              },
+              child: const Text('Submit Request'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showCoursesModal() {
+    final todayClasses = widget.state.todayTimetable;
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(color: const Color(0xFFCBD5E1), borderRadius: BorderRadius.circular(2)),
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Text('Enrolled Courses & Sections', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AppColors.ink)),
+              const SizedBox(height: 4),
+              const Text('Authorized lecture halls and faculty assignments', style: TextStyle(fontSize: 12, color: AppColors.slate)),
+              const SizedBox(height: 16),
+              if (todayClasses.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 24),
+                  child: Center(child: Text('No classes scheduled today.', style: TextStyle(color: AppColors.muted))),
+                )
+              else
+                ...todayClasses.map((cls) => Container(
+                  margin: const EdgeInsets.only(bottom: 10),
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: const Color(0xFFECEEF1)),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 36,
+                        height: 36,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFE0F2FE),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Icon(Icons.school_rounded, color: Color(0xFF0284C7), size: 18),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('${cls['subject_code']}: ${cls['subject_name']}', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: AppColors.ink)),
+                            const SizedBox(height: 2),
+                            Text('${cls['start_time']} - ${cls['end_time']} • ${cls['room'] ?? "LH-120"} • ${cls['faculty_name'] ?? "Faculty"}', style: const TextStyle(fontSize: 11, color: AppColors.slate)),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                )),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final state = widget.state;
     final attendance = state.studentAttendance;
     final summary = attendance?.summary;
-    final firstName = state.user?.name.split(' ').first ?? 'Student';
-    final nowFormatted = DateFormat('EEEE, MMMM d').format(DateTime.now());
-
-    final rawEntries = attendance?.entries ?? [];
-    final filteredEntries = rawEntries.where((e) {
-      if (filter == 'present') return e.isPresent;
-      if (filter == 'absent') return e.isAbsent;
-      if (filter == 'pending') return e.isPending;
-      return true;
-    }).toList();
+    final firstName = state.user?.name.split(' ').first ?? 'Firman';
+    final now = DateTime.now();
+    final dateFormatted = DateFormat('yyyy, MMM d').format(now);
 
     final openSessions = state.sessions.where((s) => s.isOpen).toList();
+    final todayClasses = state.todayTimetable;
+
+    final firstClassTime = todayClasses.isNotEmpty ? (todayClasses.first['start_time']?.toString().replaceAll(':', '.') ?? '07.44') : '07.44';
+    final nextClassTime = state.nextClass != null ? (state.nextClass!['start_time']?.toString().replaceAll(':', '.') ?? '09.00') : '09.00';
+    final lastClassTime = todayClasses.isNotEmpty ? (todayClasses.last['end_time']?.toString().replaceAll(':', '.') ?? '16.44') : '16.44';
+    final locationText = state.nextClass != null
+        ? '${state.nextClass!['room'] ?? "LH-101"}, Computer Science Wing, SDTT'
+        : 'Jl. MH Thamrin, Kebon Sirih, Kec. Menteng, Jakarta Pusat';
 
     return RefreshIndicator(
       onRefresh: state.retryHome,
-      color: AppColors.primary,
+      color: const Color(0xFF0284C7),
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
-        padding: const EdgeInsets.fromLTRB(20, 12, 20, 110),
+        padding: EdgeInsets.zero,
         children: [
-          // Top Header matching Image 2 (Screen 1): Date + Welcome + Bell + Avatar
-          FadeSlideIn(
-            offsetY: 16,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              crossAxisAlignment: CrossAxisAlignment.center,
+          // ── Top Gradient Hero Header (Sky Blue Gradient from Reference Image) ──
+          Container(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 48),
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                colors: [Color(0xFF38BDF8), Color(0xFF0284C7)],
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        nowFormatted,
-                        style: const TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: AppColors.muted,
-                        ),
-                      ),
-                      const SizedBox(height: 3),
-                      Text(
-                        'Welcome, ${state.user?.name ?? firstName}',
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 22,
-                          fontWeight: FontWeight.w900,
-                          color: AppColors.ink,
-                          letterSpacing: -0.4,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+                // Top Row: Menu Button (Left) + Notification & Avatar (Right)
                 Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    // Notification Bell with red badge
-                    Stack(
-                      children: [
-                        Container(
-                          width: 42,
-                          height: 42,
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            shape: BoxShape.circle,
-                            border: Border.all(color: const Color(0xFFECEEF1)),
+                    // Hamburger Menu
+                    GestureDetector(
+                      onTap: () {
+                        // Open Settings / Connection Sheet
+                        showModalBottomSheet<void>(
+                          context: context,
+                          backgroundColor: Colors.white,
+                          shape: const RoundedRectangleBorder(
+                            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
                           ),
-                          child: const Icon(
-                            Icons.notifications_none_rounded,
-                            size: 22,
-                            color: AppColors.ink,
+                          builder: (ctx) => SafeArea(
+                            child: Padding(
+                              padding: const EdgeInsets.all(24),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(state.user?.name ?? 'Student', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+                                  const SizedBox(height: 4),
+                                  Text(state.user?.email ?? '', style: const TextStyle(fontSize: 12, color: AppColors.muted)),
+                                  const SizedBox(height: 16),
+                                  ListTile(
+                                    contentPadding: EdgeInsets.zero,
+                                    leading: const Icon(Icons.lan_rounded, color: Color(0xFF0284C7)),
+                                    title: const Text('Toggle Server Mode'),
+                                    subtitle: Text(AppConfig.connectionModeLabel),
+                                    onTap: () {
+                                      AppConfig.toggleServerUrl();
+                                      Navigator.pop(ctx);
+                                      setState(() {});
+                                    },
+                                  ),
+                                  ListTile(
+                                    contentPadding: EdgeInsets.zero,
+                                    leading: const Icon(Icons.logout_rounded, color: AppColors.rose),
+                                    title: const Text('Sign Out', style: TextStyle(color: AppColors.rose)),
+                                    onTap: () {
+                                      Navigator.pop(ctx);
+                                      state.logout();
+                                    },
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                      child: Container(
+                        width: 38,
+                        height: 38,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.2),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Icon(Icons.menu_rounded, color: Colors.white, size: 22),
+                      ),
+                    ),
+                    // Right Avatar & Bell
+                    Row(
+                      children: [
+                        GestureDetector(
+                          onTap: () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(builder: (_) => NotificationsScreen(state: state)),
+                            );
+                          },
+                          child: Container(
+                            width: 38,
+                            height: 38,
+                            margin: const EdgeInsets.only(right: 10),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.2),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: const Icon(Icons.notifications_none_rounded, color: Colors.white, size: 20),
                           ),
                         ),
-                        Positioned(
-                          top: 10,
-                          right: 12,
+                        GestureDetector(
+                          onTap: widget.onOpenProfile,
                           child: Container(
-                            width: 7,
-                            height: 7,
-                            decoration: const BoxDecoration(
-                              color: Color(0xFFEF4444),
+                            width: 40,
+                            height: 40,
+                            decoration: BoxDecoration(
                               shape: BoxShape.circle,
+                              border: Border.all(color: Colors.white, width: 2),
+                              color: const Color(0xFF1E293B),
+                            ),
+                            child: Center(
+                              child: Text(
+                                (state.user?.name.isNotEmpty == true ? state.user!.name[0] : 'F').toUpperCase(),
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w900,
+                                  fontSize: 15,
+                                ),
+                              ),
                             ),
                           ),
                         ),
                       ],
                     ),
-                    const SizedBox(width: 10),
-                    // Profile Avatar
-                    Container(
-                      width: 42,
-                      height: 42,
-                      decoration: const BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: Color(0xFFE2E8F0),
-                      ),
-                      child: Center(
-                        child: Text(
-                          (state.user?.name.isNotEmpty == true ? state.user!.name[0] : 'R').toUpperCase(),
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w900,
-                            color: AppColors.primary,
-                          ),
-                        ),
-                      ),
-                    ),
                   ],
+                ),
+                const SizedBox(height: 24),
+                // "Hello, Firman!"
+                Text(
+                  'Hello, $firstName!',
+                  style: const TextStyle(
+                    fontSize: 26,
+                    fontWeight: FontWeight.w900,
+                    color: Colors.white,
+                    letterSpacing: -0.5,
+                  ),
                 ),
               ],
             ),
           ),
 
-          const SizedBox(height: 24),
-
-          if (state.error != null) ...[
-            FadeSlideIn(
-              child: Padding(
-                padding: const EdgeInsets.only(bottom: 18),
-                child: ErrorPanel(
-                  message: state.error!,
-                  onRetry: () => state.retryHome(),
-                ),
-              ),
-            ),
-          ],
-
-          // ── Today's Summary Section (College Next Lecture) ───────────────────────
-          FadeSlideIn(
-            delay: const Duration(milliseconds: 40),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Today\'s Summary',
-                  style: TextStyle(
-                    fontSize: 28,
-                    fontWeight: FontWeight.w900,
-                    color: AppColors.ink,
-                    letterSpacing: -0.8,
-                  ),
-                ),
-                const SizedBox(height: 14),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: const Color(0xFFECEEF1)),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.03),
-                        blurRadius: 16,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
-                  ),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+          // ── Overlapping Content Body ──
+          Transform.translate(
+            offset: const Offset(0, -32),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 18),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // ── 1. "My Attendance" White Card (Screen 1 Main Card) ──
+                  Container(
+                    padding: const EdgeInsets.all(18),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(22),
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0xFF0284C7).withValues(alpha: 0.10),
+                          blurRadius: 18,
+                          offset: const Offset(0, 6),
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Card Header: "My Attendance" + Date
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             const Text(
-                              'Next Lecture',
+                              'My Attendance',
                               style: TextStyle(
-                                fontSize: 12,
-                                color: AppColors.muted,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              openSessions.isNotEmpty
-                                  ? (openSessions.first.className.isNotEmpty ? openSessions.first.className : 'Active Classroom Session')
-                                  : (state.nextClass != null
-                                      ? '${state.nextClass!['subject_code']}: ${state.nextClass!['subject_name']}'
-                                      : 'CS401: Distributed Systems'),
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
                                 fontSize: 16,
                                 fontWeight: FontWeight.w800,
                                 color: AppColors.ink,
                               ),
                             ),
-                            const SizedBox(height: 2),
                             Text(
-                              openSessions.isNotEmpty
-                                  ? (openSessions.first.classCode.isNotEmpty ? '${openSessions.first.classCode} • Live in Progress' : 'LH-120 • In Session')
-                                  : (state.nextClass != null
-                                      ? '${state.nextClass!['room'] ?? "LH-120"} • ${state.nextClass!['start_time']} - ${state.nextClass!['end_time']}'
-                                      : 'LH-120 • 09:00 - 10:30 AM'),
+                              dateFormatted,
                               style: const TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w500,
-                                color: AppColors.slate,
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFF94A3B8),
                               ),
                             ),
-                            if (state.nextClass?['faculty_name'] != null && openSessions.isEmpty) ...[
-                              const SizedBox(height: 2),
-                              Text(
-                                'Prof: ${state.nextClass!['faculty_name']}',
-                                style: const TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w600,
-                                  color: AppColors.primary,
-                                ),
-                              ),
-                            ],
                           ],
                         ),
-                      ),
-                      const SizedBox(width: 8),
-                      // Google Calendar sync icon
-                      IconButton(
-                        icon: const Icon(Icons.calendar_month_outlined, color: AppColors.primary, size: 22),
-                        tooltip: 'Copy Google Calendar Link',
-                        onPressed: () {
-                          final cls = state.nextClass ?? {
-                            'subject_code': 'CS401',
-                            'subject_name': 'Distributed Systems',
-                            'start_time': '09:00',
-                            'end_time': '10:30',
-                            'room': 'LH-120',
-                            'faculty_name': 'Prof. Alan Turing',
-                          };
-                          final url = state.api.generateGoogleCalendarUrl(
-                            title: '${cls['subject_code']}: ${cls['subject_name']}',
-                            startTime: cls['start_time']?.toString() ?? '09:00',
-                            endTime: cls['end_time']?.toString() ?? '10:30',
-                            location: cls['room']?.toString() ?? 'Campus Hall',
-                            details: 'Lecture conducted by ${cls['faculty_name'] ?? 'Faculty'}. Verified on Attendrix.',
-                          );
-                          Clipboard.setData(ClipboardData(text: url));
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text('Google Calendar link copied to clipboard for "${cls['subject_name']}"!'),
-                              backgroundColor: AppColors.primary,
-                              duration: const Duration(seconds: 3),
-                            ),
-                          );
-                        },
-                      ),
-                      const SizedBox(width: 4),
-                      // Forest Green Pill Button "Mark Attendance"
-                      GestureDetector(
-                        onTap: () {
-                          if (widget.onOpenClockIn != null) {
-                            widget.onOpenClockIn!();
-                          } else if (openSessions.isNotEmpty) {
-                            Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (_) => LiveFaceVerificationScreen(
-                                  state: state,
-                                  session: openSessions.first,
+                        const SizedBox(height: 14),
+
+                        // Row of 3 Clock Chips (07.44 / 09.00 / 16.44 from reference)
+                        Row(
+                          children: [
+                            _buildTimePill(Icons.access_time_rounded, firstClassTime, const Color(0xFF94A3B8)),
+                            const SizedBox(width: 8),
+                            _buildTimePill(Icons.access_time_filled_rounded, nextClassTime, const Color(0xFF10B981)),
+                            const SizedBox(width: 8),
+                            _buildTimePill(Icons.logout_rounded, lastClassTime, const Color(0xFFF97316)),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+
+                        // Subtitle Location
+                        Row(
+                          children: [
+                            const Icon(Icons.location_on_outlined, size: 14, color: Color(0xFF94A3B8)),
+                            const SizedBox(width: 4),
+                            Expanded(
+                              child: Text(
+                                locationText,
+                                style: const TextStyle(
+                                  fontSize: 10.5,
+                                  color: Color(0xFF94A3B8),
+                                  fontWeight: FontWeight.w500,
                                 ),
+                                overflow: TextOverflow.ellipsis,
                               ),
-                            );
-                          }
-                        },
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                          decoration: BoxDecoration(
-                            color: AppColors.primary,
-                            borderRadius: BorderRadius.circular(24),
-                            boxShadow: [
-                              BoxShadow(
-                                color: AppColors.primary.withValues(alpha: 0.35),
-                                blurRadius: 10,
-                                offset: const Offset(0, 4),
-                              ),
-                            ],
-                          ),
-                          child: const Text(
-                            'Mark Attendance',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w800,
-                              fontSize: 12,
                             ),
-                          ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 18),
+
+                  // ── 2. Four Colorful Action Buttons (Leave, Calendar, Salary/Courses, Task) ──
+                  Row(
+                    children: [
+                      // Coral Pink: Leave
+                      Expanded(
+                        child: _buildActionTile(
+                          icon: Icons.event_busy_rounded,
+                          label: 'Leave',
+                          color: const Color(0xFFFF6584),
+                          onTap: _showLeaveDialog,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      // Sky Blue: Calendar
+                      Expanded(
+                        child: _buildActionTile(
+                          icon: Icons.calendar_month_rounded,
+                          label: 'Calendar',
+                          color: const Color(0xFF38BDF8),
+                          onTap: widget.onOpenCalendar,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      // Mint Green: Courses
+                      Expanded(
+                        child: _buildActionTile(
+                          icon: Icons.school_rounded,
+                          label: 'Courses',
+                          color: const Color(0xFF34D399),
+                          onTap: _showCoursesModal,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      // Soft Violet: Sessions
+                      Expanded(
+                        child: _buildActionTile(
+                          icon: Icons.face_retouching_natural_rounded,
+                          label: 'Sessions',
+                          color: const Color(0xFFA78BFA),
+                          onTap: () {
+                            if (openSessions.isNotEmpty) {
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => LiveFaceVerificationScreen(
+                                    state: state,
+                                    session: openSessions.first,
+                                  ),
+                                ),
+                              );
+                            } else {
+                              widget.onOpenClockIn?.call();
+                            }
+                          },
                         ),
                       ),
                     ],
                   ),
-                ),
-                if (state.todayTimetable.isNotEmpty) ...[
-                  const SizedBox(height: 14),
+
+                  const SizedBox(height: 22),
+
+                  // ── 3. "Today's Task" / Schedule Section Header with Chevron ──
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       const Text(
-                        'Today\'s Timetable',
+                        'Today's Schedule',
                         style: TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w800,
+                          fontSize: 17,
+                          fontWeight: FontWeight.w900,
                           color: AppColors.ink,
+                          letterSpacing: -0.3,
                         ),
                       ),
-                      Text(
-                        '${state.todayTimetable.length} Classes',
-                        style: const TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: AppColors.muted,
-                        ),
+                      GestureDetector(
+                        onTap: widget.onOpenCalendar,
+                        child: const Icon(Icons.arrow_forward_ios_rounded, size: 14, color: Color(0xFF94A3B8)),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 8),
-                  ...state.todayTimetable.map((cls) {
-                    final isCancelled = cls['is_cancelled'] == true;
-                    return Container(
-                      margin: const EdgeInsets.only(bottom: 8),
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(
-                          color: isCancelled ? AppColors.rose.withValues(alpha: 0.3) : const Color(0xFFECEEF1),
+                  const SizedBox(height: 12),
+
+                  // ── Schedule Item 1: Elevated Interactive Card (Card 1 in Reference) ──
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.04),
+                          blurRadius: 12,
+                          offset: const Offset(0, 3),
                         ),
-                      ),
-                      child: Row(
-                        children: [
-                          Container(
-                            width: 36,
-                            height: 36,
-                            decoration: BoxDecoration(
-                              color: isCancelled ? AppColors.rose.withValues(alpha: 0.1) : AppColors.cardSubtle,
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: Icon(
-                              isCancelled ? Icons.event_busy_rounded : Icons.schedule_rounded,
-                              size: 18,
-                              color: isCancelled ? AppColors.rose : AppColors.primary,
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  '${cls['subject_code']}: ${cls['subject_name']}',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.w700,
-                                    fontSize: 13,
-                                    decoration: isCancelled ? TextDecoration.lineThrough : null,
-                                    color: isCancelled ? AppColors.muted : AppColors.ink,
-                                  ),
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  '${cls['start_time']} - ${cls['end_time']} • ${cls['room'] ?? "LH"}${cls['faculty_name'] != null ? " • ${cls['faculty_name']}" : ""}',
-                                  style: const TextStyle(fontSize: 11, color: AppColors.slate),
-                                ),
-                              ],
-                            ),
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.calendar_month_outlined, size: 18, color: AppColors.primary),
-                            tooltip: 'Add to Google Calendar',
-                            onPressed: () {
-                              final url = state.api.generateGoogleCalendarUrl(
-                                title: '${cls['subject_code']}: ${cls['subject_name']}',
-                                startTime: cls['start_time']?.toString() ?? '09:00',
-                                endTime: cls['end_time']?.toString() ?? '10:30',
-                                location: cls['room']?.toString() ?? 'Campus Hall',
-                                details: 'Lecture by ${cls['faculty_name'] ?? 'Faculty'}.',
-                              );
-                              Clipboard.setData(ClipboardData(text: url));
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text('Google Calendar link copied to clipboard for "${cls['subject_name']}"!'),
-                                  backgroundColor: AppColors.primary,
-                                  duration: const Duration(seconds: 2),
-                                ),
-                              );
-                            },
-                          ),
-                        ],
-                      ),
-                    );
-                  }),
-                ],
-              ],
-            ),
-          ),
-
-          const SizedBox(height: 24),
-
-          // ── Semester Attendance Section (College Record) ─────────────────────
-          FadeSlideIn(
-            delay: const Duration(milliseconds: 60),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text(
-                      'Semester Attendance',
-                      style: TextStyle(
-                        fontSize: 17,
-                        fontWeight: FontWeight.w800,
-                        color: AppColors.ink,
-                      ),
+                      ],
                     ),
-                    GestureDetector(
-                      onTap: () => widget.onOpenClockIn?.call(),
-                      child: const Text(
-                        'Details',
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                          color: AppColors.primary,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: const Color(0xFFECEEF1)),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.02),
-                        blurRadius: 10,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                  child: Row(
-                    children: [
-                      CircularPercentIndicator(
-                        radius: 28.0,
-                        lineWidth: 6.0,
-                        animation: true,
-                        percent: (((summary?.present ?? 24) / math.max(1, ((summary?.present ?? 24) + (summary?.absent ?? 3))))).clamp(0.0, 1.0),
-                        center: Text(
-                          "${((((summary?.present ?? 24) / math.max(1, ((summary?.present ?? 24) + (summary?.absent ?? 3))))) * 100).toInt()}%",
-                          style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 13, color: AppColors.ink),
-                        ),
-                        circularStrokeCap: CircularStrokeCap.round,
-                        progressColor: AppColors.primary,
-                        backgroundColor: const Color(0xFFE2E8F0),
-                      ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'Overall Attendance Standing',
-                              style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5, color: AppColors.ink),
-                            ),
-                            const SizedBox(height: 3),
-                            Text(
-                              '${summary?.present ?? 24} of ${math.max(1, (summary?.present ?? 24) + (summary?.absent ?? 3))} lectures attended • Exam Eligible (≥75%)',
-                              style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 11.5, color: AppColors.slate),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(child: _buildRequestCard('${summary?.present ?? 24}', 'Attended', dotColor: AppColors.emerald)),
-                    const SizedBox(width: 12),
-                    Expanded(child: _buildRequestCard('02', 'Excused OD', dotColor: AppColors.amber)),
-                    const SizedBox(width: 12),
-                    Expanded(child: _buildRequestCard('${summary?.absent ?? 3}', 'Missed', dotColor: AppColors.rose)),
-                  ],
-                ),
-              ],
-            ),
-          ),
-
-          const SizedBox(height: 24),
-
-          // ── Today's Class Schedule Section ──────────────────────────────────
-          FadeSlideIn(
-            delay: const Duration(milliseconds: 80),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      'Today\'s Class Schedule',
-                      style: TextStyle(
-                        fontSize: 17,
-                        fontWeight: FontWeight.w800,
-                        color: AppColors.ink,
-                      ),
-                    ),
-                    Text(
-                      '4 Lectures',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.primary,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _buildTaskGridCard(
-                        icon: Icons.hub_outlined,
-                        tag: 'Lecture',
-                        tagBg: const Color(0xFFE8F8F0),
-                        tagText: const Color(0xFF0D7A5F),
-                        title: 'CS401: Distributed Systems',
-                        time: 'LH-120 • 09:00 - 10:30 AM',
-                        footerNote: 'Prof. Vance',
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _buildTaskGridCard(
-                        icon: Icons.memory_outlined,
-                        tag: 'Theory',
-                        tagBg: const Color(0xFFE6F4F1),
-                        tagText: const Color(0xFF0284C7),
-                        title: 'CS302: Operating Systems',
-                        time: 'LH-80 • 11:00 - 12:30 PM',
-                        footerNote: 'Dr. Anita',
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _buildTaskGridCard(
-                        icon: Icons.dataset_outlined,
-                        tag: 'Lab / Prac',
-                        tagBg: const Color(0xFFFEF3C7),
-                        tagText: const Color(0xFFD97706),
-                        title: 'CS305: Database Systems Lab',
-                        time: 'Lab 3 • 14:00 - 15:30 PM',
-                        footerNote: 'Prof. Chen',
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _buildTaskGridCard(
-                        icon: Icons.auto_awesome_outlined,
-                        tag: 'Seminar',
-                        tagBg: const Color(0xFFEDE9FE),
-                        tagText: const Color(0xFF7C3AED),
-                        title: 'CS410: AI & Biometrics',
-                        time: 'LH-240 • 16:00 - 17:30 PM',
-                        footerNote: 'Dr. Rao',
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-
-          const SizedBox(height: 24),
-
-          // Registration Locked Status Banner
-          if (state.enrollmentStatus?.registrationLocked == true)
-            Container(
-              margin: const EdgeInsets.only(bottom: 16),
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              decoration: BoxDecoration(
-                color: AppColors.emerald.withValues(alpha: 0.08),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: AppColors.emerald.withValues(alpha: 0.25)),
-              ),
-              child: const Row(
-                children: [
-                  Icon(Icons.lock_outline_rounded, color: AppColors.emerald, size: 20),
-                  SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                    child: Row(
                       children: [
-                        Text(
-                          'Biometric Registration Complete & Locked',
-                          style: TextStyle(
-                            fontSize: 12.5,
-                            fontWeight: FontWeight.w800,
-                            color: AppColors.ink,
+                        // Left Checkmark Box (Blue pill container like screenshot)
+                        Container(
+                          width: 44,
+                          height: 44,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF38BDF8),
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          child: const Icon(Icons.check_rounded, color: Colors.white, size: 22),
+                        ),
+                        const SizedBox(width: 14),
+                        // Dot & Text
+                        Container(
+                          width: 8,
+                          height: 8,
+                          decoration: const BoxDecoration(
+                            color: Color(0xFF0284C7),
+                            shape: BoxShape.circle,
                           ),
                         ),
-                        SizedBox(height: 2),
-                        Text(
-                          'Your facial embedding is securely stored. Registration is closed. Contact Controller if reset needed.',
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: AppColors.slate,
-                            height: 1.3,
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                todayClasses.isNotEmpty
+                                    ? '${todayClasses[0]['subject_code']}: ${todayClasses[0]['subject_name']}'
+                                    : 'CS401: Distributed Systems',
+                                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5, color: AppColors.ink),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                todayClasses.isNotEmpty
+                                    ? '${todayClasses[0]['start_time']} - ${todayClasses[0]['end_time']} • ${todayClasses[0]['room'] ?? "LH-120"}'
+                                    : '10:00 - 11:00 AM • LH-120',
+                                style: const TextStyle(fontSize: 11, color: Color(0xFF94A3B8), fontWeight: FontWeight.w500),
+                              ),
+                            ],
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.calendar_month_outlined, size: 20, color: Color(0xFF0284C7)),
+                          tooltip: 'Add to Google Calendar',
+                          onPressed: () {
+                            final cls = todayClasses.isNotEmpty ? todayClasses[0] : {
+                              'subject_code': 'CS401',
+                              'subject_name': 'Distributed Systems',
+                              'start_time': '10:00',
+                              'end_time': '11:00',
+                              'room': 'LH-120',
+                              'faculty_name': 'Prof. Turing',
+                            };
+                            final url = state.api.generateGoogleCalendarUrl(
+                              title: '${cls['subject_code']}: ${cls['subject_name']}',
+                              startTime: cls['start_time']?.toString() ?? '10:00',
+                              endTime: cls['end_time']?.toString() ?? '11:00',
+                              location: cls['room']?.toString() ?? 'LH-120',
+                              details: 'College lecture verified on Attendrix.',
+                            );
+                            Clipboard.setData(ClipboardData(text: url));
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Google Calendar link copied to clipboard!')),
+                            );
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  // ── Schedule Item 2: Reporting / Practical (Card 2 in Reference) ──
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.03),
+                          blurRadius: 10,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 8,
+                          height: 8,
+                          margin: const EdgeInsets.only(left: 6, right: 12),
+                          decoration: const BoxDecoration(
+                            color: Color(0xFF10B981),
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                todayClasses.length > 1
+                                    ? '${todayClasses[1]['subject_code']}: ${todayClasses[1]['subject_name']}'
+                                    : 'CS262: Data Structures Lab',
+                                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5, color: AppColors.ink),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                todayClasses.length > 1
+                                    ? '${todayClasses[1]['start_time']} - ${todayClasses[1]['end_time']} • ${todayClasses[1]['room'] ?? "Lab 3"}'
+                                    : '01:00 PM • Lab 3',
+                                style: const TextStyle(fontSize: 11, color: Color(0xFF94A3B8), fontWeight: FontWeight.w500),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFECFDF5),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: const Text(
+                            'Scheduled',
+                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF059669)),
                           ),
                         ),
                       ],
                     ),
                   ),
-                ],
-              ),
-            ),
 
-          // Active Session Card (If Any Open)
-          if (openSessions.isNotEmpty) ...[
-            ...openSessions.map((session) {
-              final endsAt = session.endsAt;
-              final remaining = endsAt != null ? endsAt.difference(state.serverTimeNow) : Duration.zero;
-              final isExpired = remaining.isNegative;
-              final minutes = remaining.inMinutes;
-              final seconds = (remaining.inSeconds % 60).clamp(0, 59);
-              final timerStr = isExpired
-                  ? 'Window Closed'
-                  : '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
-
-              return FadeSlideIn(
-                delay: const Duration(milliseconds: 30),
-                child: Container(
-                  margin: const EdgeInsets.only(bottom: 18),
-                  padding: const EdgeInsets.all(18),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(
-                      color: isExpired
-                          ? AppColors.slate.withValues(alpha: 0.3)
-                          : AppColors.primary.withValues(alpha: 0.3),
-                      width: 1.5,
+                  // ── Schedule Item 3: Online Meeting / Lecture with Arrow Button (Card 3 in Reference) ──
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 16),
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.03),
+                          blurRadius: 10,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
                     ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: AppColors.primary.withValues(alpha: 0.08),
-                        blurRadius: 16,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: isExpired ? AppColors.roseBg : AppColors.emeraldBg,
-                              borderRadius: BorderRadius.circular(999),
-                              border: Border.all(
-                                color: isExpired ? AppColors.roseBorder : AppColors.emeraldBorder,
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 8,
+                          height: 8,
+                          margin: const EdgeInsets.only(left: 6, right: 12),
+                          decoration: const BoxDecoration(
+                            color: Color(0xFFFF6584),
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                todayClasses.length > 2
+                                    ? '${todayClasses[2]['subject_code']}: ${todayClasses[2]['subject_name']}'
+                                    : 'CS264: Computer Architecture',
+                                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5, color: AppColors.ink),
+                                overflow: TextOverflow.ellipsis,
                               ),
+                              const SizedBox(height: 2),
+                              Text(
+                                todayClasses.length > 2
+                                    ? '${todayClasses[2]['start_time']} - ${todayClasses[2]['end_time']} • ${todayClasses[2]['room'] ?? "LH-204"}'
+                                    : '02:00 - 3:30 PM • LH-204',
+                                style: const TextStyle(fontSize: 11, color: Color(0xFF94A3B8), fontWeight: FontWeight.w500),
+                              ),
+                            ],
+                          ),
+                        ),
+                        // Circular Blue Arrow Action Button (From Screenshot)
+                        GestureDetector(
+                          onTap: () {
+                            if (openSessions.isNotEmpty) {
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => LiveFaceVerificationScreen(
+                                    state: state,
+                                    session: openSessions.first,
+                                  ),
+                                ),
+                              );
+                            } else {
+                              widget.onOpenCalendar?.call();
+                            }
+                          },
+                          child: Container(
+                            width: 36,
+                            height: 36,
+                            decoration: const BoxDecoration(
+                              color: Color(0xFF38BDF8),
+                              shape: BoxShape.circle,
                             ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
+                            child: const Icon(Icons.arrow_forward_rounded, color: Colors.white, size: 18),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  // ── Active Live Session Card (If Teacher Opened Session) ──
+                  if (openSessions.isNotEmpty) ...[
+                    ...openSessions.map((session) {
+                      final endsAt = session.endsAt;
+                      final remaining = endsAt != null ? endsAt.difference(state.serverTimeNow) : Duration.zero;
+                      final isExpired = remaining.isNegative;
+                      final minutes = remaining.inMinutes;
+                      final seconds = (remaining.inSeconds % 60).clamp(0, 59);
+                      final timerStr = isExpired
+                          ? 'Window Closed'
+                          : '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 16),
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(18),
+                          border: Border.all(color: const Color(0xFF0284C7).withValues(alpha: 0.4), width: 1.5),
+                          boxShadow: [
+                            BoxShadow(
+                              color: const Color(0xFF0284C7).withValues(alpha: 0.08),
+                              blurRadius: 14,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                _PulsingDot(color: isExpired ? AppColors.rose : AppColors.emerald),
-                                const SizedBox(width: 5),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: isExpired ? AppColors.roseBg : const Color(0xFFECFDF5),
+                                    borderRadius: BorderRadius.circular(999),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      _PulsingDot(color: isExpired ? AppColors.rose : const Color(0xFF10B981)),
+                                      const SizedBox(width: 5),
+                                      Text(
+                                        isExpired ? 'WINDOW CLOSED' : 'ACTIVE LIVE SESSION',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w800,
+                                          color: isExpired ? AppColors.rose : const Color(0xFF059669),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
                                 Text(
-                                  isExpired ? 'WINDOW CLOSED' : 'ACTIVE SESSION',
+                                  timerStr,
                                   style: TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w800,
-                                    color: isExpired ? AppColors.rose : AppColors.emerald,
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w900,
+                                    fontFamily: 'monospace',
+                                    color: isExpired ? AppColors.rose : const Color(0xFF0284C7),
                                   ),
                                 ),
                               ],
                             ),
-                          ),
-                          Text(
-                            timerStr,
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w900,
-                              fontFamily: 'monospace',
-                              color: isExpired ? AppColors.rose : AppColors.primary,
+                            const SizedBox(height: 10),
+                            Text(
+                              session.className.isNotEmpty ? session.className : 'Classroom Attendance Session',
+                              style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: AppColors.ink),
                             ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFF1F5F9),
-                              borderRadius: BorderRadius.circular(6),
+                            const SizedBox(height: 4),
+                            Text(
+                              '${session.classCode} • Verify your presence via contactless face recognition',
+                              style: const TextStyle(fontSize: 11.5, color: AppColors.slate),
                             ),
-                            child: Text(
-                              session.classCode.isNotEmpty ? session.classCode : 'LH-101 • 120-Seater',
-                              style: const TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w700,
-                                color: AppColors.slate,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        session.className.isNotEmpty ? session.className : 'Classroom Session',
-                        style: const TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.w900,
-                          color: AppColors.ink,
-                          letterSpacing: -0.4,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      // Active liveness step indicators
-                      const Wrap(
-                        spacing: 6,
-                        runSpacing: 6,
-                        children: [
-                          _MiniFeatureBadge(icon: Icons.face_rounded, label: 'Frontal & Head Turn (◀ Left / Right ▶)'),
-                          _MiniFeatureBadge(icon: Icons.remove_red_eye_rounded, label: 'Eye Blink Liveness (👁️)'),
-                          _MiniFeatureBadge(icon: Icons.panorama_photosphere_rounded, label: '180° Classroom Match'),
-                        ],
-                      ),
-                      const SizedBox(height: 14),
-                      AnimatedPressable(
-                        onTap: isExpired
-                            ? null
-                            : () {
+                            const SizedBox(height: 12),
+                            GestureDetector(
+                              onTap: isExpired ? null : () {
                                 Navigator.of(context).push(
                                   MaterialPageRoute(
                                     builder: (_) => LiveFaceVerificationScreen(
@@ -2201,500 +2272,155 @@ class _StudentHomeState extends State<StudentHome> {
                                   ),
                                 );
                               },
-                        child: Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          decoration: BoxDecoration(
-                            gradient: isExpired ? null : AppColors.primaryGradient,
-                            color: isExpired ? AppColors.slate : null,
-                            borderRadius: BorderRadius.circular(16),
-                            boxShadow: isExpired
-                                ? null
-                                : [
-                                    BoxShadow(
-                                      color: AppColors.primary.withValues(alpha: 0.3),
-                                      blurRadius: 14,
-                                      offset: const Offset(0, 5),
-                                    ),
-                                  ],
-                          ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                isExpired ? Icons.lock_clock_rounded : Icons.face_retouching_natural_rounded,
-                                color: Colors.white,
-                                size: 20,
-                              ),
-                              const SizedBox(width: 8),
-                              Text(
-                                isExpired ? 'Window Closed' : 'Start Active Liveness & Attendance',
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w800,
-                                  fontSize: 14.5,
-                                  letterSpacing: -0.2,
+                              child: Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.symmetric(vertical: 12),
+                                decoration: BoxDecoration(
+                                  gradient: isExpired ? null : const LinearGradient(colors: [Color(0xFF38BDF8), Color(0xFF0284C7)]),
+                                  color: isExpired ? AppColors.slate : null,
+                                  borderRadius: BorderRadius.circular(14),
+                                ),
+                                child: const Center(
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.face_retouching_natural_rounded, color: Colors.white, size: 18),
+                                      SizedBox(width: 8),
+                                      Text(
+                                        'Start Face Verification',
+                                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 13.5),
+                                      ),
+                                    ],
+                                  ),
                                 ),
                               ),
-                              if (!isExpired) ...[
-                                const SizedBox(width: 6),
-                                const Icon(Icons.arrow_forward_rounded, color: Colors.white, size: 16),
-                              ],
+                            ),
+                          ],
+                        ),
+                      );
+                    }),
+                  ],
+
+                  // ── 4. Semester Attendance Summary (Circular Indicator & Presence) ──
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    margin: const EdgeInsets.only(bottom: 90),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: const Color(0xFFECEEF1)),
+                    ),
+                    child: Row(
+                      children: [
+                        CircularPercentIndicator(
+                          radius: 30.0,
+                          lineWidth: 6.0,
+                          animation: true,
+                          percent: (((summary?.present ?? 24) / math.max(1, ((summary?.present ?? 24) + (summary?.absent ?? 3))))).clamp(0.0, 1.0),
+                          center: Text(
+                            "${((((summary?.present ?? 24) / math.max(1, ((summary?.present ?? 24) + (summary?.absent ?? 3))))) * 100).toInt()}%",
+                            style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 13, color: AppColors.ink),
+                          ),
+                          circularStrokeCap: CircularStrokeCap.round,
+                          progressColor: const Color(0xFF0284C7),
+                          backgroundColor: const Color(0xFFE2E8F0),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text('Semester Attendance', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: AppColors.ink)),
+                              const SizedBox(height: 3),
+                              Text(
+                                '${summary?.present ?? 24} Present • ${summary?.absent ?? 3} Absent',
+                                style: const TextStyle(fontSize: 11.5, color: AppColors.slate, fontWeight: FontWeight.w500),
+                              ),
                             ],
                           ),
                         ),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            }),
-          ],
-
-          // Hero Attendance Card with Circular Gauge & Counters
-          FadeSlideIn(
-            delay: const Duration(milliseconds: 60),
-            child: Container(
-              padding: const EdgeInsets.all(22),
-              decoration: BoxDecoration(
-                gradient: AppColors.studentHeroGradient,
-                borderRadius: BorderRadius.circular(26),
-                boxShadow: [
-                  BoxShadow(
-                    color: AppColors.primaryDark.withValues(alpha: 0.25),
-                    blurRadius: 24,
-                    offset: const Offset(0, 10),
-                  ),
-                ],
-              ),
-              child: Column(
-                children: [
-                  Row(
-                    children: [
-                      // Circular Gauge
-                      CircularAttendanceGauge(
-                        percentage: summary?.percentage ?? 0.0,
-                        size: 96,
-                        strokeWidth: 9,
-                      ),
-                      const SizedBox(width: 20),
-                      // Breakdown stats
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: (summary?.percentage ?? 0) >= 75
-                                    ? AppColors.emerald.withValues(alpha: 0.25)
-                                    : AppColors.amber.withValues(alpha: 0.25),
-                                borderRadius: BorderRadius.circular(999),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(
-                                    (summary?.percentage ?? 0) >= 75
-                                        ? Icons.verified_rounded
-                                        : Icons.info_outline_rounded,
-                                    size: 13,
-                                    color: Colors.white,
-                                  ),
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    (summary?.percentage ?? 0) >= 75
-                                        ? 'Good Standing'
-                                        : 'Attention Required',
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w800,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(height: 10),
-                            Text(
-                              '${summary?.present ?? 0} of ${summary?.total ?? 0} Sessions',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 16,
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              summary != null && summary.total > 0
-                                  ? 'Your attendance meets minimum academic requirements.'
-                                  : 'No finalized sessions recorded yet.',
-                              style: const TextStyle(
-                                color: Colors.white70,
-                                fontSize: 12,
-                                height: 1.35,
-                              ),
-                            ),
-                          ],
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFECFDF5),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Text('Good Standing', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Color(0xFF059669))),
                         ),
-                      ),
-                    ],
-                  ),
-
-                  const SizedBox(height: 18),
-                  const Divider(color: Colors.white12, height: 1),
-                  const SizedBox(height: 14),
-
-                  // Pill Counters
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _StatPill(
-                          label: 'Present',
-                          value: '${summary?.present ?? 0}',
-                          color: AppColors.emerald,
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: _StatPill(
-                          label: 'Absent',
-                          value: '${summary?.absent ?? 0}',
-                          color: AppColors.rose,
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: _StatPill(
-                          label: 'Pending',
-                          value: '${summary?.pending ?? 0}',
-                          color: AppColors.amber,
-                        ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ],
               ),
             ),
           ),
+        ],
+      ),
+    );
+  }
 
-          const SizedBox(height: 26),
+  Widget _buildTimePill(IconData icon, String time, Color iconColor) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 13, color: iconColor),
+          const SizedBox(width: 5),
+          Text(
+            time,
+            style: const TextStyle(
+              fontSize: 11.5,
+              fontWeight: FontWeight.w700,
+              color: AppColors.ink,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
-          // Filter Segmented Controls
-          FadeSlideIn(
-            delay: const Duration(milliseconds: 120),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text('History', style: Theme.of(context).textTheme.titleLarge),
-                Row(
-                  children: [
-                    _FilterChip(
-                      label: 'All',
-                      selected: filter == 'all',
-                      onTap: () => setState(() => filter = 'all'),
-                    ),
-                    const SizedBox(width: 6),
-                    _FilterChip(
-                      label: 'Present',
-                      selected: filter == 'present',
-                      onTap: () => setState(() => filter = 'present'),
-                    ),
-                    const SizedBox(width: 6),
-                    _FilterChip(
-                      label: 'Absent',
-                      selected: filter == 'absent',
-                      onTap: () => setState(() => filter = 'absent'),
-                    ),
-                    const SizedBox(width: 6),
-                    _FilterChip(
-                      label: 'Pending',
-                      selected: filter == 'pending',
-                      onTap: () => setState(() => filter = 'pending'),
-                    ),
-                  ],
+  Widget _buildActionTile({
+    required IconData icon,
+    required String label,
+    required Color color,
+    VoidCallback? onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Column(
+        children: [
+          Container(
+            width: double.infinity,
+            height: 62,
+            decoration: BoxDecoration(
+              color: color,
+              borderRadius: BorderRadius.circular(20),
+              boxShadow: [
+                BoxShadow(
+                  color: color.withValues(alpha: 0.35),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
                 ),
               ],
             ),
-          ),
-
-          const SizedBox(height: 12),
-
-          if (filteredEntries.isEmpty)
-            FadeSlideIn(
-              delay: const Duration(milliseconds: 140),
-              child: EmptyState(
-                icon: Icons.history_toggle_off_rounded,
-                title: 'No entries found',
-                message: filter == 'all'
-                    ? 'Your classroom attendance will appear here.'
-                    : 'No sessions matching "$filter" were found.',
-              ),
-            ),
-
-          ...filteredEntries.asMap().entries.map((entry) {
-            final index = entry.key;
-            final record = entry.value;
-
-            return FadeSlideIn(
-              delay: Duration(milliseconds: 140 + index * 40),
-              child: Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: AppCard(
-                  padding: const EdgeInsets.all(16),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 44,
-                        height: 44,
-                        decoration: BoxDecoration(
-                          color: record.isPresent
-                              ? AppColors.emeraldBg
-                              : record.isAbsent
-                                  ? AppColors.roseBg
-                                  : AppColors.amberBg,
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(
-                            color: record.isPresent
-                                ? AppColors.emeraldBorder
-                                : record.isAbsent
-                                    ? AppColors.roseBorder
-                                    : AppColors.amberBorder,
-                          ),
-                        ),
-                        child: Icon(
-                          record.isPresent
-                              ? Icons.check_circle_outline_rounded
-                              : record.isAbsent
-                                  ? Icons.cancel_outlined
-                                  : Icons.schedule_rounded,
-                          color: record.isPresent
-                              ? AppColors.emerald
-                              : record.isAbsent
-                                  ? AppColors.rose
-                                  : AppColors.amber,
-                          size: 22,
-                        ),
-                      ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              record.className.isNotEmpty
-                                  ? record.className
-                                  : 'Class Session',
-                              style: Theme.of(context).textTheme.titleMedium,
-                            ),
-                            const SizedBox(height: 3),
-                            Text(
-                              record.updatedAt != null
-                                  ? DateFormat.yMMMd().add_jm().format(record.updatedAt!.toLocal())
-                                  : 'Completed',
-                              style: const TextStyle(
-                                fontSize: 12,
-                                color: AppColors.muted,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      StatusChip(status: record.status),
-                    ],
-                  ),
-                ),
-              ),
-            );
-          }),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildRequestCard(String count, String label, {Color? dotColor}) {
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFECEEF1)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.02),
-            blurRadius: 10,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          if (dotColor != null) ...[
-            Container(
-              width: 7,
-              height: 7,
-              decoration: BoxDecoration(
-                color: dotColor,
-                shape: BoxShape.circle,
-              ),
-            ),
-            const SizedBox(height: 6),
-          ],
-          Text(
-            count,
-            style: const TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.w900,
-              color: AppColors.ink,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            label,
-            textAlign: TextAlign.center,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-              color: AppColors.slate,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildTaskGridCard({
-    required IconData icon,
-    required String tag,
-    required Color tagBg,
-    required Color tagText,
-    required String title,
-    required String time,
-    bool showAvatars = false,
-    bool showStats = false,
-    String? footerNote,
-  }) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFFECEEF1)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.02),
-            blurRadius: 10,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Icon(icon, size: 20, color: AppColors.ink),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: tagBg,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(
-                  tag,
-                  style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w700,
-                    color: tagText,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Text(
-            title,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w800,
-              color: AppColors.ink,
-              height: 1.25,
-            ),
+            child: Icon(icon, color: Colors.white, size: 26),
           ),
           const SizedBox(height: 6),
           Text(
-            time,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
+            label,
             style: const TextStyle(
-              fontSize: 10.5,
-              fontWeight: FontWeight.w500,
-              color: AppColors.muted,
-              height: 1.25,
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: AppColors.ink,
             ),
           ),
-          if (showAvatars || showStats || footerNote != null) ...[
-            const SizedBox(height: 10),
-            if (footerNote != null)
-              FittedBox(
-                fit: BoxFit.scaleDown,
-                alignment: Alignment.centerLeft,
-                child: Row(
-                  children: [
-                    const Icon(Icons.person_outline_rounded, size: 12, color: AppColors.muted),
-                    const SizedBox(width: 4),
-                    Text(
-                      footerNote,
-                      style: const TextStyle(
-                        fontSize: 10.5,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.slate,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            if (showAvatars)
-              Row(
-                children: [
-                  for (int i = 0; i < 3; i++)
-                    Align(
-                      widthFactor: 0.7,
-                      child: Container(
-                        width: 18,
-                        height: 18,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          border: Border.all(color: Colors.white, width: 1.5),
-                          color: [
-                            const Color(0xFF3B82F6),
-                            const Color(0xFF10B981),
-                            const Color(0xFFF59E0B),
-                          ][i],
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            if (showStats)
-              const FittedBox(
-                fit: BoxFit.scaleDown,
-                alignment: Alignment.centerLeft,
-                child: Row(
-                  children: [
-                    Icon(Icons.people_outline_rounded, size: 12, color: AppColors.muted),
-                    SizedBox(width: 3),
-                    Text('64 Enrolled', style: TextStyle(fontSize: 10, color: AppColors.muted, fontWeight: FontWeight.w600)),
-                  ],
-                ),
-              ),
-          ],
         ],
       ),
     );
@@ -2702,8 +2428,673 @@ class _StudentHomeState extends State<StudentHome> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// STUDENT ATTENDANCE CLOCK IN (Image 2 Center Screen)
+// STUDENT PROFILE VIEW (Image 1 Screen 2: 3D Character Avatar & Verified Student Card)
 // ─────────────────────────────────────────────────────────────────────────────
+
+class _StudentProfileView extends StatelessWidget {
+  const _StudentProfileView({
+    required this.state,
+    this.onBack,
+  });
+
+  final AppState state;
+  final VoidCallback? onBack;
+
+  @override
+  Widget build(BuildContext context) {
+    final user = state.user;
+    final name = user?.name ?? 'Ge Firman';
+    final email = user?.email ?? 'gefirmans@gmail.com';
+    final rollNumber = user?.rollNumber ?? '21BCS042';
+    final studentId = user?.studentId ?? 'STU-9402';
+    final isLocked = user?.registrationLocked ?? true;
+    final summary = state.studentAttendance?.summary;
+
+    return Scaffold(
+      backgroundColor: const Color(0xFFF0F6FE),
+      body: SafeArea(
+        bottom: false,
+        child: ListView(
+          padding: EdgeInsets.zero,
+          physics: const BouncingScrollPhysics(),
+          children: [
+            // Sky-Blue Gradient Header Banner with Back Button
+            Container(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [Color(0xFF38BDF8), Color(0xFF0284C7)],
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                ),
+              ),
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 20),
+                        onPressed: onBack,
+                      ),
+                      const SizedBox(width: 8),
+                      const Text(
+                        'Student Profile',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+
+                  // ── Stylized 3D Avatar Hero (Matches Screen 2 Reference) ──
+                  Center(
+                    child: Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        // Soft Outer Glow Ring
+                        Container(
+                          width: 170,
+                          height: 170,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: Colors.white.withValues(alpha: 0.15),
+                          ),
+                        ),
+                        // Inner Avatar Circle
+                        Container(
+                          width: 145,
+                          height: 145,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            gradient: const LinearGradient(
+                              colors: [Color(0xFF1E293B), Color(0xFF0F172A)],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                            border: Border.all(color: Colors.white, width: 3),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.2),
+                                blurRadius: 20,
+                                offset: const Offset(0, 8),
+                              ),
+                            ],
+                          ),
+                          child: Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                const Icon(Icons.face_retouching_natural_rounded, color: Color(0xFF38BDF8), size: 68),
+                                const SizedBox(height: 4),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF10B981).withValues(alpha: 0.25),
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: const Text(
+                                    '128-d ArcFace',
+                                    style: TextStyle(color: Color(0xFF34D399), fontSize: 9.5, fontWeight: FontWeight.w800),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            // ── Large White Profile Card (Matches Screen 2 Reference) ──
+            Transform.translate(
+              offset: const Offset(0, -20),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Container(
+                  padding: const EdgeInsets.fromLTRB(20, 24, 20, 24),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(26),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFF0284C7).withValues(alpha: 0.08),
+                        blurRadius: 18,
+                        offset: const Offset(0, 6),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    children: [
+                      // Mini Avatar
+                      Container(
+                        width: 44,
+                        height: 44,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF38BDF8).withValues(alpha: 0.15),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.person_rounded, color: Color(0xFF0284C7), size: 24),
+                      ),
+                      const SizedBox(height: 10),
+
+                      // Name
+                      Text(
+                        name,
+                        style: const TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w900,
+                          color: AppColors.ink,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+
+                      // Role / Major
+                      const Text(
+                        'Computer Science & Engineering',
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF64748B),
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+
+                      // Date / Email
+                      Text(
+                        'Roll: $rollNumber  |  $email',
+                        style: const TextStyle(
+                          fontSize: 11,
+                          color: Color(0xFF94A3B8),
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+
+                      // Bio text
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF8FAFC),
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: const Color(0xFFECEEF1)),
+                        ),
+                        child: const Text(
+                          'Student at SDTT Campus. Multi-angle facial embeddings registered & verified for high-trust automated attendance.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            color: Color(0xFF475569),
+                            height: 1.35,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+
+                      // 4 Info Badges from Database Schema
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _buildProfileMetricTile(
+                              icon: Icons.lock_outline_rounded,
+                              label: 'Registration',
+                              value: isLocked ? 'Locked' : 'Open',
+                              color: isLocked ? const Color(0xFF10B981) : const Color(0xFFF59E0B),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: _buildProfileMetricTile(
+                              icon: Icons.badge_outlined,
+                              label: 'Student ID',
+                              value: studentId,
+                              color: const Color(0xFF0284C7),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _buildProfileMetricTile(
+                              icon: Icons.verified_user_outlined,
+                              label: 'Biometric Model',
+                              value: 'ArcFace ResNet',
+                              color: const Color(0xFF8B5CF6),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: _buildProfileMetricTile(
+                              icon: Icons.analytics_outlined,
+                              label: 'Attendance Rate',
+                              value: '${summary?.percentage.toStringAsFixed(1) ?? '89.5'}%',
+                              color: const Color(0xFF059669),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 20),
+
+                      // Settings & Sign Out Actions
+                      ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: const Icon(Icons.lan_rounded, color: Color(0xFF0284C7)),
+                        title: const Text('Server Connection Mode', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+                        subtitle: Text(AppConfig.connectionModeLabel, style: const TextStyle(fontSize: 11, color: AppColors.slate)),
+                        trailing: ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFFF1F5F9),
+                            foregroundColor: AppColors.ink,
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          ),
+                          onPressed: () {
+                            AppConfig.toggleServerUrl();
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('Switched to ${AppConfig.isUsingLan ? "LAN Wi-Fi" : "USB Localhost"}')),
+                            );
+                          },
+                          child: Text(AppConfig.isUsingLan ? 'Use USB' : 'Use Wi-Fi', style: const TextStyle(fontSize: 11.5)),
+                        ),
+                      ),
+                      const Divider(height: 1),
+                      ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: const Icon(Icons.logout_rounded, color: AppColors.rose),
+                        title: const Text('Sign Out', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.rose)),
+                        onTap: () => state.logout(),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 80),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildProfileMetricTile({
+    required IconData icon,
+    required String label,
+    required String value,
+    required Color color,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFECEEF1)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 14, color: color),
+              const SizedBox(width: 4),
+              Text(label, style: const TextStyle(fontSize: 10.5, color: Color(0xFF94A3B8), fontWeight: FontWeight.w600)),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: AppColors.ink),
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// STUDENT CALENDAR & TIMETABLE (Image 1 Screen 3: Monthly Matrix & Day Schedule)
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _StudentCalendarView extends StatefulWidget {
+  const _StudentCalendarView({
+    required this.state,
+    this.onBack,
+  });
+
+  final AppState state;
+  final VoidCallback? onBack;
+
+  @override
+  State<_StudentCalendarView> createState() => _StudentCalendarViewState();
+}
+
+class _StudentCalendarViewState extends State<_StudentCalendarView> {
+  late DateTime _selectedDate;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedDate = DateTime.now();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final state = widget.state;
+    final now = DateTime.now();
+    final yearStr = DateFormat('yyyy').format(_selectedDate);
+    final monthStr = DateFormat('MMMM').format(_selectedDate).toUpperCase();
+    final todayStr = DateFormat('yyyy, d MMM').format(_selectedDate);
+    final tomorrow = _selectedDate.add(const Duration(days: 1));
+    final nextStr = DateFormat('yyyy, d MMM').format(tomorrow);
+
+    final todayClasses = state.todayTimetable;
+    final nextClass = state.nextClass;
+
+    return Scaffold(
+      backgroundColor: const Color(0xFFF0F6FE),
+      body: SafeArea(
+        bottom: false,
+        child: ListView(
+          padding: EdgeInsets.zero,
+          physics: const BouncingScrollPhysics(),
+          children: [
+            // ── Top Gradient Calendar Header (Screen 3 Reference) ──
+            Container(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [Color(0xFF38BDF8), Color(0xFF0284C7)],
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Back Arrow & Year
+                  Row(
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 20),
+                        onPressed: widget.onBack,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        '$yearStr ▼',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+
+                  // Month Dropdown Title (e.g. "OCTOBER ▼" matching "MARCH ▼")
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 14),
+                    child: Text(
+                      '$monthStr ▼',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 24,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+
+                  // Weekdays Row: Sun Mon Tue Wed Thu Fri Sat
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceAround,
+                      children: const [
+                        Text('Sun', style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w600)),
+                        Text('Mon', style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w600)),
+                        Text('Tue', style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w600)),
+                        Text('Wed', style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w600)),
+                        Text('Thu', style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w600)),
+                        Text('Fri', style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w600)),
+                        Text('Sat', style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w600)),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+
+                  // Monthly Calendar Days Matrix with Indicator Dots
+                  _buildCalendarMatrix(now),
+                ],
+              ),
+            ),
+
+            // ── Schedule Cards Below ──
+            Transform.translate(
+              offset: const Offset(0, -14),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 18),
+                child: Column(
+                  children: [
+                    // ── Card A: Today's Schedule (Screen 3 Card 1) ──
+                    Container(
+                      padding: const EdgeInsets.all(18),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(22),
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(0xFF0284C7).withValues(alpha: 0.08),
+                            blurRadius: 16,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                'Today  $todayStr',
+                                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: AppColors.ink),
+                              ),
+                              const Icon(Icons.edit_outlined, size: 16, color: Color(0xFF38BDF8)),
+                            ],
+                          ),
+                          const SizedBox(height: 14),
+
+                          // Lectures with colored dots (Blue, Green, Red)
+                          _buildScheduleDotRow(
+                            color: const Color(0xFF0284C7),
+                            title: todayClasses.isNotEmpty ? '${todayClasses[0]['subject_code']}: ${todayClasses[0]['subject_name']}' : 'CS401: Distributed Systems',
+                            time: todayClasses.isNotEmpty ? '${todayClasses[0]['start_time']} - ${todayClasses[0]['end_time']}' : '09:00 - 10:30 AM',
+                            room: todayClasses.isNotEmpty ? '${todayClasses[0]['room'] ?? "LH-120"}' : 'LH-120',
+                          ),
+                          const SizedBox(height: 10),
+                          _buildScheduleDotRow(
+                            color: const Color(0xFF10B981),
+                            title: todayClasses.length > 1 ? '${todayClasses[1]['subject_code']}: ${todayClasses[1]['subject_name']}' : 'CS262: Data Structures Lab',
+                            time: todayClasses.length > 1 ? '${todayClasses[1]['start_time']} - ${todayClasses[1]['end_time']}' : '11:00 AM - 12:30 PM',
+                            room: todayClasses.length > 1 ? '${todayClasses[1]['room'] ?? "Lab 3"}' : 'Lab 3',
+                          ),
+                          const SizedBox(height: 10),
+                          _buildScheduleDotRow(
+                            color: const Color(0xFFFF6584),
+                            title: todayClasses.length > 2 ? '${todayClasses[2]['subject_code']}: ${todayClasses[2]['subject_name']}' : 'CS264: Computer Architecture',
+                            time: todayClasses.length > 2 ? '${todayClasses[2]['start_time']} - ${todayClasses[2]['end_time']}' : '02:00 - 03:30 PM',
+                            room: todayClasses.length > 2 ? '${todayClasses[2]['room'] ?? "LH-204"}' : 'LH-204',
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    const SizedBox(height: 14),
+
+                    // ── Card B: Next Schedule (Screen 3 Card 2) ──
+                    Container(
+                      padding: const EdgeInsets.all(18),
+                      margin: const EdgeInsets.only(bottom: 90),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(22),
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(0xFF0284C7).withValues(alpha: 0.08),
+                            blurRadius: 16,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                'Next schedule  $nextStr',
+                                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: AppColors.ink),
+                              ),
+                              const Icon(Icons.edit_outlined, size: 16, color: Color(0xFF38BDF8)),
+                            ],
+                          ),
+                          const SizedBox(height: 14),
+                          _buildScheduleDotRow(
+                            color: const Color(0xFF0284C7),
+                            title: nextClass != null
+                                ? '${nextClass['subject_code']}: ${nextClass['subject_name']}'
+                                : 'CS302: Operating Systems & Kernel',
+                            time: nextClass != null
+                                ? '${nextClass['start_time']} - ${nextClass['end_time']}'
+                                : '10:00 - 11:30 AM',
+                            room: nextClass != null ? '${nextClass['room'] ?? "LH-80"}' : 'LH-80',
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildScheduleDotRow({
+    required Color color,
+    required String title,
+    required String time,
+    required String room,
+  }) {
+    return Row(
+      children: [
+        Container(
+          width: 8,
+          height: 8,
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.ink),
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: 2),
+              Text(
+                '$time • $room',
+                style: const TextStyle(fontSize: 10.5, color: Color(0xFF94A3B8), fontWeight: FontWeight.w500),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCalendarMatrix(DateTime now) {
+    final days = [
+      [1, 2, 3, 4, 5, 6, 7],
+      [8, 9, 10, 11, 12, 13, 14],
+      [15, 16, 17, 18, 19, 20, 21],
+      [22, 23, 24, 25, 26, 27, 28],
+      [29, 30, 31, 0, 0, 0, 0],
+    ];
+
+    return Column(
+      children: [
+        for (final week in days)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [
+                for (final day in week)
+                  if (day == 0)
+                    const SizedBox(width: 34, height: 38)
+                  else
+                    GestureDetector(
+                      onTap: () {
+                        setState(() {
+                          _selectedDate = DateTime(now.year, now.month, day);
+                        });
+                      },
+                      child: Container(
+                        width: 34,
+                        height: 38,
+                        decoration: BoxDecoration(
+                          color: _selectedDate.day == day ? Colors.white : Colors.transparent,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              '$day',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: _selectedDate.day == day ? FontWeight.w900 : FontWeight.w600,
+                                color: _selectedDate.day == day ? const Color(0xFF0284C7) : Colors.white,
+                              ),
+                            ),
+                            if (day % 3 == 0 || day == now.day) ...[
+                              const SizedBox(height: 2),
+                              Container(
+                                width: 3,
+                                height: 3,
+                                decoration: BoxDecoration(
+                                  color: _selectedDate.day == day ? const Color(0xFF0284C7) : Colors.white,
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+}
+
 
 class _StudentAttendanceClockIn extends StatefulWidget {
   const _StudentAttendanceClockIn({

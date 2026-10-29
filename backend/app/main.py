@@ -756,6 +756,19 @@ class CreateClassRequest(BaseModel):
     hall_type: Optional[str] = Field(default="120-Seater Lecture Theater")
     room_photo: Optional[str] = None
     teacher_id: Optional[str] = None
+    is_lab: Optional[bool] = False
+
+
+class UpdateClassRequest(BaseModel):
+    name: Optional[str] = Field(default=None, min_length=2, max_length=120)
+    code: Optional[str] = Field(default=None, min_length=1, max_length=20)
+    section: Optional[str] = Field(default=None, max_length=50)
+    room_number: Optional[str] = Field(default=None, max_length=50)
+    capacity: Optional[int] = None
+    hall_type: Optional[str] = None
+    room_photo: Optional[str] = None
+    teacher_id: Optional[str] = None
+    is_lab: Optional[bool] = None
 
 
 class CreateStudentRequest(BaseModel):
@@ -3189,11 +3202,19 @@ def controller_get_classes(user: dict[str, Any] = Depends(current_user)) -> list
     for c in classes:
         enr = db.table("enrollments").select("student_id").eq("class_id", c["id"]).execute().data or []
         c["student_count"] = len(enr)
-        if c.get("teacher_id"):
-            t = db.table("profiles").select("name").eq("id", c["teacher_id"]).single().execute().data
-            c["teacher_name"] = t.get("name") if t else "Unassigned"
+        c["is_lab"] = bool(c.get("is_lab", False))
+        tid = c.get("teacher_id")
+        if tid:
+            t = db.table("profiles").select("id, name, email").eq("id", tid).execute().data
+            if t and len(t) > 0:
+                c["teacher_name"] = t[0].get("name") or "Unassigned"
+                c["teacher_email"] = t[0].get("email") or ""
+            else:
+                c["teacher_name"] = "Unassigned"
+                c["teacher_email"] = ""
         else:
             c["teacher_name"] = "Unassigned"
+            c["teacher_email"] = ""
     return classes
 
 
@@ -3202,7 +3223,7 @@ def controller_create_class(body: CreateClassRequest, user: dict[str, Any] = Dep
     require_controller(user)
     db = supa()
     teacher_id = body.teacher_id
-    if teacher_id:
+    if teacher_id and teacher_id.lower() != "unassigned":
         teacher_rec = db.table("profiles").select("id, role").eq("id", teacher_id).execute()
         if not teacher_rec.data or teacher_rec.data[0].get("role") != "teacher":
             raise HTTPException(
@@ -3210,8 +3231,7 @@ def controller_create_class(body: CreateClassRequest, user: dict[str, Any] = Dep
                 detail=f"Invalid teacher_id '{teacher_id}': User does not exist or does not possess the lecturer/teacher role.",
             )
     else:
-        teachers = db.table("profiles").select("id").eq("role", "teacher").execute().data or []
-        teacher_id = teachers[0]["id"] if teachers else user["id"]
+        teacher_id = None
 
     cap = body.capacity or 120
     if cap not in (80, 120, 240, 260):
@@ -3232,28 +3252,103 @@ def controller_create_class(body: CreateClassRequest, user: dict[str, Any] = Dep
         "room_number": rnum,
         "capacity": cap,
         "hall_type": htype,
+        "is_lab": bool(body.is_lab),
         "room_photo": body.room_photo or "https://images.unsplash.com/photo-1580582932707-520aed937b7b?w=800",
         "teacher_id": teacher_id,
         "created_at": utc_now(),
     }
     try:
         resp = db.table("classes").insert(new_class).execute()
-    except Exception:
-        base_class = {
-            "name": body.name.strip(),
-            "code": body.code.strip().upper(),
-            "teacher_id": teacher_id,
-            "created_at": utc_now(),
-        }
-        resp = db.table("classes").insert(base_class).execute()
+    except Exception as e:
+        # Fallback if DB column is_lab or nullable teacher_id is not yet applied on live DB
+        fallback_class = dict(new_class)
+        if "is_lab" in str(e).lower():
+            fallback_class.pop("is_lab", None)
+        if "teacher_id" in str(e).lower() and not teacher_id:
+            teachers = db.table("profiles").select("id").eq("role", "teacher").execute().data or []
+            fallback_class["teacher_id"] = teachers[0]["id"] if teachers else user["id"]
+        resp = db.table("classes").insert(fallback_class).execute()
+
     created = resp.data[0] if (resp and resp.data) else new_class
     _audit(
         session_id=None,
         actor_id=user["id"],
         action="controller.class_created",
-        note=f"Controller created class {created['name']} ({created['code']}) for venue {rnum} ({htype}).",
+        note=f"Controller created class {created['name']} ({created['code']}) for venue {rnum} ({htype}). Faculty: {created.get('teacher_id') or 'Unassigned'}.",
     )
     return created
+
+
+@app.patch("/api/controller/classes/{class_id}")
+def controller_update_class(
+    class_id: str,
+    body: UpdateClassRequest,
+    user: dict[str, Any] = Depends(current_user),
+) -> dict[str, Any]:
+    require_controller(user)
+    db = supa()
+    existing_res = db.table("classes").select("*").eq("id", class_id).execute()
+    if not existing_res.data:
+        raise HTTPException(status_code=404, detail="Class not found.")
+    existing = existing_res.data[0]
+
+    update_payload: dict[str, Any] = {}
+    if body.name is not None:
+        update_payload["name"] = body.name.strip()
+    if body.code is not None:
+        update_payload["code"] = body.code.strip().upper()
+    if body.section is not None:
+        update_payload["section"] = body.section.strip()
+    if body.room_number is not None:
+        update_payload["room_number"] = body.room_number.strip()
+    if body.capacity is not None:
+        update_payload["capacity"] = body.capacity
+    if body.hall_type is not None:
+        update_payload["hall_type"] = body.hall_type
+    if body.room_photo is not None:
+        update_payload["room_photo"] = body.room_photo
+    if body.is_lab is not None:
+        update_payload["is_lab"] = body.is_lab
+
+    if body.teacher_id is not None:
+        if not body.teacher_id or body.teacher_id.lower() == "unassigned":
+            update_payload["teacher_id"] = None
+        else:
+            teacher_rec = db.table("profiles").select("id, role, name").eq("id", body.teacher_id).execute()
+            if not teacher_rec.data or teacher_rec.data[0].get("role") != "teacher":
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid teacher_id '{body.teacher_id}': User does not exist or is not a faculty member.",
+                )
+            update_payload["teacher_id"] = body.teacher_id
+
+    if update_payload:
+        try:
+            resp = db.table("classes").update(update_payload).eq("id", class_id).execute()
+            updated = resp.data[0] if (resp and resp.data) else {**existing, **update_payload}
+        except Exception:
+            # In case is_lab is not yet migrated in table
+            payload_no_lab = dict(update_payload)
+            payload_no_lab.pop("is_lab", None)
+            resp = db.table("classes").update(payload_no_lab).eq("id", class_id).execute()
+            updated = resp.data[0] if (resp and resp.data) else {**existing, **payload_no_lab}
+    else:
+        updated = existing
+
+    tid = updated.get("teacher_id")
+    if tid:
+        t = db.table("profiles").select("name").eq("id", tid).execute().data
+        updated["teacher_name"] = t[0].get("name") if (t and len(t) > 0) else "Unassigned"
+    else:
+        updated["teacher_name"] = "Unassigned"
+
+    _audit(
+        session_id=None,
+        actor_id=user["id"],
+        action="controller.class_updated",
+        note=f"Controller updated class {updated.get('name')} ({updated.get('code')}). Faculty: {updated.get('teacher_name')}.",
+    )
+    return updated
 
 
 @app.post("/api/controller/classes/{class_id}/capture-room")

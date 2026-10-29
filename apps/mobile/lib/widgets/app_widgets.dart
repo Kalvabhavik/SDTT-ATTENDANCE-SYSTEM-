@@ -4,30 +4,36 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:lottie/lottie.dart';
 
-/// Premium Academic Technology Design Palette
+/// Attendrix Design System Palette
+/// Consistent with the Web Dashboard (Deep Blue actions, Light Blue background, White cards)
+/// Tagline: "Smart Attendance. Verified Presence."
 class AppColors {
   AppColors._();
 
-  // Primary & Accents (Restrained Indigo & Navy)
-  static const primary = Color(0xFF4F46E5); // Indigo 600
-  static const primaryDark = Color(0xFF3730A3); // Indigo 800
-  static const primaryLight = Color(0xFF6366F1); // Indigo 500
+  // Primary & Accents (Deep Blue & Navy matching Attendrix Design System)
+  static const primary = Color(0xFF1D61F2); // Deep Royal Blue
+  static const primaryDark = Color(0xFF154ECE); // Blue 800
+  static const primaryLight = Color(0xFF3B82F6); // Blue 500
   static const secondary = Color(0xFF1E293B); // Navy Slate 800
   static const secondaryDark = Color(0xFF0F172A); // Navy Slate 900
-  static const accentIndigo = Color(0xFF4338CA); // Indigo 700
-  static const accentIndigoBg = Color(0xFFEEF2FF); // Indigo 50
-  static const accentIndigoBorder = Color(0xFFC7D2FE); // Indigo 200
+  static const accentBlue = Color(0xFF1D61F2);
+  static const accentBlueBg = Color(0xFFEFF5FF);
+  static const accentBlueBorder = Color(0xFFBFDBFE);
+  // Aliases for component compatibility
+  static const accentIndigo = primary;
+  static const accentIndigoBg = accentBlueBg;
+  static const accentIndigoBorder = accentBlueBorder;
 
   // Status Colors (Clear present, absent, pending, rejected, and verified status indicators)
-  static const emerald = Color(0xFF059669); // Present / Verified (Emerald 600)
+  static const emerald = Color(0xFF10B981); // Present / Verified (Emerald 500)
   static const emeraldBg = Color(0xFFECFDF5);
   static const emeraldBorder = Color(0xFFA7F3D0);
 
-  static const rose = Color(0xFFE11D48); // Absent / Rejected / Error (Rose 600)
+  static const rose = Color(0xFFEF4444); // Absent / Rejected / Error (Rose 500)
   static const roseBg = Color(0xFFFFF1F2);
   static const roseBorder = Color(0xFFFECDD3);
 
-  static const amber = Color(0xFFD97706); // Pending / Flagged / Warning (Amber 600)
+  static const amber = Color(0xFFF59E0B); // Pending / Flagged / Warning (Amber 500)
   static const amberBg = Color(0xFFFFFBEB);
   static const amberBorder = Color(0xFFFDE68A);
 
@@ -35,10 +41,11 @@ class AppColors {
   static const skyBg = Color(0xFFF0F9FF);
   static const skyBorder = Color(0xFFBAE6FD);
 
-  // Surfaces & Backgrounds
-  static const background = Color(0xFFF8FAFC); // Clean neutral slate canvas
+  // Surfaces & Backgrounds (Light Powder Blue Canvas matching screenshot)
+  static const background = Color(0xFFEBF3FA); // Light Blue Page Background
   static const card = Color(0xFFFFFFFF); // Pure white card
-  static const cardSubtle = Color(0xFFF1F5F9); // Slate 100
+  static const cardSubtle = Color(0xFFF8FAFC); // Slate 50
+
 
   // Typography (Deep Navy Ink with accessible contrast)
   static const ink = Color(0xFF0F172A); // Charcoal Navy Slate 900

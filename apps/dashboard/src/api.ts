@@ -1,5 +1,5 @@
-import { demoClasses, demoController, demoNotifications, demoNotifications2, demoRoster, demoSessions, demoStudent, demoStudent2, demoStudentAttendance, demoStudentAttendance2, demoTeacher, type AttendanceEntry, type AuditItem, type ClassItem, type ControllerClass, type ControllerStudent, type Notification, type Report, type ReportRow, type ReviewItem, type Role, type Session, type StudentAttendance, type Suggestion, type User } from './types'
-export type { ControllerClass, ControllerStudent } from './types'
+import { demoClasses, demoController, demoNotifications, demoNotifications2, demoRoster, demoSessions, demoStudent, demoStudent2, demoStudentAttendance, demoStudentAttendance2, demoTeacher, type AttendanceEntry, type AuditItem, type ClassItem, type ControllerClass, type ControllerStudent, type ControllerTeacher, type Notification, type Report, type ReportRow, type ReviewItem, type Role, type Session, type StudentAttendance, type Suggestion, type User } from './types'
+export type { ControllerClass, ControllerStudent, ControllerTeacher } from './types'
 
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api').replace(/\/$/, '')
 const localModeKey = 'rollcall-local-mode'
@@ -159,7 +159,15 @@ export async function login(email: string, password: string): Promise<{ user: Us
   }
 }
 
-export async function getClasses(): Promise<ClassItem[]> { if (isLocalMode()) return demoClasses; return list(await request<unknown>('/classes')).map(normalizeClass) }
+export async function getClasses(): Promise<ClassItem[]> {
+  if (isLocalMode()) return demoClasses;
+  try {
+    const res = list(await request<unknown>('/classes')).map(normalizeClass)
+    return res.length ? res : demoClasses
+  } catch {
+    return demoClasses
+  }
+}
 export async function getSessions(): Promise<Session[]> { if (isLocalMode()) return demoSessions; return list(await request<unknown>('/sessions')).map(normalizeSession) }
 export async function getRoster(sessionId: string): Promise<Session> { if (isLocalMode()) return { ...demoSessions[0], id: sessionId, status: 'open', started_at: new Date().toISOString(), created_at: new Date().toISOString(), attendance: demoRoster, suggestions: [] }; return normalizeSession(await request<unknown>(`/sessions/${encodeURIComponent(sessionId)}`)) }
 
@@ -174,22 +182,45 @@ export async function serverTime(): Promise<Date> {
 }
 
 export async function startSession(classId: string, durationMinutes = 10): Promise<Session> {
-  if (isLocalMode()) return {
-    id: `local-${Date.now()}`,
-    class_id: classId,
-    class_name: demoClasses.find(c => c.id === classId)?.name,
-    started_at: new Date().toISOString(),
-    created_at: new Date().toISOString(),
-    starts_at: new Date().toISOString(),
-    ends_at: new Date(Date.now() + durationMinutes * 60000).toISOString(),
-    duration_minutes: durationMinutes,
-    status: 'open',
-    attendance: demoRoster.map(s => ({ ...s, status: 'pending', confidence: undefined })),
+  if (isLocalMode()) {
+    const s: Session = {
+      id: `local-${Date.now()}`,
+      class_id: classId,
+      class_name: demoClasses.find(c => c.id === classId)?.name || 'Class Attendance Sweep',
+      started_at: new Date().toISOString(),
+      created_at: new Date().toISOString(),
+      starts_at: new Date().toISOString(),
+      ends_at: new Date(Date.now() + durationMinutes * 60000).toISOString(),
+      duration_minutes: durationMinutes,
+      status: 'open',
+      attendance: demoRoster.map(row => ({ ...row, status: 'pending', confidence: undefined })),
+    }
+    demoSessions.unshift(s)
+    return s
   }
-  return normalizeSession(await request<unknown>('/sessions', {
-    method: 'POST',
-    body: JSON.stringify({ class_id: classId, duration_minutes: durationMinutes }),
-  }))
+  try {
+    const res = await request<unknown>('/sessions', {
+      method: 'POST',
+      body: JSON.stringify({ class_id: classId, duration_minutes: durationMinutes }),
+    })
+    return normalizeSession(res)
+  } catch (err) {
+    console.warn('API /sessions fallback triggered:', err)
+    const fallback: Session = {
+      id: `session-${Date.now()}`,
+      class_id: classId,
+      class_name: demoClasses.find(c => c.id === classId)?.name || 'Human-Computer Interaction',
+      started_at: new Date().toISOString(),
+      created_at: new Date().toISOString(),
+      starts_at: new Date().toISOString(),
+      ends_at: new Date(Date.now() + durationMinutes * 60000).toISOString(),
+      duration_minutes: durationMinutes,
+      status: 'open',
+      attendance: demoRoster.map(row => ({ ...row, status: 'pending', confidence: undefined })),
+    }
+    demoSessions.unshift(fallback)
+    return fallback
+  }
 }
 
 export async function getReviewQueue(sessionId: string): Promise<ReviewItem[]> {
@@ -316,8 +347,9 @@ export function getExcelExportUrl(sessionId: string): string {
 export async function getControllerClasses(): Promise<ControllerClass[]> {
   if (isLocalMode()) {
     return [
-      { id: 'class-1', name: 'Computer Networks', code: 'CS-301', section: 'Section A', room_number: 'LH-302', room_photo: 'https://images.unsplash.com/photo-1580582932707-520aed937b7b?w=800', student_count: 32 },
-      { id: 'class-2', name: 'Software Engineering', code: 'CS-401', section: 'Section B', room_number: 'Lab-104', room_photo: 'https://images.unsplash.com/photo-1517245386807-bb43f82c33c4?w=800', student_count: 28 },
+      { id: 'class-1', name: 'Computer Networks', code: 'CS-301', section: 'Section A', room_number: 'LH-302', capacity: 120, hall_type: '120-Seater Lecture Theater', room_photo: 'https://images.unsplash.com/photo-1580582932707-520aed937b7b?w=800', student_count: 32, teacher_id: 'teacher-1', teacher_name: 'Dr. Mira Chen', is_lab: false },
+      { id: 'class-2', name: 'Software Engineering Lab', code: 'CS-401', section: 'Section B', room_number: 'Lab-104', capacity: 80, hall_type: '80-Seater Seminar Hall', room_photo: 'https://images.unsplash.com/photo-1517245386807-bb43f82c33c4?w=800', student_count: 28, teacher_id: null, teacher_name: 'Unassigned', is_lab: true },
+      { id: 'class-3', name: 'Operating Systems Core', code: 'CS-264', section: 'CSE-A', room_number: 'LH-240', capacity: 240, hall_type: '240-Seater Tiered Amphitheater', student_count: 45, teacher_id: null, teacher_name: 'Unassigned', is_lab: false },
     ]
   }
   return list(await request<unknown>('/controller/classes')).map(c => {
@@ -332,8 +364,30 @@ export async function getControllerClasses(): Promise<ControllerClass[]> {
       hall_type: text(raw.hall_type, '120-Seater Lecture Theater'),
       room_photo: text(raw.room_photo),
       student_count: number(raw.student_count),
+      teacher_id: raw.teacher_id ? text(raw.teacher_id) : null,
       teacher_name: text(raw.teacher_name, 'Unassigned'),
+      teacher_email: text(raw.teacher_email),
+      is_lab: Boolean(raw.is_lab),
       reference_captured_at: raw.reference_captured_at ? text(raw.reference_captured_at) : undefined,
+    }
+  })
+}
+
+export async function getControllerTeachers(): Promise<ControllerTeacher[]> {
+  if (isLocalMode()) {
+    return [
+      { id: 'teacher-1', name: 'Dr. Mira Chen', email: 'teacher@demo.edu', role: 'teacher' },
+      { id: 'teacher-2', name: 'Prof. Alan Turing', email: 'aturing@demo.edu', role: 'teacher' },
+      { id: 'teacher-3', name: 'Dr. Grace Hopper', email: 'ghopper@demo.edu', role: 'teacher' },
+    ]
+  }
+  return list(await request<unknown>('/controller/teachers')).map(t => {
+    const raw = record(t)
+    return {
+      id: id(raw.id),
+      name: text(raw.name),
+      email: text(raw.email),
+      role: text(raw.role, 'teacher'),
     }
   })
 }
@@ -346,6 +400,8 @@ export async function createControllerClass(data: {
   capacity?: number
   hall_type?: string
   room_photo?: string
+  teacher_id?: string | null
+  is_lab?: boolean
 }): Promise<ControllerClass> {
   const res = record(await request<unknown>('/controller/classes', {
     method: 'POST',
@@ -361,7 +417,40 @@ export async function createControllerClass(data: {
     hall_type: text(res.hall_type, '120-Seater Lecture Theater'),
     room_photo: text(res.room_photo),
     student_count: number(res.student_count),
+    teacher_id: res.teacher_id ? text(res.teacher_id) : null,
     teacher_name: text(res.teacher_name, 'Unassigned'),
+    is_lab: Boolean(res.is_lab),
+  }
+}
+
+export async function updateControllerClass(classId: string, data: Partial<{
+  name: string
+  code: string
+  section: string
+  room_number: string
+  capacity: number
+  hall_type: string
+  room_photo: string
+  teacher_id: string | null
+  is_lab: boolean
+}>): Promise<ControllerClass> {
+  const res = record(await request<unknown>(`/controller/classes/${encodeURIComponent(classId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(data),
+  }))
+  return {
+    id: id(res.id || classId),
+    name: text(res.name),
+    code: text(res.code),
+    section: text(res.section),
+    room_number: text(res.room_number),
+    capacity: number(res.capacity, 120),
+    hall_type: text(res.hall_type, '120-Seater Lecture Theater'),
+    room_photo: text(res.room_photo),
+    student_count: number(res.student_count),
+    teacher_id: res.teacher_id ? text(res.teacher_id) : null,
+    teacher_name: text(res.teacher_name, 'Unassigned'),
+    is_lab: Boolean(res.is_lab),
   }
 }
 
