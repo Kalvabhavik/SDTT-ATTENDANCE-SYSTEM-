@@ -935,16 +935,35 @@ class AppTextField extends StatelessWidget {
   }
 }
 
-/// Explicit Loading State View with academic styling and step indicators
+enum AppLottieType {
+  sandyLoading,
+  chatbot,
+  aiMarketing,
+}
+
+/// Explicit Loading State View with academic styling and smooth .lottie animations
 class AppLottieLoader extends StatelessWidget {
   const AppLottieLoader({
     super.key,
     this.size = 72,
     this.color,
+    this.type = AppLottieType.sandyLoading,
   });
 
   final double size;
   final Color? color;
+  final AppLottieType type;
+
+  String get _assetPath {
+    switch (type) {
+      case AppLottieType.chatbot:
+        return 'assets/animations/chatbot.lottie';
+      case AppLottieType.aiMarketing:
+        return 'assets/animations/ai_marketing.lottie';
+      case AppLottieType.sandyLoading:
+        return 'assets/animations/sandy_loading.lottie';
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -952,18 +971,25 @@ class AppLottieLoader extends StatelessWidget {
       width: size,
       height: size,
       child: Lottie.asset(
-        'assets/animations/loading.json',
+        _assetPath,
         width: size,
         height: size,
         fit: BoxFit.contain,
         errorBuilder: (context, error, stackTrace) {
-          return Center(
-            child: SizedBox(
-              width: size > 30 ? 28 : size * 0.8,
-              height: size > 30 ? 28 : size * 0.8,
-              child: CircularProgressIndicator(
-                strokeWidth: size > 30 ? 3 : 2,
-                valueColor: AlwaysStoppedAnimation(color ?? AppColors.primary),
+          // Graceful fallback to loading.json or circular progress indicator
+          return Lottie.asset(
+            'assets/animations/loading.json',
+            width: size,
+            height: size,
+            fit: BoxFit.contain,
+            errorBuilder: (_, __, ___) => Center(
+              child: SizedBox(
+                width: size > 30 ? 28 : size * 0.8,
+                height: size > 30 ? 28 : size * 0.8,
+                child: CircularProgressIndicator(
+                  strokeWidth: size > 30 ? 3 : 2,
+                  valueColor: AlwaysStoppedAnimation(color ?? AppColors.primary),
+                ),
               ),
             ),
           );
@@ -979,11 +1005,13 @@ class LoadingStateView extends StatelessWidget {
     this.title = 'Processing Verification',
     this.message = 'Cross-referencing biometric features with the academic server...',
     this.steps,
+    this.type = AppLottieType.sandyLoading,
   });
 
   final String title;
   final String message;
   final List<String>? steps;
+  final AppLottieType type;
 
   @override
   Widget build(BuildContext context) {
@@ -993,24 +1021,9 @@ class LoadingStateView extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Container(
-              width: 80,
-              height: 80,
-              decoration: BoxDecoration(
-                color: AppColors.accentIndigoBg,
-                shape: BoxShape.circle,
-                border: Border.all(color: AppColors.accentIndigoBorder),
-              ),
-              child: const Center(
-                child: SizedBox(
-                  width: 36,
-                  height: 36,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 3,
-                    valueColor: AlwaysStoppedAnimation(AppColors.primary),
-                  ),
-                ),
-              ),
+            AppLottieLoader(
+              size: 88,
+              type: type,
             ),
             const SizedBox(height: 20),
             Text(

@@ -72,7 +72,7 @@ export default function Section01Opening({
           className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-amber-100/90 border border-amber-300 mb-6 text-xs font-mono font-bold text-amber-900 shadow-sm"
         >
           <span className="w-2 h-2 rounded-full bg-amber-600 animate-ping" />
-          <span>SDTT ARCHITECTURE • THREE.JS &amp; GSAP SCROLLTRIGGER ENGINE</span>
+          <span>SDTT ARCHITECTURE • 2.5D PERSPECTIVE SCROLL &amp; GSAP ENGINE</span>
         </div>
 
         <h1

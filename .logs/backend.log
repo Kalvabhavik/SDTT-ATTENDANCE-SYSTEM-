@@ -1,0 +1,123 @@
+INFO:     Will watch for changes in these directories: ['/home/lucky/test2/SDTT-ATTENDANCE-SYSTEM-/backend']
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+INFO:     Started reloader process [29567] using WatchFiles
+INFO:     Started server process [29572]
+INFO:     Waiting for application startup.
+2026-10-30 10:38:52,125 WARNING attendrix.db {"event":"db_query_slow","table":"profiles","operation":"select","status":"ok","duration_ms":1340.8,"pid":29572}
+2026-10-30 10:38:52,125 INFO attendrix [LIFECYCLE] startup_db_probe status=ok duration_ms=1372.8
+2026-10-30 10:38:52,125 WARNING attendrix Security Configuration Warning: ATTENDANCE_SECRET_KEY is using default placeholder in production.
+2026-10-30 10:38:52,125 INFO attendrix [LIFECYCLE] startup_complete duration_ms=1372.9 face_engine=lazy env=production
+INFO:     Application startup complete.
+2026-10-30 10:38:52,223 INFO attendrix.requests {"event":"request_complete","method":"GET","path":"/api/time","status":200,"duration_ms":9.1,"cf_ray":null,"pid":29572}
+INFO:     127.0.0.1:42564 - "GET /api/time HTTP/1.1" 200 OK
+2026-10-30 10:38:52,229 INFO attendrix.requests {"event":"request_complete","method":"GET","path":"/api/time","status":200,"duration_ms":0.4,"cf_ray":null,"pid":29572}
+INFO:     127.0.0.1:42570 - "GET /api/time HTTP/1.1" 200 OK
+2026-10-30 10:39:08,080 WARNING attendrix.db {"event":"db_query_slow","table":"sessions","operation":"select","status":"ok","duration_ms":954.3,"pid":29572}
+2026-10-30 10:39:08,494 WARNING attendrix.db {"event":"db_query","table":"classroom_panoramas","operation":"select","status":"error","duration_ms":413.9,"pid":29572}
+2026-10-30 10:39:08,495 ERROR attendrix Error in session auto-close loop: {'message': "Could not find the table 'public.classroom_panoramas' in the schema cache", 'code': 'PGRST205', 'hint': None, 'details': None}
+WARNING:  WatchFiles detected changes in 'app/main.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [29572]
+INFO:     Started server process [30699]
+INFO:     Waiting for application startup.
+2026-10-30 10:39:25,284 WARNING attendrix.db {"event":"db_query_slow","table":"profiles","operation":"select","status":"ok","duration_ms":1402.8,"pid":30699}
+2026-10-30 10:39:25,284 INFO attendrix [LIFECYCLE] startup_db_probe status=ok duration_ms=1434.4
+2026-10-30 10:39:25,285 WARNING attendrix Security Configuration Warning: ATTENDANCE_SECRET_KEY is using default placeholder in production.
+2026-10-30 10:39:25,285 INFO attendrix [LIFECYCLE] startup_complete duration_ms=1434.5 face_engine=lazy env=production
+INFO:     Application startup complete.
+2026-10-30 10:39:37,580 INFO attendrix.requests {"event":"request_complete","method":"GET","path":"/api/reports/analytics/excel","status":401,"duration_ms":872.3,"cf_ray":null,"pid":30699}
+INFO:     127.0.0.1:53058 - "GET /api/reports/analytics/excel?token=demo-student-1 HTTP/1.1" 401 Unauthorized
+2026-10-30 10:39:37,595 INFO attendrix.requests {"event":"request_complete","method":"GET","path":"/favicon.ico","status":404,"duration_ms":0.3,"cf_ray":null,"pid":30699}
+INFO:     127.0.0.1:53058 - "GET /favicon.ico HTTP/1.1" 404 Not Found
+WARNING:  WatchFiles detected changes in 'app/main_supabase.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [30699]
+INFO:     Started server process [31103]
+INFO:     Waiting for application startup.
+2026-10-30 10:39:41,669 WARNING attendrix.db {"event":"db_query_slow","table":"profiles","operation":"select","status":"ok","duration_ms":428.0,"pid":31103}
+2026-10-30 10:39:41,669 INFO attendrix [LIFECYCLE] startup_db_probe status=ok duration_ms=461.8
+2026-10-30 10:39:41,669 WARNING attendrix Security Configuration Warning: ATTENDANCE_SECRET_KEY is using default placeholder in production.
+2026-10-30 10:39:41,669 INFO attendrix [LIFECYCLE] startup_complete duration_ms=461.9 face_engine=lazy env=production
+INFO:     Application startup complete.
+2026-10-30 10:39:44,131 INFO attendrix.requests {"event":"request_complete","method":"GET","path":"/api/reports/analytics/excel","status":401,"duration_ms":710.1,"cf_ray":null,"pid":31103}
+INFO:     127.0.0.1:53070 - "GET /api/reports/analytics/excel?token=demo-student-1 HTTP/1.1" 401 Unauthorized
+2026-10-30 10:39:47,611 INFO attendrix.requests {"event":"request_complete","method":"GET","path":"/api/reports/analytics/excel","status":401,"duration_ms":368.7,"cf_ray":null,"pid":31103}
+INFO:     127.0.0.1:53070 - "GET /api/reports/analytics/excel?token=demo-student-1 HTTP/1.1" 401 Unauthorized
+INFO:     127.0.0.1:53084 - "GET / HTTP/1.1" 200 OK
+2026-10-30 10:39:57,852 WARNING attendrix.db {"event":"db_query_slow","table":"sessions","operation":"select","status":"ok","duration_ms":1183.2,"pid":31103}
+2026-10-30 10:39:58,058 WARNING attendrix.db {"event":"db_query","table":"classroom_panoramas","operation":"select","status":"error","duration_ms":205.8,"pid":31103}
+2026-10-30 10:39:58,058 ERROR attendrix Error in session auto-close loop: {'message': "Could not find the table 'public.classroom_panoramas' in the schema cache", 'code': 'PGRST205', 'hint': None, 'details': None}
+2026-10-30 10:40:13,622 WARNING attendrix.db {"event":"db_query_slow","table":"sessions","operation":"select","status":"ok","duration_ms":562.8,"pid":31103}
+2026-10-30 10:40:13,821 WARNING attendrix.db {"event":"db_query","table":"classroom_panoramas","operation":"select","status":"error","duration_ms":198.9,"pid":31103}
+2026-10-30 10:40:13,821 ERROR attendrix Error in session auto-close loop: {'message': "Could not find the table 'public.classroom_panoramas' in the schema cache", 'code': 'PGRST205', 'hint': None, 'details': None}
+2026-10-30 10:40:29,182 WARNING attendrix.db {"event":"db_query_slow","table":"sessions","operation":"select","status":"ok","duration_ms":360.2,"pid":31103}
+2026-10-30 10:40:29,456 WARNING attendrix.db {"event":"db_query","table":"classroom_panoramas","operation":"select","status":"error","duration_ms":272.9,"pid":31103}
+2026-10-30 10:40:29,456 ERROR attendrix Error in session auto-close loop: {'message': "Could not find the table 'public.classroom_panoramas' in the schema cache", 'code': 'PGRST205', 'hint': None, 'details': None}
+2026-10-30 10:40:45,162 WARNING attendrix.db {"event":"db_query_slow","table":"sessions","operation":"select","status":"ok","duration_ms":705.7,"pid":31103}
+2026-10-30 10:40:45,455 WARNING attendrix.db {"event":"db_query","table":"classroom_panoramas","operation":"select","status":"error","duration_ms":292.3,"pid":31103}
+2026-10-30 10:40:45,455 ERROR attendrix Error in session auto-close loop: {'message': "Could not find the table 'public.classroom_panoramas' in the schema cache", 'code': 'PGRST205', 'hint': None, 'details': None}
+2026-10-30 10:41:01,344 WARNING attendrix.db {"event":"db_query_slow","table":"sessions","operation":"select","status":"ok","duration_ms":888.9,"pid":31103}
+2026-10-30 10:41:01,647 WARNING attendrix.db {"event":"db_query","table":"classroom_panoramas","operation":"select","status":"error","duration_ms":303.1,"pid":31103}
+2026-10-30 10:41:01,648 ERROR attendrix Error in session auto-close loop: {'message': "Could not find the table 'public.classroom_panoramas' in the schema cache", 'code': 'PGRST205', 'hint': None, 'details': None}
+WARNING:  WatchFiles detected changes in 'app/main.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [31103]
+INFO:     Started server process [33093]
+INFO:     Waiting for application startup.
+2026-10-30 10:41:04,822 WARNING attendrix.db {"event":"db_query_slow","table":"profiles","operation":"select","status":"ok","duration_ms":828.6,"pid":33093}
+2026-10-30 10:41:04,823 INFO attendrix [LIFECYCLE] startup_db_probe status=ok duration_ms=859.3
+2026-10-30 10:41:04,823 WARNING attendrix Security Configuration Warning: ATTENDANCE_SECRET_KEY is using default placeholder in production.
+2026-10-30 10:41:04,823 INFO attendrix [LIFECYCLE] startup_complete duration_ms=859.4 face_engine=lazy env=production
+INFO:     Application startup complete.
+2026-10-30 10:41:20,797 WARNING attendrix.db {"event":"db_query_slow","table":"sessions","operation":"select","status":"ok","duration_ms":974.4,"pid":33093}
+2026-10-30 10:41:20,997 WARNING attendrix.db {"event":"db_query","table":"classroom_panoramas","operation":"select","status":"error","duration_ms":199.3,"pid":33093}
+2026-10-30 10:41:20,997 ERROR attendrix Error in session auto-close loop: {'message': "Could not find the table 'public.classroom_panoramas' in the schema cache", 'code': 'PGRST205', 'hint': None, 'details': None}
+2026-10-30 10:41:23,050 INFO attendrix.requests {"event":"request_complete","method":"GET","path":"/api/reports/analytics/excel","status":401,"duration_ms":1132.8,"cf_ray":null,"pid":33093}
+INFO:     127.0.0.1:41340 - "GET /api/reports/analytics/excel?token=demo-student-1 HTTP/1.1" 401 Unauthorized
+2026-10-30 10:41:36,975 WARNING attendrix.db {"event":"db_query_slow","table":"sessions","operation":"select","status":"ok","duration_ms":977.0,"pid":33093}
+2026-10-30 10:41:37,176 WARNING attendrix.db {"event":"db_query","table":"classroom_panoramas","operation":"select","status":"error","duration_ms":200.1,"pid":33093}
+2026-10-30 10:41:37,176 ERROR attendrix Error in session auto-close loop: {'message': "Could not find the table 'public.classroom_panoramas' in the schema cache", 'code': 'PGRST205', 'hint': None, 'details': None}
+2026-10-30 10:41:48,036 WARNING attendrix.db {"event":"db_query_slow","table":"profiles","operation":"select","status":"ok","duration_ms":765.5,"pid":33093}
+2026-10-30 10:41:49,058 WARNING attendrix Supabase auth sign-in error for controller@demo.edu: Invalid login credentials
+2026-10-30 10:41:49,058 INFO attendrix.requests {"event":"request_complete","method":"POST","path":"/api/auth/login","status":401,"duration_ms":1789.2,"cf_ray":null,"pid":33093}
+INFO:     127.0.0.1:33406 - "POST /api/auth/login HTTP/1.1" 401 Unauthorized
+2026-10-30 10:41:52,745 WARNING attendrix.db {"event":"db_query_slow","table":"sessions","operation":"select","status":"ok","duration_ms":568.6,"pid":33093}
+2026-10-30 10:41:53,156 WARNING attendrix.db {"event":"db_query","table":"classroom_panoramas","operation":"select","status":"error","duration_ms":410.1,"pid":33093}
+2026-10-30 10:41:53,156 ERROR attendrix Error in session auto-close loop: {'message': "Could not find the table 'public.classroom_panoramas' in the schema cache", 'code': 'PGRST205', 'hint': None, 'details': None}
+2026-10-30 10:42:01,552 WARNING attendrix.db {"event":"db_query_slow","table":"profiles","operation":"select","status":"ok","duration_ms":601.7,"pid":33093}
+2026-10-30 10:42:02,166 WARNING attendrix.db {"event":"db_query_slow","table":"classes","operation":"select","status":"ok","duration_ms":410.7,"pid":33093}
+2026-10-30 10:42:02,776 WARNING attendrix.db {"event":"db_query","table":"audit_log","operation":"insert","status":"error","duration_ms":199.8,"pid":33093}
+2026-10-30 10:42:03,187 INFO attendrix.requests {"event":"request_complete","method":"POST","path":"/api/controller/classes","status":200,"duration_ms":2238.2,"cf_ray":null,"pid":33093}
+INFO:     127.0.0.1:41598 - "POST /api/controller/classes HTTP/1.1" 200 OK
+2026-10-30 10:42:04,625 WARNING attendrix.db {"event":"db_query","table":"audit_log","operation":"insert","status":"error","duration_ms":204.8,"pid":33093}
+2026-10-30 10:42:04,824 INFO attendrix.requests {"event":"request_complete","method":"POST","path":"/api/controller/students","status":200,"duration_ms":1635.8,"cf_ray":null,"pid":33093}
+INFO:     127.0.0.1:41602 - "POST /api/controller/students HTTP/1.1" 200 OK
+2026-10-30 10:42:05,029 INFO attendrix.requests {"event":"request_complete","method":"GET","path":"/api/reports/analytics/excel","status":401,"duration_ms":391.0,"cf_ray":null,"pid":33093}
+INFO:     127.0.0.1:41348 - "GET /api/reports/analytics/excel?token=demo-student-1 HTTP/1.1" 401 Unauthorized
+2026-10-30 10:42:08,516 WARNING attendrix.db {"event":"db_query_slow","table":"sessions","operation":"select","status":"ok","duration_ms":359.0,"pid":33093}
+2026-10-30 10:42:08,720 WARNING attendrix.db {"event":"db_query","table":"classroom_panoramas","operation":"select","status":"error","duration_ms":203.5,"pid":33093}
+2026-10-30 10:42:08,720 ERROR attendrix Error in session auto-close loop: {'message': "Could not find the table 'public.classroom_panoramas' in the schema cache", 'code': 'PGRST205', 'hint': None, 'details': None}
+2026-10-30 10:42:24,695 WARNING attendrix.db {"event":"db_query_slow","table":"sessions","operation":"select","status":"ok","duration_ms":974.3,"pid":33093}
+2026-10-30 10:42:24,899 WARNING attendrix.db {"event":"db_query","table":"classroom_panoramas","operation":"select","status":"error","duration_ms":203.6,"pid":33093}
+2026-10-30 10:42:24,899 ERROR attendrix Error in session auto-close loop: {'message': "Could not find the table 'public.classroom_panoramas' in the schema cache", 'code': 'PGRST205', 'hint': None, 'details': None}
+2026-10-30 10:42:40,874 WARNING attendrix.db {"event":"db_query_slow","table":"sessions","operation":"select","status":"ok","duration_ms":973.7,"pid":33093}
+2026-10-30 10:42:41,283 WARNING attendrix.db {"event":"db_query","table":"classroom_panoramas","operation":"select","status":"error","duration_ms":409.0,"pid":33093}
+2026-10-30 10:42:41,283 ERROR attendrix Error in session auto-close loop: {'message': "Could not find the table 'public.classroom_panoramas' in the schema cache", 'code': 'PGRST205', 'hint': None, 'details': None}
+2026-10-30 10:42:57,462 WARNING attendrix.db {"event":"db_query_slow","table":"sessions","operation":"select","status":"ok","duration_ms":1177.5,"pid":33093}
+2026-10-30 10:42:57,667 WARNING attendrix.db {"event":"db_query","table":"classroom_panoramas","operation":"select","status":"error","duration_ms":205.0,"pid":33093}
+2026-10-30 10:42:57,667 ERROR attendrix Error in session auto-close loop: {'message': "Could not find the table 'public.classroom_panoramas' in the schema cache", 'code': 'PGRST205', 'hint': None, 'details': None}
+2026-10-30 10:43:13,642 WARNING attendrix.db {"event":"db_query_slow","table":"sessions","operation":"select","status":"ok","duration_ms":973.9,"pid":33093}
+2026-10-30 10:43:13,847 WARNING attendrix.db {"event":"db_query","table":"classroom_panoramas","operation":"select","status":"error","duration_ms":205.0,"pid":33093}
+2026-10-30 10:43:13,848 ERROR attendrix Error in session auto-close loop: {'message': "Could not find the table 'public.classroom_panoramas' in the schema cache", 'code': 'PGRST205', 'hint': None, 'details': None}
+2026-10-30 10:43:29,823 WARNING attendrix.db {"event":"db_query_slow","table":"sessions","operation":"select","status":"ok","duration_ms":975.0,"pid":33093}
+2026-10-30 10:43:30,027 WARNING attendrix.db {"event":"db_query","table":"classroom_panoramas","operation":"select","status":"error","duration_ms":203.0,"pid":33093}
+2026-10-30 10:43:30,027 ERROR attendrix Error in session auto-close loop: {'message': "Could not find the table 'public.classroom_panoramas' in the schema cache", 'code': 'PGRST205', 'hint': None, 'details': None}
+2026-10-30 10:43:45,690 WARNING attendrix.db {"event":"db_query_slow","table":"sessions","operation":"select","status":"ok","duration_ms":662.0,"pid":33093}
+2026-10-30 10:43:45,802 WARNING attendrix.db {"event":"db_query","table":"classroom_panoramas","operation":"select","status":"error","duration_ms":111.9,"pid":33093}
+2026-10-30 10:43:45,802 ERROR attendrix Error in session auto-close loop: {'message': "Could not find the table 'public.classroom_panoramas' in the schema cache", 'code': 'PGRST205', 'hint': None, 'details': None}

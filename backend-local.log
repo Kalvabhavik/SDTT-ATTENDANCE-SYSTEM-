@@ -1,0 +1,10 @@
+INFO:     Started server process [11141]
+INFO:     Waiting for application startup.
+2026-10-30 10:24:18,013 WARNING attendrix.db {"event":"db_query_slow","table":"profiles","operation":"select","status":"ok","duration_ms":932.6,"pid":11141}
+2026-10-30 10:24:18,013 INFO attendrix [LIFECYCLE] startup_db_probe status=ok duration_ms=963.2
+2026-10-30 10:24:18,014 WARNING attendrix Security Configuration Warning: ATTENDANCE_SECRET_KEY is using default placeholder in production.
+2026-10-30 10:24:18,014 INFO attendrix [LIFECYCLE] startup_complete duration_ms=963.4 face_engine=lazy env=production
+INFO:     Application startup complete.
+ERROR:    [Errno 98] error while attempting to bind on address ('0.0.0.0', 8000): address already in use
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.

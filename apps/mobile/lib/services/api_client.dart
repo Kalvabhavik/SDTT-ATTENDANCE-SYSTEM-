@@ -37,7 +37,9 @@ class ApiClient {
   }
 
   bool _isNetworkError(Object e) {
-    if (e is SocketException || e is http.ClientException || e is TimeoutException) {
+    if (e is SocketException ||
+        e is http.ClientException ||
+        e is TimeoutException) {
       return true;
     }
     final str = e.toString().toLowerCase();
@@ -49,7 +51,8 @@ class ApiClient {
         str.contains('clientexception');
   }
 
-  Future<T> _executeWithFailover<T>(Future<T> Function(String baseUrl) action) async {
+  Future<T> _executeWithFailover<T>(
+      Future<T> Function(String baseUrl) action) async {
     try {
       return await action(AppConfig.apiBaseUrl);
     } catch (e) {
@@ -76,7 +79,7 @@ class ApiClient {
   Future<bool> checkHealth([String? baseUrl]) async {
     try {
       final uri = _endpoint('/time', baseUrl ?? AppConfig.apiBaseUrl);
-      final resp = await _client.get(uri).timeout(const Duration(seconds: 3));
+      final resp = await _client.get(uri).timeout(const Duration(milliseconds: 1400));
       return resp.statusCode == 200;
     } catch (_) {
       return false;
@@ -84,14 +87,19 @@ class ApiClient {
   }
 
   Future<String> probeFastestServer() async {
-    if (await checkHealth(AppConfig.apiBaseUrl)) {
+    final candidates = [AppConfig.apiBaseUrl, AppConfig.alternateUrl];
+    final futures = candidates.map((url) async {
+      final ok = await checkHealth(url);
+      if (ok) return url;
+      throw Exception('Unreachable');
+    });
+    try {
+      final fastest = await Future.any(futures);
+      AppConfig.apiBaseUrl = fastest;
+      return fastest;
+    } catch (_) {
       return AppConfig.apiBaseUrl;
     }
-    if (await checkHealth(AppConfig.alternateUrl)) {
-      AppConfig.apiBaseUrl = AppConfig.alternateUrl;
-      return AppConfig.apiBaseUrl;
-    }
-    return AppConfig.apiBaseUrl;
   }
 
   Future<dynamic> _request(String method, String path,
@@ -101,7 +109,7 @@ class ApiClient {
       final request = http.Request(method, uri)..headers.addAll(_headers);
       if (body != null) request.body = jsonEncode(body);
       final response =
-          await _client.send(request).timeout(const Duration(seconds: 15));
+          await _client.send(request).timeout(const Duration(seconds: 8));
       final text = await response.stream.bytesToString();
       dynamic decoded;
       if (text.trim().isNotEmpty) {
@@ -124,38 +132,53 @@ class ApiClient {
     });
   }
 
-  Future<AuthSession> login(String email, String password, {String? selectedRole}) async {
+  Future<AuthSession> login(String email, String password,
+      {String? selectedRole}) async {
     final cleanEmail = email.trim();
     // Connect directly to Supabase Auth instead of Render to eliminate cold start latency
     try {
-      final supaUri = Uri.parse('${AppConfig.supabaseUrl}/auth/v1/token?grant_type=password');
-      final resp = await _client.post(
-        supaUri,
-        headers: {
-          'apikey': AppConfig.supabaseAnonKey,
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: jsonEncode({
-          'email': cleanEmail,
-          'password': password,
-        }),
-      ).timeout(const Duration(seconds: 10));
+      final supaUri = Uri.parse(
+          '${AppConfig.supabaseUrl}/auth/v1/token?grant_type=password');
+      final resp = await _client
+          .post(
+            supaUri,
+            headers: {
+              'apikey': AppConfig.supabaseAnonKey,
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+            },
+            body: jsonEncode({
+              'email': cleanEmail,
+              'password': password,
+            }),
+          )
+          .timeout(const Duration(seconds: 10));
 
       if (resp.statusCode == 200) {
         final decoded = jsonDecode(resp.body) as Map<String, dynamic>;
         final token = decoded['access_token']?.toString() ?? '';
-        final userObj = decoded['user'] is Map ? Map<String, dynamic>.from(decoded['user'] as Map) : <String, dynamic>{};
-        final meta = userObj['user_metadata'] is Map ? Map<String, dynamic>.from(userObj['user_metadata'] as Map) : <String, dynamic>{};
+        final userObj = decoded['user'] is Map
+            ? Map<String, dynamic>.from(decoded['user'] as Map)
+            : <String, dynamic>{};
+        final meta = userObj['user_metadata'] is Map
+            ? Map<String, dynamic>.from(userObj['user_metadata'] as Map)
+            : <String, dynamic>{};
 
-        final role = (meta['role']?.toString() ?? userObj['role']?.toString() ?? selectedRole ?? 'student').toLowerCase();
+        final role = (meta['role']?.toString() ??
+                userObj['role']?.toString() ??
+                selectedRole ??
+                'student')
+            .toLowerCase();
         final user = User(
           id: userObj['id']?.toString() ?? '',
-          name: meta['name']?.toString() ?? userObj['name']?.toString() ?? 'User',
+          name:
+              meta['name']?.toString() ?? userObj['name']?.toString() ?? 'User',
           email: userObj['email']?.toString() ?? cleanEmail,
           role: role,
-          rollNumber: meta['roll_number']?.toString() ?? userObj['roll_number']?.toString(),
-          studentId: meta['student_id']?.toString() ?? userObj['student_id']?.toString(),
+          rollNumber: meta['roll_number']?.toString() ??
+              userObj['roll_number']?.toString(),
+          studentId: meta['student_id']?.toString() ??
+              userObj['student_id']?.toString(),
           registrationLocked: meta['registration_locked'] == true,
         );
         final session = AuthSession(accessToken: token, user: user);
@@ -166,7 +189,11 @@ class ApiClient {
         try {
           errBody = jsonDecode(resp.body);
         } catch (_) {}
-        final msg = errBody is Map ? (errBody['error_description'] ?? errBody['msg'] ?? errBody['message']) : null;
+        final msg = errBody is Map
+            ? (errBody['error_description'] ??
+                errBody['msg'] ??
+                errBody['message'])
+            : null;
         throw ApiException(
           msg?.toString() ?? 'Invalid email or password. [INVALID_CREDENTIALS]',
           statusCode: resp.statusCode,
@@ -184,7 +211,8 @@ class ApiClient {
       if (selectedRole != null) 'selected_role': selectedRole,
     };
     final data = await _request('POST', '/auth/login', body: body);
-    final session = AuthSession.fromJson(Map<String, dynamic>.from(data as Map));
+    final session =
+        AuthSession.fromJson(Map<String, dynamic>.from(data as Map));
     accessToken = session.accessToken;
     return session;
   }
@@ -220,7 +248,8 @@ class ApiClient {
         filename: 'reference_selfie.jpg',
       ));
 
-      final streamed = await _client.send(req).timeout(const Duration(seconds: 30));
+      final streamed =
+          await _client.send(req).timeout(const Duration(seconds: 30));
       final text = await streamed.stream.bytesToString();
       dynamic decoded;
       try {
@@ -229,10 +258,13 @@ class ApiClient {
         decoded = text;
       }
       if (streamed.statusCode != 200) {
-        final msg = decoded is Map ? (decoded['detail'] ?? decoded['message']) : null;
+        final msg =
+            decoded is Map ? (decoded['detail'] ?? decoded['message']) : null;
         final errorCode = streamed.headers['x-error-code'];
-        throw ApiException(msg?.toString() ?? 'Enrollment failed (${streamed.statusCode}).',
-            statusCode: streamed.statusCode, errorCode: errorCode);
+        throw ApiException(
+            msg?.toString() ?? 'Enrollment failed (${streamed.statusCode}).',
+            statusCode: streamed.statusCode,
+            errorCode: errorCode);
       }
       return Map<String, dynamic>.from(decoded as Map);
     });
@@ -250,15 +282,17 @@ class ApiClient {
     final raw = await _request('GET', '/sessions');
     final list = raw is List ? raw : <dynamic>[];
     return list
-        .map((e) => AttendanceSession.fromJson(Map<String, dynamic>.from(e as Map)))
+        .map((e) =>
+            AttendanceSession.fromJson(Map<String, dynamic>.from(e as Map)))
         .toList();
   }
 
   Future<AttendanceSession> session(String id) async =>
-      AttendanceSession.fromJson(
-          Map<String, dynamic>.from(await _request('GET', '/sessions/$id') as Map));
+      AttendanceSession.fromJson(Map<String, dynamic>.from(
+          await _request('GET', '/sessions/$id') as Map));
 
-  Future<AttendanceSession> createSession(String classId, {int durationMinutes = 10}) async {
+  Future<AttendanceSession> createSession(String classId,
+      {int durationMinutes = 10}) async {
     final data = await _request(
       'POST',
       '/sessions',
@@ -267,7 +301,8 @@ class ApiClient {
     return AttendanceSession.fromJson(Map<String, dynamic>.from(data as Map));
   }
 
-  Future<Map<String, dynamic>> setSessionReference(String sessionId, String photoBase64) async {
+  Future<Map<String, dynamic>> setSessionReference(
+      String sessionId, String photoBase64) async {
     final data = await _request(
       'POST',
       '/sessions/$sessionId/reference',
@@ -299,7 +334,8 @@ class ApiClient {
         ));
       }
 
-      final streamed = await _client.send(req).timeout(const Duration(seconds: 35));
+      final streamed =
+          await _client.send(req).timeout(const Duration(seconds: 35));
       final text = await streamed.stream.bytesToString();
       dynamic decoded;
       try {
@@ -308,19 +344,106 @@ class ApiClient {
         decoded = text;
       }
       if (streamed.statusCode != 200) {
-        final msg = decoded is Map ? (decoded['detail'] ?? decoded['message']) : null;
-        throw ApiException(msg?.toString() ?? 'Sweep checkin failed (${streamed.statusCode}).',
+        final msg =
+            decoded is Map ? (decoded['detail'] ?? decoded['message']) : null;
+        throw ApiException(
+            msg?.toString() ?? 'Sweep checkin failed (${streamed.statusCode}).',
             statusCode: streamed.statusCode);
       }
       return Map<String, dynamic>.from(decoded as Map);
     });
   }
 
+  Future<Map<String, dynamic>> uploadClassroomPanorama(
+    String sessionId, {
+    required String captureId,
+    required DateTime capturedAt,
+    required List<List<int>> frameBytes,
+    void Function(double progress)? onProgress,
+  }) async {
+    return _executeWithFailover((baseUrl) async {
+      final request = http.MultipartRequest(
+        'POST',
+        _endpoint('/sessions/$sessionId/panorama', baseUrl),
+      );
+      if (accessToken != null) {
+        request.headers['Authorization'] = 'Bearer $accessToken';
+      }
+      request.fields['capture_id'] = captureId;
+      request.fields['captured_at'] = capturedAt.toUtc().toIso8601String();
+      for (var index = 0; index < frameBytes.length; index++) {
+        request.files.add(http.MultipartFile.fromBytes(
+          'frames',
+          frameBytes[index],
+          filename: 'classroom_view_$index.jpg',
+        ));
+      }
+      final totalBytes = request.contentLength;
+      var uploadedBytes = 0;
+      final streamedRequest = _ProgressMultipartRequest(
+        request.method,
+        request.url,
+        onChunk: (chunkLength) {
+          uploadedBytes += chunkLength;
+          if (totalBytes > 0) {
+            onProgress
+                ?.call((uploadedBytes / totalBytes).clamp(0, 1).toDouble());
+          }
+        },
+      )..headers.addAll(request.headers);
+      streamedRequest.fields.addAll(request.fields);
+      streamedRequest.files.addAll(request.files);
+      final response = await _client
+          .send(streamedRequest)
+          .timeout(const Duration(seconds: 90));
+      final text = await response.stream.bytesToString();
+      dynamic decoded;
+      try {
+        decoded = jsonDecode(text);
+      } catch (_) {
+        decoded = text;
+      }
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        final message =
+            decoded is Map ? (decoded['detail'] ?? decoded['message']) : null;
+        throw ApiException(
+          message?.toString() ??
+              'Panorama upload failed (${response.statusCode}).',
+          statusCode: response.statusCode,
+          errorCode: response.headers['x-error-code'],
+        );
+      }
+      onProgress?.call(1);
+      return Map<String, dynamic>.from(decoded as Map);
+    });
+  }
+
+  Future<Map<String, dynamic>> classroomPanorama(
+      String sessionId, String panoramaId) async {
+    final result =
+        await _request('GET', '/sessions/$sessionId/panorama/$panoramaId');
+    return Map<String, dynamic>.from(result as Map);
+  }
+
+  Future<Map<String, dynamic>> latestClassroomPanorama(String sessionId) async {
+    final result =
+        await _request('GET', '/sessions/$sessionId/panorama/latest');
+    return Map<String, dynamic>.from(result as Map);
+  }
+
+  Future<Map<String, dynamic>> retryClassroomPanorama(
+      String sessionId, String panoramaId) async {
+    final result = await _request(
+        'POST', '/sessions/$sessionId/panorama/$panoramaId/retry');
+    return Map<String, dynamic>.from(result as Map);
+  }
+
   Future<List<CheckinReviewItem>> reviewQueue(String sessionId) async {
     final raw = await _request('GET', '/sessions/$sessionId/review-queue');
     final list = raw is List ? raw : <dynamic>[];
     return list
-        .map((e) => CheckinReviewItem.fromJson(Map<String, dynamic>.from(e as Map)))
+        .map((e) =>
+            CheckinReviewItem.fromJson(Map<String, dynamic>.from(e as Map)))
         .toList();
   }
 
@@ -371,7 +494,8 @@ class ApiClient {
     final raw = await _request('GET', '/notifications');
     final list = raw is List ? raw : <dynamic>[];
     return list
-        .map((e) => AppNotification.fromJson(Map<String, dynamic>.from(e as Map)))
+        .map((e) =>
+            AppNotification.fromJson(Map<String, dynamic>.from(e as Map)))
         .toList();
   }
 
@@ -447,9 +571,11 @@ class ApiClient {
       if (resp.statusCode >= 400) {
         final detail = body is Map ? body['detail'] : resp.body;
         final errorCode = resp.headers['x-error-code'];
-        throw ApiException(detail?.toString() ?? 'Verification failed', statusCode: resp.statusCode, errorCode: errorCode);
+        throw ApiException(detail?.toString() ?? 'Verification failed',
+            statusCode: resp.statusCode, errorCode: errorCode);
       }
-      return AttendanceVerifyResult.fromJson(Map<String, dynamic>.from(body as Map));
+      return AttendanceVerifyResult.fromJson(
+          Map<String, dynamic>.from(body as Map));
     });
   }
 
@@ -459,7 +585,8 @@ class ApiClient {
   }
 
   Future<void> setRegistrationWindow(bool isOpen) async {
-    await _request('POST', '/controller/registration-window', body: {'is_open': isOpen});
+    await _request('POST', '/controller/registration-window',
+        body: {'is_open': isOpen});
   }
 
   Future<Map<String, dynamic>> importRegistryCsv(List<int> csvBytes) async {
@@ -479,7 +606,8 @@ class ApiClient {
       final body = resp.body.isNotEmpty ? jsonDecode(resp.body) : {};
       if (resp.statusCode >= 400) {
         final detail = body is Map ? body['detail'] : resp.body;
-        throw ApiException(detail?.toString() ?? 'Import failed', statusCode: resp.statusCode);
+        throw ApiException(detail?.toString() ?? 'Import failed',
+            statusCode: resp.statusCode);
       }
       return Map<String, dynamic>.from(body as Map);
     });
@@ -528,7 +656,8 @@ class ApiClient {
     String? roomNumber,
   }) async {
     return _executeWithFailover((baseUrl) async {
-      final uri = _endpoint('/controller/classes/$classId/capture-room', baseUrl);
+      final uri =
+          _endpoint('/controller/classes/$classId/capture-room', baseUrl);
       final req = http.MultipartRequest('POST', uri);
       if (accessToken != null) {
         req.headers['Authorization'] = 'Bearer $accessToken';
@@ -542,7 +671,8 @@ class ApiClient {
         filename: 'room_reference.jpg',
       ));
 
-      final streamed = await _client.send(req).timeout(const Duration(seconds: 30));
+      final streamed =
+          await _client.send(req).timeout(const Duration(seconds: 30));
       final text = await streamed.stream.bytesToString();
       dynamic decoded;
       try {
@@ -551,8 +681,10 @@ class ApiClient {
         decoded = text;
       }
       if (streamed.statusCode != 200) {
-        final msg = decoded is Map ? (decoded['detail'] ?? decoded['message']) : null;
-        throw ApiException(msg?.toString() ?? 'Capture failed (${streamed.statusCode}).',
+        final msg =
+            decoded is Map ? (decoded['detail'] ?? decoded['message']) : null;
+        throw ApiException(
+            msg?.toString() ?? 'Capture failed (${streamed.statusCode}).',
             statusCode: streamed.statusCode);
       }
       return Map<String, dynamic>.from(decoded as Map);
@@ -563,7 +695,8 @@ class ApiClient {
     final raw = await _request('GET', '/controller/students');
     final list = raw is List ? raw : <dynamic>[];
     return list
-        .map((e) => ControllerStudent.fromJson(Map<String, dynamic>.from(e as Map)))
+        .map((e) =>
+            ControllerStudent.fromJson(Map<String, dynamic>.from(e as Map)))
         .toList();
   }
 
@@ -592,7 +725,8 @@ class ApiClient {
     await _request('POST', '/controller/students/$studentId/unlock');
   }
 
-  Future<Map<String, dynamic>> timetable({String? classId, int? dayOfWeek}) async {
+  Future<Map<String, dynamic>> timetable(
+      {String? classId, int? dayOfWeek}) async {
     final query = <String, String>{};
     if (classId != null) query['class_id'] = classId;
     if (dayOfWeek != null) query['day_of_week'] = dayOfWeek.toString();
@@ -620,7 +754,8 @@ class ApiClient {
     final cleanStart = startTime.replaceAll(':', '') + '00';
     final cleanEnd = endTime.replaceAll(':', '') + '00';
     final now = DateTime.now();
-    final dateStr = '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}';
+    final dateStr =
+        '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}';
     final dates = '${dateStr}T${cleanStart}Z/${dateStr}T${cleanEnd}Z';
     final uri = Uri.https('calendar.google.com', '/calendar/render', {
       'action': 'TEMPLATE',
@@ -632,7 +767,8 @@ class ApiClient {
     return uri.toString();
   }
 
-  Future<String> recoverAccount({required String email, required String rollNumber}) async {
+  Future<String> recoverAccount(
+      {required String email, required String rollNumber}) async {
     final data = await _request('POST', '/auth/recover-account', body: {
       'email': email,
       'roll_number': rollNumber,
@@ -641,7 +777,8 @@ class ApiClient {
     return map['recovery_token'] as String;
   }
 
-  Future<bool> resetPassword({required String recoveryToken, required String newPassword}) async {
+  Future<bool> resetPassword(
+      {required String recoveryToken, required String newPassword}) async {
     final data = await _request('POST', '/auth/reset-password', body: {
       'recovery_token': recoveryToken,
       'new_password': newPassword,
@@ -653,5 +790,28 @@ class ApiClient {
   Future<Map<String, dynamic>> duplicateStudents() async {
     final data = await _request('GET', '/controller/students/duplicates');
     return Map<String, dynamic>.from(data as Map);
+  }
+}
+
+class _ProgressMultipartRequest extends http.MultipartRequest {
+  _ProgressMultipartRequest(
+    String method,
+    Uri url, {
+    required this.onChunk,
+  }) : super(method, url);
+
+  final void Function(int chunkLength) onChunk;
+
+  @override
+  http.ByteStream finalize() {
+    final stream = super.finalize();
+    return http.ByteStream(stream.transform(
+      StreamTransformer<List<int>, List<int>>.fromHandlers(
+        handleData: (chunk, sink) {
+          onChunk(chunk.length);
+          sink.add(chunk);
+        },
+      ),
+    ));
   }
 }

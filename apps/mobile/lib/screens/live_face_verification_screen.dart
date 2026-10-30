@@ -18,6 +18,8 @@ enum VerificationStep {
   result,
 }
 
+VerificationStep nextStepAfterLiveness() => VerificationStep.classroomRoom;
+
 enum LivenessStage {
   center,
   turnLeft,
@@ -430,12 +432,17 @@ class _LiveFaceVerificationScreenState
         setState(() {
           _livenessStage = LivenessStage.completed;
           _challengeRecorded = true;
-          _currentStep = VerificationStep.verifying;
+          _currentStep = nextStepAfterLiveness();
           _isProcessing = false;
         });
 
-        // Submit dual verification directly (no classroom panorama sweep required)
-        await _submitDualVerification();
+        final rearCameraIndex = _cameras.indexWhere(
+          (camera) => camera.lensDirection == CameraLensDirection.back,
+        );
+        if (rearCameraIndex >= 0 && rearCameraIndex != _selectedCameraIndex) {
+          _selectedCameraIndex = rearCameraIndex;
+          await _setupCameraController(_cameras[rearCameraIndex]);
+        }
       }
     } catch (e) {
       if (mounted) {

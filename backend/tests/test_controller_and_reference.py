@@ -309,3 +309,67 @@ def test_verify_student_live_attendance_with_active_classroom():
     assert v_data["crowd_count"] >= 2
     assert "120-Seater" in v_data["hall_type"] or "Theater" in v_data["hall_type"]
 
+
+def test_controller_registers_student_and_creates_class_with_room_reference():
+    reset_test_db()
+    c_login = client.post(
+        "/api/auth/login",
+        json={"email": "controller@demo.edu", "password": "password123"},
+    )
+    assert c_login.status_code == 200
+    c_token = c_login.json()["access_token"]
+    c_headers = {"Authorization": f"Bearer {c_token}"}
+
+    # 1. Controller creates class with unassigned teacher
+    cls_res = client.post(
+        "/api/controller/classes",
+        headers=c_headers,
+        json={
+            "name": "Robotics & Embedded Systems",
+            "code": "CS-450",
+            "section": "Section A",
+            "capacity": 240,
+            "hall_type": "240-Seater Tiered Amphitheater",
+            "teacher_id": None,
+            "is_lab": False,
+        },
+    )
+    assert cls_res.status_code == 200
+    created_cls = cls_res.json()
+    assert created_cls["code"] == "CS-450"
+    class_id = created_cls["id"]
+
+    # 2. Controller captures room reference
+    import cv2
+    import numpy as np
+    img = np.full((300, 400, 3), 180, dtype=np.uint8)
+    cv2.circle(img, (200, 150), 60, (50, 50, 50), -1)
+    cv2.rectangle(img, (50, 50), (150, 150), (220, 20, 20), -1)
+    _, buf = cv2.imencode(".jpg", img)
+    cap_res = client.post(
+        f"/api/controller/classes/{class_id}/capture-room",
+        headers=c_headers,
+        data={"capacity": "240", "room_number": "LH-240"},
+        files={"photo": ("room.jpg", buf.tobytes(), "image/jpeg")},
+    )
+    assert cap_res.status_code == 200
+    assert cap_res.json()["status"] == "success"
+
+    # 3. Controller registers new student
+    stu_res = client.post(
+        "/api/controller/students",
+        headers=c_headers,
+        json={
+            "name": "Maya Lin",
+            "email": "mayalin@demo.edu",
+            "roll_number": "CS-2026-088",
+            "student_id": "STU-8822",
+            "class_ids": [class_id],
+        },
+    )
+    assert stu_res.status_code == 200
+    stu_data = stu_res.json()
+    assert stu_data["name"] == "Maya Lin"
+    assert stu_data["email"] == "mayalin@demo.edu"
+    assert stu_data["id"] is not None
+

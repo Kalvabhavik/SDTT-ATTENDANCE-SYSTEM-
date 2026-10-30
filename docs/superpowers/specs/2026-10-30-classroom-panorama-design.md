@@ -1,0 +1,9 @@
+# Classroom Panorama Verification Design
+
+Faculty can capture a classroom panorama from an active attendance session to provide contextual occupancy information. The student attendance sweep remains unchanged, and panorama results never create or modify attendance records.
+
+The Flutter app captures three to eight overlapping rear-camera JPEG views, previews them, permits recapture, and uploads them with an idempotency key. FastAPI checks the authenticated faculty member owns the open session, stores frames in a private Supabase bucket, and schedules stitching and analysis as a background task. OpenCV stitches the views, checks image quality, estimates visible people with its HOG full-body detector, annotates detections, and optionally compares against a stored visual reference. Results are advisory; HOG scores are uncalibrated and are not identity or attendance evidence. Processing state and references are persisted for authorized faculty/controller retrieval. Storage records expire after 30 days.
+
+Approaches considered: reuse the existing student's single selected still (rejected because it is not a panorama); guided overlapping stills stitched on the backend (selected because the app already uses the camera plugin and the backend has OpenCV); guided video with backend frame extraction (not selected because it adds video upload/decoding cost and the current app has no video flow). Existing dashboard and attendance verification code remain untouched.
+
+Constraints: no dashboard changes, no student face identity matching, no attendance writes, no new mobile dependency, active-session ownership enforced server-side, private image storage, duplicate retry safety, and explicit failure/review states. The initial implementation uses FastAPI background tasks, which are not durable across process restarts; a durable queue is deferred.

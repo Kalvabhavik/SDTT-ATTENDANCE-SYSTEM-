@@ -21,12 +21,12 @@ import Section11Architecture from "@/components/Section11Architecture";
 import Section12ExperimentalValidation from "@/components/Section12ExperimentalValidation";
 import Section13Closing from "@/components/Section13Closing";
 
-// Dynamically import 3D lecture hall canvas to avoid SSR issues
+// Dynamically import 2.5D perspective scroll engine to avoid SSR issues
 const LectureHallScene = dynamic(() => import("@/components/LectureHallScene"), {
   ssr: false,
   loading: () => (
-    <div className="w-full h-full flex items-center justify-center bg-slate-50 text-xs font-mono text-amber-700">
-      <span className="animate-pulse">INITIALIZING 3D LECTURE HALL SCENE...</span>
+    <div className="w-full h-full flex items-center justify-center bg-slate-950 text-xs font-mono text-amber-500">
+      <span className="animate-pulse">INITIALIZING 2.5D PERSPECTIVE SCROLL ENGINE...</span>
     </div>
   ),
 });

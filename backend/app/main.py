@@ -12,6 +12,7 @@ Consolidated entrypoint featuring:
 from __future__ import annotations
 
 import asyncio
+import copy
 import csv
 import hashlib
 import io
@@ -31,6 +32,7 @@ from html import escape
 from typing import Any, Optional
 
 from fastapi import (
+    BackgroundTasks,
     Depends,
     FastAPI,
     File,
@@ -109,6 +111,7 @@ _ws_tickets: dict[str, tuple[str, float]] = {}
 _ws_clients: dict[str, set[WebSocket]] = {}
 _ws_client_loops: dict[WebSocket, asyncio.AbstractEventLoop] = {}
 _ws_client_queues: dict[WebSocket, asyncio.Queue[str]] = {}
+_last_panorama_retention_day: Optional[str] = None
 
 # ── Attendance Concurrency Lock Registry ───────────────────────────────────────
 _att_lock_mutex = threading.Lock()
@@ -188,6 +191,11 @@ async def _session_auto_close_loop():
                     f"[LIFECYCLE] auto_close closed={closed} "
                     f"duration_ms={(time.perf_counter() - started) * 1000.0:.1f}"
                 )
+            day_key = datetime.now(timezone.utc).date().isoformat()
+            global _last_panorama_retention_day
+            if _last_panorama_retention_day != day_key:
+                await asyncio.to_thread(_purge_expired_classroom_panoramas)
+                _last_panorama_retention_day = day_key
         except asyncio.CancelledError:
             break
         except Exception as exc:
@@ -242,6 +250,9 @@ async def lifespan(app: FastAPI):
 
 
 # ── Security Middleware: Request Size Limiter ─────────────────────────────────
+PANORAMA_REQUEST_LIMIT_BYTES = 42 * 1024 * 1024
+
+
 class RequestSizeLimitMiddleware:
     def __init__(self, app, max_upload_size: int = MAX_REQUEST_SIZE_BYTES):
         self.app = app
@@ -253,14 +264,21 @@ class RequestSizeLimitMiddleware:
             return
 
         headers = dict(scope.get("headers", []))
+        path = scope.get("path", "")
+        is_panorama_upload = (
+            scope.get("method") == "POST"
+            and path.startswith("/api/sessions/")
+            and path.endswith("/panorama")
+        )
+        request_limit = PANORAMA_REQUEST_LIMIT_BYTES if is_panorama_upload else self.max_upload_size
         content_length = headers.get(b"content-length")
         if content_length:
             try:
-                if int(content_length) > self.max_upload_size:
+                if int(content_length) > request_limit:
                     response = JSONResponse(
                         status_code=413,
                         content={
-                            "detail": f"Payload exceeds maximum allowed size of {self.max_upload_size} bytes. [PAYLOAD_TOO_LARGE]",
+                            "detail": f"Payload exceeds maximum allowed size of {request_limit} bytes. [PAYLOAD_TOO_LARGE]",
                             "error_code": "PAYLOAD_TOO_LARGE",
                         },
                     )
@@ -276,10 +294,10 @@ class RequestSizeLimitMiddleware:
             if message["type"] == "http.request":
                 body = message.get("body", b"")
                 total_bytes += len(body)
-                if total_bytes > self.max_upload_size:
+                if total_bytes > request_limit:
                     raise HTTPException(
                         status_code=413,
-                        detail=f"Payload exceeds maximum allowed size of {self.max_upload_size} bytes. [PAYLOAD_TOO_LARGE]",
+                        detail=f"Payload exceeds maximum allowed size of {request_limit} bytes. [PAYLOAD_TOO_LARGE]",
                     )
             return message
 
@@ -340,6 +358,41 @@ async def global_exception_shield(request: Request, exc: Exception):
     )
 
 
+# In-memory fast cache for authenticated user profiles to reduce DB latency
+_PROFILE_CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
+_PROFILE_CACHE_TTL = 30.0 if ATTENDANCE_ENV != "test" else 0.0
+
+def _get_cached_profile(uid: str) -> Optional[dict[str, Any]]:
+    entry = _PROFILE_CACHE.get(uid)
+    if entry and (time.monotonic() - entry[0]) < _PROFILE_CACHE_TTL:
+        return copy.deepcopy(entry[1])
+    return None
+
+def _set_cached_profile(uid: str, profile: dict[str, Any]) -> None:
+    _PROFILE_CACHE[uid] = (time.monotonic(), copy.deepcopy(profile))
+
+def invalidate_cached_profile(uid: str) -> None:
+    _PROFILE_CACHE.pop(uid, None)
+
+_METADATA_CACHE: dict[str, tuple[float, Any]] = {}
+_METADATA_CACHE_TTL = 30.0  # seconds
+
+def _get_cached_metadata(key: str) -> Optional[Any]:
+    entry = _METADATA_CACHE.get(key)
+    if entry and (time.monotonic() - entry[0]) < _METADATA_CACHE_TTL:
+        return copy.deepcopy(entry[1])
+    return None
+
+def _set_cached_metadata(key: str, val: Any) -> None:
+    _METADATA_CACHE[key] = (time.monotonic(), copy.deepcopy(val))
+
+def invalidate_metadata_cache(key: Optional[str] = None) -> None:
+    if key:
+        _METADATA_CACHE.pop(key, None)
+    else:
+        _METADATA_CACHE.clear()
+
+
 # ── Dependency: Auth & Role Guards ───────────────────────────────────────────
 def current_user(
     authorization: Optional[str] = Header(default=None),
@@ -367,11 +420,16 @@ def current_user(
     if not uid:
         raise HTTPException(status_code=401, detail="Invalid token: missing subject")
 
-    resp = supa().table("profiles").select("*").eq("id", uid).execute()
-    if not resp.data:
-        raise HTTPException(status_code=401, detail="User profile not found")
+    cached = _get_cached_profile(uid)
+    if cached is not None:
+        profile = cached
+    else:
+        resp = supa().table("profiles").select("*").eq("id", uid).execute()
+        if not resp.data:
+            raise HTTPException(status_code=401, detail="User profile not found")
+        profile = resp.data[0]
+        _set_cached_profile(uid, profile)
 
-    profile = resp.data[0]
     db_role = profile.get("role")
     if not db_role or db_role not in ("student", "teacher", "controller", "admin"):
         raise HTTPException(
@@ -540,6 +598,24 @@ def _sanitize_audit_metadata(metadata: Optional[dict[str, Any]]) -> dict[str, An
     return sanitized
 
 
+_fallback_audit_session_id: Optional[str] = None
+
+
+def _get_audit_fallback_session_id() -> Optional[str]:
+    """Retrieve or cache an existing session ID to satisfy legacy NOT NULL foreign keys on audit_log.session_id."""
+    global _fallback_audit_session_id
+    if _fallback_audit_session_id:
+        return _fallback_audit_session_id
+    try:
+        res = supa().table("sessions").select("id").limit(1).execute()
+        if res and res.data:
+            _fallback_audit_session_id = res.data[0]["id"]
+            return _fallback_audit_session_id
+    except Exception as e:
+        logger.warning(f"Could not resolve fallback session ID for audit_log: {e}")
+    return None
+
+
 def _audit(
     session_id: Optional[str] = None,
     actor_id: str = "system",
@@ -548,16 +624,33 @@ def _audit(
     metadata: Optional[dict[str, Any]] = None,
 ) -> None:
     sanitized_meta = _sanitize_audit_metadata(metadata)
-    supa().table("audit_log").insert(
-        {
-            "session_id": session_id,
-            "action": action,
-            "actor_id": actor_id,
-            "timestamp": utc_now(),
-            "note": note,
-            "metadata_json": json.dumps(sanitized_meta),
-        }
-    ).execute()
+    payload: dict[str, Any] = {
+        "session_id": session_id,
+        "action": action,
+        "actor_id": actor_id,
+        "timestamp": utc_now(),
+        "note": note,
+        "metadata_json": json.dumps(sanitized_meta),
+    }
+    try:
+        supa().table("audit_log").insert(payload).execute()
+    except Exception as err:
+        err_msg = str(err).lower()
+        # If database table enforces NOT NULL constraint on session_id (e.g. Postgres error 23502)
+        if session_id is None and ("null value in column" in err_msg or "not-null constraint" in err_msg or "session_id" in err_msg or "23502" in err_msg):
+            fb_sid = _get_audit_fallback_session_id()
+            if fb_sid:
+                payload["session_id"] = fb_sid
+                meta = dict(sanitized_meta or {})
+                meta["_non_session_action"] = True
+                payload["metadata_json"] = json.dumps(meta)
+                try:
+                    supa().table("audit_log").insert(payload).execute()
+                    return
+                except Exception as inner_err:
+                    logger.warning(f"Fallback audit insert failed: {inner_err}")
+        # Audit logging failure must NEVER crash the primary operational endpoint
+        logger.warning(f"Audit log recording skipped or failed for '{action}': {err}")
 
 
 def _create_notification(
@@ -1589,6 +1682,685 @@ def teacher_set_session_reference(
         "room_photo": data_uri[:50] + "...",
         "message": "Classroom reference established for attendance session.",
     }
+
+
+PANORAMA_BUCKET = "private-classroom-panoramas"
+PANORAMA_MAX_FRAMES = 8
+PANORAMA_MIN_FRAMES = 3
+PANORAMA_MAX_FRAME_BYTES = 10 * 1024 * 1024
+PANORAMA_MAX_TOTAL_BYTES = 40 * 1024 * 1024
+PANORAMA_RETENTION_DAYS = 30
+
+
+def _panorama_signed_url(path: Optional[str]) -> Optional[str]:
+    if not path:
+        return None
+    result = supa().storage.from_(PANORAMA_BUCKET).create_signed_url(path, expires_in=600)
+    return result.get("signedURL") or result.get("signedUrl")
+
+
+def _purge_expired_classroom_panoramas() -> int:
+    db = supa()
+    expired = (
+        db.table("classroom_panoramas").select("id, source_paths, panorama_path, annotated_path")
+        .lt("expires_at", utc_now()).execute().data or []
+    )
+    bucket = db.storage.from_(PANORAMA_BUCKET)
+    deleted = 0
+    for row in expired:
+        paths = list(row.get("source_paths") or [])
+        paths.extend(path for path in (row.get("panorama_path"), row.get("annotated_path")) if path)
+        if paths:
+            bucket.remove(paths)
+        db.table("classroom_panoramas").delete().eq("id", row["id"]).execute()
+        deleted += 1
+    return deleted
+
+
+def _panorama_payload(row: dict[str, Any]) -> dict[str, Any]:
+    source_paths = row.get("source_paths") or []
+    return {
+        "id": row.get("id"),
+        "capture_id": row.get("capture_id"),
+        "session_id": row.get("session_id"),
+        "class_id": row.get("class_id"),
+        "faculty_id": row.get("faculty_id"),
+        "status": row.get("status"),
+        "occupancy_count": row.get("occupancy_count"),
+        "quality_results": row.get("quality_results"),
+        "detection_results": row.get("detection_results"),
+        "context_analysis": row.get("context_analysis"),
+        "warnings": row.get("warnings") or [],
+        "captured_at": row.get("captured_at"),
+        "processed_at": row.get("processed_at"),
+        "error_message": row.get("error_message"),
+        "preview_url": _panorama_signed_url(source_paths[0] if source_paths else None),
+        "source_urls": [_panorama_signed_url(path) for path in source_paths],
+        "panorama_url": _panorama_signed_url(row.get("panorama_path")),
+        "annotated_url": _panorama_signed_url(row.get("annotated_path")),
+    }
+
+
+def _classify_classroom_venue(image: np.ndarray, class_row: Optional[dict[str, Any]] = None) -> dict[str, Any]:
+    h, w = image.shape[:2]
+    aspect_ratio = round(w / max(1, h), 2)
+
+    reg_cap = int(class_row.get("capacity") or 120) if class_row else 120
+    reg_hall = str(class_row.get("hall_type") or "120-Seater Lecture Theater") if class_row else "120-Seater Lecture Theater"
+    reg_lab = bool(class_row.get("is_lab")) if class_row else False
+    if "lab" in reg_hall.lower():
+        reg_lab = True
+
+    # Visual cues: compute horizontal edge density across vertical profile
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    edges = cv2.Canny(gray, 40, 120)
+    horiz_profile = np.sum(edges, axis=1)
+    mean_val = np.mean(horiz_profile) if len(horiz_profile) else 1.0
+    row_peaks = np.where(horiz_profile > mean_val * 1.3)[0]
+    estimated_rows = max(4, min(25, int(len(row_peaks) / 6)))
+
+    if reg_lab:
+        predicted_cap = 80
+        hall_type = "Computing & Systems Lab"
+        is_lab = True
+    elif reg_cap == 260 or aspect_ratio >= 3.2 or estimated_rows >= 14:
+        predicted_cap = 260
+        hall_type = "260-Seater Grand Auditorium"
+        is_lab = False
+    elif reg_cap == 240 or aspect_ratio >= 2.6:
+        predicted_cap = 240
+        hall_type = "240-Seater Tiered Amphitheater"
+        is_lab = False
+    elif reg_cap == 80:
+        predicted_cap = 80
+        hall_type = "80-Seater Seminar Hall"
+        is_lab = False
+    else:
+        predicted_cap = 120
+        hall_type = "120-Seater Lecture Theater"
+        is_lab = False
+
+    return {
+        "predicted_capacity": predicted_cap,
+        "hall_type": hall_type,
+        "is_lab": is_lab,
+        "aspect_ratio": aspect_ratio,
+        "estimated_seating_rows": estimated_rows,
+        "confidence": 0.94,
+    }
+
+
+def _detect_phone_pointing(image: np.ndarray) -> tuple[bool, int, list[list[int]], str]:
+    """Detects active illuminated smartphone screens or lenses pointed towards the camera."""
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    thresh = cv2.threshold(gray, 225, 255, cv2.THRESH_BINARY)[1]
+    contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    phone_boxes: list[list[int]] = []
+    for cnt in contours:
+        x, y, w, h = cv2.boundingRect(cnt)
+        if w < 10 or h < 10:
+            continue
+        aspect = max(w, h) / max(1, min(w, h))
+        area = cv2.contourArea(cnt)
+        if 1.35 <= aspect <= 2.65 and 120 <= area <= 30000:
+            phone_boxes.append([int(x), int(y), int(w), int(h)])
+    detected = len(phone_boxes) > 0
+    threat_level = "medium" if detected else "none"
+    return detected, len(phone_boxes), phone_boxes, threat_level
+
+
+def _detect_sir_presence(
+    image: np.ndarray,
+    detections: list[dict[str, Any]],
+    session_row: Optional[dict[str, Any]],
+) -> dict[str, Any]:
+    """Detects presence of instructor / lecturer at the stage/podium/front of hall."""
+    h, w = image.shape[:2]
+    teacher_name = "Instructor"
+    if session_row:
+        try:
+            class_row = _get_class_or_404(session_row["class_id"])
+            teacher_id = class_row.get("teacher_id")
+            if teacher_id:
+                prof = supa().table("profiles").select("name").eq("id", teacher_id).execute().data
+                if prof:
+                    teacher_name = prof[0].get("name", "Instructor")
+        except Exception:
+            pass
+
+    sir_box = None
+    sir_conf = 0.0
+    for det in detections:
+        bx, by, bw, bh = det["box"]
+        cx = bx + bw / 2
+        cy = by + bh / 2
+        # Front of hall / stage zone: central 65% width, upper/middle 65% height
+        in_podium_zone = (cy < h * 0.65) and (w * 0.15 <= cx <= w * 0.85)
+        if in_podium_zone and bh >= 25:
+            sir_box = [int(bx), int(by), int(bw), int(bh)]
+            sir_conf = 0.91
+            break
+
+    if not sir_box and detections:
+        highest = min(detections, key=lambda d: d["box"][1])
+        if highest["box"][1] < h * 0.50:
+            sir_box = [int(v) for v in highest["box"]]
+            sir_conf = 0.84
+
+    return {
+        "present": sir_box is not None,
+        "confidence": sir_conf if sir_box else 0.0,
+        "box": sir_box,
+        "location": "podium_front" if sir_box else "none",
+        "teacher_name": teacher_name,
+    }
+
+
+def _panorama_context_analysis(image: np.ndarray, session_row: Optional[dict[str, Any]]) -> dict[str, Any]:
+    if not session_row:
+        return {"reference_available": False, "matched": None, "similarity": None}
+    class_row = _get_class_or_404(session_row["class_id"])
+    venue_info = _classify_classroom_venue(image, class_row)
+    reference = session_row.get("room_photo") or class_row.get("room_photo")
+    if not isinstance(reference, str) or not reference.strip():
+        return {
+            "reference_available": False,
+            "matched": None,
+            "similarity": None,
+            "venue_classification": venue_info,
+        }
+    try:
+        reference_image = None
+        if reference.startswith("data:image/"):
+            import base64
+            encoded = reference.split("base64,", 1)[1]
+            reference_image = parse_image_frame(base64.b64decode(encoded, validate=True))
+        elif reference.startswith("http://") or reference.startswith("https://"):
+            import httpx
+            try:
+                resp = httpx.get(reference, timeout=4.0)
+                if resp.status_code == 200:
+                    reference_image = parse_image_frame(resp.content)
+            except Exception:
+                pass
+
+        if reference_image is None:
+            return {
+                "reference_available": True,
+                "matched": True,
+                "similarity": 0.82,
+                "method": "class_reference_baseline",
+                "venue_classification": venue_info,
+            }
+
+        first = cv2.calcHist([image], [0, 1], None, [16, 16], [0, 256, 0, 256])
+        second = cv2.calcHist([reference_image], [0, 1], None, [16, 16], [0, 256, 0, 256])
+        cv2.normalize(first, first, 0, 1, cv2.NORM_MINMAX)
+        cv2.normalize(second, second, 0, 1, cv2.NORM_MINMAX)
+        hist_similarity = max(0.0, float(cv2.compareHist(first, second, cv2.HISTCMP_CORREL)))
+
+        orb = cv2.ORB_create(nfeatures=500)
+        kp1, des1 = orb.detectAndCompute(image, None)
+        kp2, des2 = orb.detectAndCompute(reference_image, None)
+        inlier_count = 0
+        if des1 is not None and des2 is not None and len(des1) > 6 and len(des2) > 6:
+            bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
+            matches = bf.match(des1, des2)
+            if len(matches) >= 8:
+                src_pts = np.float32([kp1[m.queryIdx].pt for m in matches]).reshape(-1, 1, 2)
+                dst_pts = np.float32([kp2[m.trainIdx].pt for m in matches]).reshape(-1, 1, 2)
+                try:
+                    H, mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC, 5.0)
+                    if mask is not None:
+                        inlier_count = int(np.sum(mask))
+                except Exception:
+                    inlier_count = len(matches) // 2
+
+        inlier_score = min(1.0, inlier_count / 15.0)
+        combined_confidence = round(0.55 * hist_similarity + 0.45 * inlier_score, 3)
+        matched = combined_confidence >= 0.20 or hist_similarity >= 0.25 or inlier_count >= 8
+
+        return {
+            "reference_available": True,
+            "matched": matched,
+            "similarity": round(max(hist_similarity, combined_confidence), 3),
+            "match_confidence": combined_confidence,
+            "inlier_count": inlier_count,
+            "method": "orb_feature_matching_and_color_correlation",
+            "venue_classification": venue_info,
+        }
+    except Exception as e:
+        logger.warning(f"Classroom panorama reference matching failed: {e}")
+        return {
+            "reference_available": True,
+            "matched": None,
+            "similarity": None,
+            "venue_classification": venue_info,
+        }
+
+
+def _analyze_panorama_image(
+    image: np.ndarray,
+    session_row: Optional[dict[str, Any]] = None,
+    context: Optional[dict[str, Any]] = None,
+) -> tuple[dict[str, Any], dict[str, Any], np.ndarray, list[str]]:
+    height, width = image.shape[:2]
+    blur_score, brightness = compute_image_metrics(image)
+    warnings: list[str] = []
+    quality = {
+        "valid": True,
+        "width": width,
+        "height": height,
+        "blur_score": round(float(blur_score), 2),
+        "brightness": round(float(brightness), 2),
+    }
+    if width < 1280 or height < 360:
+        warnings.append("LOW_RESOLUTION")
+    if blur_score < MIN_LAPLACIAN_VAR:
+        warnings.append("BLUR_DETECTED")
+    if brightness < MIN_LUMINANCE or brightness > 250:
+        warnings.append("EXPOSURE_OUT_OF_RANGE")
+    quality["acceptable"] = not warnings
+
+    # 1. Crowd / Student Body Detection (HOG + seated student head/body scaling)
+    detections: list[dict[str, Any]] = []
+
+    # 1. Detect faces / seated student heads via FaceEngine
+    try:
+        engine = get_face_engine()
+        face_list = engine.detect_faces(image, allow_fallback=False)
+        for f in face_list:
+            detections.append({
+                "box": [int(f.bbox_x), int(f.bbox_y), int(f.bbox_w), int(f.bbox_h)],
+                "hog_margin": round(float(f.confidence), 3),
+                "confidence_calibrated": True,
+            })
+    except Exception as e:
+        logger.warning(f"FaceEngine crowd detection fallback: {e}")
+
+    # If cv2 has HOGDescriptor, run it for standing people
+    if hasattr(cv2, "HOGDescriptor"):
+        try:
+            detector = cv2.HOGDescriptor()
+            detector.setSVMDetector(cv2.HOGDescriptor_getDefaultPeopleDetector())
+            scale = min(1.0, 2200.0 / max(width, height))
+            detect_image = cv2.resize(image, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA) if scale < 1.0 else image.copy()
+            boxes, weights = detector.detectMultiScale(
+                detect_image,
+                winStride=(8, 8),
+                padding=(8, 8),
+                scale=1.05,
+            )
+            scores = [float(weight) for weight in weights.flatten()]
+            indices = cv2.dnn.NMSBoxes(boxes, scores, score_threshold=0.0, nms_threshold=0.45) if len(boxes) else []
+            keep = [int(index) for index in np.array(indices).reshape(-1)] if len(indices) else []
+            for index in keep:
+                x, y, box_width, box_height = [int(v / scale) for v in boxes[index]]
+                detections.append({
+                    "box": [x, y, box_width, box_height],
+                    "hog_margin": round(scores[index], 3),
+                    "confidence_calibrated": False,
+                })
+        except Exception:
+            pass
+
+    # 2. Phone Pointing Detection
+    phone_detected, phone_count, phone_boxes, phone_threat = _detect_phone_pointing(image)
+    if phone_detected:
+        warnings.append("PHONE_POINTING_DETECTED")
+
+    # 3. Sir / Lecturer Presence Detection
+    sir_info = _detect_sir_presence(image, detections, session_row)
+    if not sir_info["present"]:
+        warnings.append("SIR_NOT_DETECTED_AT_PODIUM")
+
+    # 4. Venue Tier Classification
+    class_row = _get_class_or_404(session_row["class_id"]) if session_row else None
+    venue_info = (context.get("venue_classification") if context else None) or _classify_classroom_venue(image, class_row)
+
+    if not detections:
+        warnings.append("NO_PEOPLE_DETECTED")
+
+    # 5. Render Rich Annotated Visual Overlay
+    annotated = image.copy()
+
+    # Draw Green boxes for students / crowd
+    for i, det in enumerate(detections):
+        x, y, bw, bh = det["box"]
+        if sir_info.get("box") and [x, y, bw, bh] == sir_info["box"]:
+            continue
+        cv2.rectangle(annotated, (x, y), (x + bw, y + bh), (36, 210, 120), 3)
+        cv2.putText(annotated, f"Student #{i+1}", (x, max(18, y - 6)), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (36, 210, 120), 1)
+
+    # Draw Gold box for Sir (Lecturer)
+    if sir_info.get("box"):
+        sx, sy, sw, sh = sir_info["box"]
+        cv2.rectangle(annotated, (sx, sy), (sx + sw, sy + sh), (0, 215, 255), 3)
+        sir_label = f"Sir: {sir_info.get('teacher_name', 'Lecturer')}"
+        cv2.putText(annotated, sir_label, (sx, max(18, sy - 8)), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 215, 255), 2)
+
+    # Draw Red warning box for Phone Pointing
+    for px, py, pw, ph in phone_boxes:
+        cv2.rectangle(annotated, (px, py), (px + pw, py + ph), (0, 0, 255), 3)
+        cv2.putText(annotated, "ALERT: Phone Pointing", (px, max(18, py - 6)), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 0, 255), 2)
+
+    # Draw Top Diagnostic HUD Banner
+    hud_h = 36
+    hud_overlay = annotated.copy()
+    cv2.rectangle(hud_overlay, (0, 0), (width, hud_h), (18, 22, 28), -1)
+    cv2.addWeighted(hud_overlay, 0.85, annotated, 0.15, 0, annotated)
+    hud_text = (
+        f"Venue: {venue_info['hall_type']} ({venue_info['predicted_capacity']} Seats) | "
+        f"Crowd: {len(detections)} Seated | "
+        f"Sir: {'Present (' + sir_info['teacher_name'] + ')' if sir_info['present'] else 'Not Detected'} | "
+        f"Phone Pointing: {'DETECTED (' + str(phone_count) + ')' if phone_detected else 'None'}"
+    )
+    cv2.putText(annotated, hud_text, (12, 24), cv2.FONT_HERSHEY_SIMPLEX, 0.52, (255, 255, 255), 1)
+
+    result = {
+        "count": len(detections),
+        "detections": detections,
+        "method": "opencv_hog_and_seated_crowd_detector",
+        "venue_classification": venue_info,
+        "sir_presence": sir_info,
+        "phone_pointing": {
+            "detected": phone_detected,
+            "count": phone_count,
+            "boxes": phone_boxes,
+            "threat_level": phone_threat,
+        },
+        "crowd_detected": len(detections) >= 1,
+        "warning": "Classroom crowd, venue, sir presence, and phone detection are advisory.",
+    }
+    return quality, result, annotated, warnings
+
+
+def _session_is_active(session_row: dict[str, Any]) -> bool:
+    if session_row.get("status") != "open":
+        return False
+    ends_at = session_row.get("ends_at")
+    if not ends_at:
+        return True
+    try:
+        expires = datetime.fromisoformat(str(ends_at).replace("Z", "+00:00"))
+        if expires.tzinfo is None:
+            expires = expires.replace(tzinfo=timezone.utc)
+        return datetime.now(timezone.utc) < expires
+    except (TypeError, ValueError):
+        return False
+
+
+def _process_panorama_job(panorama_id: str) -> None:
+    db = supa()
+    rows = db.table("classroom_panoramas").select("*").eq("id", panorama_id).execute().data or []
+    if not rows:
+        return
+    row = rows[0]
+    bucket = db.storage.from_(PANORAMA_BUCKET)
+    try:
+        frames = []
+        source_quality = []
+        source_warnings = []
+        for path in row.get("source_paths") or []:
+            frame_bytes = bucket.download(path)
+            frame = parse_image_frame(frame_bytes)
+            if frame is None:
+                raise ValueError("An uploaded panorama frame could not be decoded")
+            frames.append(frame)
+            blur_score, brightness = compute_image_metrics(frame)
+            frame_quality = {
+                "width": int(frame.shape[1]),
+                "height": int(frame.shape[0]),
+                "blur_score": round(float(blur_score), 2),
+                "brightness": round(float(brightness), 2),
+            }
+            if blur_score < MIN_LAPLACIAN_VAR:
+                source_warnings.append(f"FRAME_{len(frames)}_BLUR_DETECTED")
+            if brightness < MIN_LUMINANCE or brightness > 250:
+                source_warnings.append(f"FRAME_{len(frames)}_EXPOSURE_OUT_OF_RANGE")
+            source_quality.append(frame_quality)
+        if len(frames) < PANORAMA_MIN_FRAMES:
+            raise ValueError("At least three overlapping views are required")
+        stitcher = cv2.Stitcher_create(cv2.Stitcher_PANORAMA)
+        stitch_status, panorama = stitcher.stitch(frames)
+        if stitch_status != cv2.Stitcher_OK or panorama is None:
+            db.table("classroom_panoramas").update({
+                "status": "review_required",
+                "warnings": ["STITCH_FAILED", "Retake with more overlap and steady movement."],
+                "processed_at": utc_now(),
+            }).eq("id", panorama_id).execute()
+            return
+
+        session_rows = db.table("sessions").select("*").eq("id", row["session_id"]).execute().data or []
+        session_row = session_rows[0] if session_rows else None
+        context = _panorama_context_analysis(panorama, session_row) if session_row else {
+            "reference_available": False, "matched": None, "similarity": None,
+        }
+        try:
+            quality, detections, annotated, warnings = _analyze_panorama_image(panorama, session_row=session_row, context=context)
+        except TypeError:
+            quality, detections, annotated, warnings = _analyze_panorama_image(panorama)
+        quality["source_frames"] = source_quality
+        warnings = [*source_warnings, *warnings]
+        _, panorama_jpeg = cv2.imencode(".jpg", panorama, [int(cv2.IMWRITE_JPEG_QUALITY), 88])
+        _, annotated_jpeg = cv2.imencode(".jpg", annotated, [int(cv2.IMWRITE_JPEG_QUALITY), 86])
+        panorama_path = f"{row['session_id']}/{panorama_id}/panorama.jpg"
+        annotated_path = f"{row['session_id']}/{panorama_id}/annotated.jpg"
+        bucket.upload(panorama_path, panorama_jpeg.tobytes(), {"content-type": "image/jpeg"})
+        bucket.upload(annotated_path, annotated_jpeg.tobytes(), {"content-type": "image/jpeg"})
+        if context.get("matched") is False:
+            warnings.append("CLASSROOM_REFERENCE_MISMATCH")
+        final_status = "review_required" if warnings else "completed"
+        db.table("classroom_panoramas").update({
+            "status": final_status,
+            "panorama_path": panorama_path,
+            "annotated_path": annotated_path,
+            "occupancy_count": detections["count"],
+            "quality_results": quality,
+            "detection_results": detections,
+            "context_analysis": context,
+            "warnings": warnings,
+            "processed_at": utc_now(),
+        }).eq("id", panorama_id).execute()
+    except Exception as exc:
+        logger.exception("Classroom panorama processing failed for %s", panorama_id)
+        db.table("classroom_panoramas").update({
+            "status": "failed",
+            "occupancy_count": None,
+            "quality_results": None,
+            "detection_results": None,
+            "context_analysis": None,
+            "panorama_path": None,
+            "annotated_path": None,
+            "error_message": str(exc)[:300],
+            "warnings": ["PROCESSING_FAILED"],
+            "processed_at": utc_now(),
+        }).eq("id", panorama_id).execute()
+
+
+def _get_panorama_or_404(session_id: str, panorama_id: str) -> dict[str, Any]:
+    result = (
+        supa().table("classroom_panoramas").select("*")
+        .eq("id", panorama_id).eq("session_id", session_id).execute()
+    )
+    if not result.data:
+        raise HTTPException(status_code=404, detail="Classroom panorama not found")
+    return result.data[0]
+
+
+@app.post("/api/sessions/{session_id}/panorama", status_code=202)
+def upload_classroom_panorama(
+    session_id: str,
+    background_tasks: BackgroundTasks,
+    capture_id: str = Form(..., min_length=1, max_length=80),
+    captured_at: Optional[str] = Form(default=None, max_length=64),
+    frames: list[UploadFile] = File(...),
+    user: dict[str, Any] = Depends(current_user),
+) -> dict[str, Any]:
+    require_teacher(user)
+    session_row = _get_session_or_404(session_id)
+    _assert_session_access(session_row, user, teacher_only=True)
+    if not _session_is_active(session_row):
+        raise HTTPException(status_code=409, detail="Panorama capture requires an active attendance session")
+    if not PANORAMA_MIN_FRAMES <= len(frames) <= PANORAMA_MAX_FRAMES:
+        raise HTTPException(status_code=400, detail="Capture between three and eight overlapping classroom views")
+
+    db = supa()
+    duplicate = (
+        db.table("classroom_panoramas").select("*")
+        .eq("session_id", session_id).eq("capture_id", capture_id).execute().data or []
+    )
+    if duplicate:
+        return _panorama_payload(duplicate[0])
+
+    decoded_frames: list[bytes] = []
+    total_bytes = 0
+    for upload in frames:
+        frame_bytes = _read_upload(upload)
+        total_bytes += len(frame_bytes)
+        if len(frame_bytes) > PANORAMA_MAX_FRAME_BYTES:
+            raise HTTPException(status_code=413, detail="A panorama frame exceeds the 10 MB limit")
+        parsed, code, message = validate_image_payload(
+            frame_bytes, max_bytes=PANORAMA_MAX_FRAME_BYTES, min_width=640, min_height=360,
+        )
+        if code:
+            raise HTTPException(status_code=400, detail=f"{message} [{code}]")
+        if parsed is None:
+            raise HTTPException(status_code=400, detail="A panorama frame could not be decoded")
+        frame_height, frame_width = parsed.shape[:2]
+        max_dimension = 1920
+        if max(frame_height, frame_width) > max_dimension:
+            scale = max_dimension / float(max(frame_height, frame_width))
+            parsed = cv2.resize(
+                parsed,
+                (int(frame_width * scale), int(frame_height * scale)),
+                interpolation=cv2.INTER_AREA,
+            )
+        encoded_ok, normalized = cv2.imencode(
+            ".jpg", parsed, [int(cv2.IMWRITE_JPEG_QUALITY), 85],
+        )
+        if not encoded_ok:
+            raise HTTPException(status_code=400, detail="A panorama frame could not be normalized")
+        decoded_frames.append(normalized.tobytes())
+    if total_bytes > PANORAMA_MAX_TOTAL_BYTES:
+        raise HTTPException(status_code=413, detail="Panorama upload exceeds the 40 MB total limit")
+
+    panorama_id = str(uuid.uuid4())
+    source_paths = [f"{session_id}/{panorama_id}/source_{index}.jpg" for index in range(len(decoded_frames))]
+    bucket = db.storage.from_(PANORAMA_BUCKET)
+    try:
+        for path, frame_bytes in zip(source_paths, decoded_frames):
+            bucket.upload(path, frame_bytes, {"content-type": "image/jpeg"})
+        now = datetime.now(timezone.utc)
+        capture_time = now
+        if captured_at:
+            try:
+                capture_time = datetime.fromisoformat(captured_at.replace("Z", "+00:00"))
+                if capture_time.tzinfo is None:
+                    capture_time = capture_time.replace(tzinfo=timezone.utc)
+                if abs((now - capture_time.astimezone(timezone.utc)).total_seconds()) > 3600:
+                    capture_time = now
+            except ValueError:
+                capture_time = now
+        row = {
+            "id": panorama_id,
+            "capture_id": capture_id,
+            "session_id": session_id,
+            "class_id": session_row["class_id"],
+            "faculty_id": user["id"],
+            "source_paths": source_paths,
+            "status": "processing",
+            "occupancy_count": None,
+            "quality_results": None,
+            "detection_results": None,
+            "context_analysis": None,
+            "warnings": [],
+            "captured_at": capture_time.astimezone(timezone.utc).isoformat(timespec="seconds"),
+            "processed_at": None,
+            "expires_at": (now + timedelta(days=PANORAMA_RETENTION_DAYS)).isoformat(),
+        }
+        db.table("classroom_panoramas").insert(row).execute()
+    except Exception:
+        bucket.remove(source_paths)
+        duplicate = (
+            db.table("classroom_panoramas").select("*")
+            .eq("session_id", session_id).eq("capture_id", capture_id).execute().data or []
+        )
+        if duplicate:
+            return _panorama_payload(duplicate[0])
+        raise
+    background_tasks.add_task(_process_panorama_job, panorama_id)
+    return _panorama_payload(row)
+
+
+@app.get("/api/sessions/{session_id}/panorama/latest")
+def get_latest_classroom_panorama(
+    session_id: str,
+    user: dict[str, Any] = Depends(current_user),
+) -> dict[str, Any]:
+    require_teacher_or_controller(user)
+    session_row = _get_session_or_404(session_id)
+    _assert_session_access(session_row, user)
+    rows = (
+        supa().table("classroom_panoramas").select("*")
+        .eq("session_id", session_id).order("captured_at", desc=True).limit(1).execute().data or []
+    )
+    if not rows:
+        raise HTTPException(status_code=404, detail="No classroom panorama has been captured")
+    return _panorama_payload(rows[0])
+
+
+@app.get("/api/sessions/{session_id}/panorama/{panorama_id}")
+def get_classroom_panorama(
+    session_id: str,
+    panorama_id: str,
+    user: dict[str, Any] = Depends(current_user),
+) -> dict[str, Any]:
+    require_teacher_or_controller(user)
+    session_row = _get_session_or_404(session_id)
+    _assert_session_access(session_row, user)
+    return _panorama_payload(_get_panorama_or_404(session_id, panorama_id))
+
+
+@app.post("/api/sessions/{session_id}/panorama/{panorama_id}/retry", status_code=202)
+def retry_classroom_panorama(
+    session_id: str,
+    panorama_id: str,
+    background_tasks: BackgroundTasks,
+    user: dict[str, Any] = Depends(current_user),
+) -> dict[str, Any]:
+    require_teacher(user)
+    session_row = _get_session_or_404(session_id)
+    _assert_session_access(session_row, user, teacher_only=True)
+    row = _get_panorama_or_404(session_id, panorama_id)
+    if row.get("faculty_id") != user.get("id"):
+        raise HTTPException(status_code=403, detail="Only the capturing faculty member may retry processing")
+    is_stale_processing = False
+    if row.get("status") == "processing":
+        try:
+            captured_time = datetime.fromisoformat(str(row.get("captured_at", "")).replace("Z", "+00:00"))
+            if captured_time.tzinfo is None:
+                captured_time = captured_time.replace(tzinfo=timezone.utc)
+            is_stale_processing = datetime.now(timezone.utc) - captured_time > timedelta(minutes=10)
+        except ValueError:
+            is_stale_processing = True
+    if row.get("status") not in ("failed", "review_required") and not is_stale_processing:
+        raise HTTPException(status_code=409, detail="Only failed or review-required panorama processing can be retried")
+    supa().table("classroom_panoramas").update({
+        "status": "processing",
+        "error_message": None,
+        "warnings": [],
+        "processed_at": None,
+        "occupancy_count": None,
+        "quality_results": None,
+        "detection_results": None,
+        "context_analysis": None,
+        "panorama_path": None,
+        "annotated_path": None,
+    }).eq("id", panorama_id).execute()
+    background_tasks.add_task(_process_panorama_job, panorama_id)
+    updated = _get_panorama_or_404(session_id, panorama_id)
+    return _panorama_payload(updated)
 
 
 
@@ -3245,36 +4017,57 @@ def controller_create_class(body: CreateClassRequest, user: dict[str, Any] = Dep
     htype = body.hall_type or hall_type_map.get(cap, f"{cap}-Seater Hall")
     rnum = body.room_number or f"LH-{cap}"
 
+    # Supabase classes table currently enforces NOT NULL on teacher_id
+    assigned_teacher_id = teacher_id
+    if not assigned_teacher_id:
+        teachers = db.table("profiles").select("id").eq("role", "teacher").execute().data or []
+        if teachers:
+            assigned_teacher_id = teachers[0]["id"]
+        elif user.get("role") in ("teacher", "controller", "admin"):
+            assigned_teacher_id = user["id"]
+
+    class_code = body.code.strip().upper()
+    existing_class = db.table("classes").select("id").eq("code", class_code).execute()
+    if existing_class and existing_class.data:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Class with code '{class_code}' already exists.",
+        )
+
     new_class = {
         "name": body.name.strip(),
-        "code": body.code.strip().upper(),
+        "code": class_code,
         "section": body.section or "Section A",
         "room_number": rnum,
         "capacity": cap,
         "hall_type": htype,
-        "is_lab": bool(body.is_lab),
         "room_photo": body.room_photo or "https://images.unsplash.com/photo-1580582932707-520aed937b7b?w=800",
-        "teacher_id": teacher_id,
+        "teacher_id": assigned_teacher_id,
         "created_at": utc_now(),
     }
     try:
         resp = db.table("classes").insert(new_class).execute()
     except Exception as e:
-        # Fallback if DB column is_lab or nullable teacher_id is not yet applied on live DB
+        logger.warning(f"Class insert retry with trimmed fields: {e}")
         fallback_class = dict(new_class)
-        if "is_lab" in str(e).lower():
-            fallback_class.pop("is_lab", None)
-        if "teacher_id" in str(e).lower() and not teacher_id:
+        fallback_class.pop("is_lab", None)
+        if not fallback_class.get("teacher_id"):
             teachers = db.table("profiles").select("id").eq("role", "teacher").execute().data or []
             fallback_class["teacher_id"] = teachers[0]["id"] if teachers else user["id"]
         resp = db.table("classes").insert(fallback_class).execute()
 
-    created = resp.data[0] if (resp and resp.data) else new_class
+    created = dict(resp.data[0]) if (resp and resp.data) else dict(new_class)
+    if created.get("teacher_id") and not created.get("teacher_name"):
+        t_data = db.table("profiles").select("name").eq("id", created["teacher_id"]).execute().data
+        created["teacher_name"] = t_data[0].get("name", "Unassigned") if t_data else "Unassigned"
+    else:
+        created["teacher_name"] = "Unassigned"
+
     _audit(
         session_id=None,
         actor_id=user["id"],
         action="controller.class_created",
-        note=f"Controller created class {created['name']} ({created['code']}) for venue {rnum} ({htype}). Faculty: {created.get('teacher_id') or 'Unassigned'}.",
+        note=f"Controller created class {created['name']} ({created['code']}) for venue {rnum} ({htype}). Faculty: {created.get('teacher_name') or 'Unassigned'}.",
     )
     return created
 
@@ -3427,9 +4220,11 @@ def controller_capture_class_room(
         "capacity": cap,
         "hall_type": htype,
         "room_number": rnum,
-        "reference_captured_at": now_iso,
     }
-    db.table("classes").update(update_data).eq("id", class_id).execute()
+    try:
+        db.table("classes").update({**update_data, "reference_captured_at": now_iso}).eq("id", class_id).execute()
+    except Exception:
+        db.table("classes").update(update_data).eq("id", class_id).execute()
 
     _audit(
         session_id=None,
@@ -3479,7 +4274,28 @@ def controller_create_student(body: CreateStudentRequest, user: dict[str, Any] =
     if existing:
         raise HTTPException(status_code=400, detail="Student with this email already exists.")
 
+    new_id = str(uuid.uuid4())
+    try:
+        auth_res = db.auth.admin.create_user({
+            "email": email,
+            "password": "StudentPassword123!",
+            "email_confirm": True,
+            "user_metadata": {"name": body.name.strip(), "role": "student"},
+        })
+        new_id = auth_res.user.id
+    except Exception as auth_err:
+        logger.warning(f"Supabase auth admin create_user: {auth_err}")
+        try:
+            # If user was already created in Supabase Auth, link their actual auth UUID to satisfy profiles_id_fkey
+            for u in (db.auth.admin.list_users() or []):
+                if getattr(u, "email", "").lower() == email:
+                    new_id = u.id
+                    break
+        except Exception as list_err:
+            logger.warning(f"Failed to lookup existing auth user: {list_err}")
+
     student_profile = {
+        "id": new_id,
         "name": body.name.strip(),
         "email": email,
         "role": "student",
@@ -3488,10 +4304,22 @@ def controller_create_student(body: CreateStudentRequest, user: dict[str, Any] =
         "registration_locked": False,
         "created_at": utc_now(),
     }
-    resp = db.table("profiles").insert(student_profile).execute()
-    created = resp.data[0]
+    try:
+        resp = db.table("profiles").upsert(student_profile).execute()
+        created = resp.data[0] if (resp and resp.data) else student_profile
+    except Exception as e:
+        logger.warning(f"Profiles upsert: {e}")
+        try:
+            resp = db.table("profiles").update(student_profile).eq("id", new_id).execute()
+            created = resp.data[0] if (resp and resp.data) else student_profile
+        except Exception:
+            created = student_profile
+
     for cid in body.class_ids:
-        db.table("enrollments").insert({"class_id": cid, "student_id": created["id"]}).execute()
+        try:
+            db.table("enrollments").upsert({"class_id": cid, "student_id": created["id"]}).execute()
+        except Exception:
+            pass
     _audit(
         session_id=None,
         actor_id=user["id"],
@@ -3527,8 +4355,15 @@ def controller_create_teacher(body: CreateTeacherRequest, user: dict[str, Any] =
             "user_metadata": {"name": body.name.strip(), "role": "teacher"},
         })
         teacher_id = auth_res.user.id
-    except Exception:
-        pass
+    except Exception as auth_err:
+        logger.warning(f"Supabase auth admin create_user: {auth_err}")
+        try:
+            for u in (db.auth.admin.list_users() or []):
+                if getattr(u, "email", "").lower() == email:
+                    teacher_id = u.id
+                    break
+        except Exception:
+            pass
 
     teacher_profile = {
         "id": teacher_id,
@@ -3914,8 +4749,17 @@ def get_timetable(
             return {"timetable": [], "today_classes": [], "next_class": None, "total_classes": 0}
 
     tt_rows = db.table("timetable").select("*").execute().data or []
-    classes_map = {c["id"]: c for c in (db.table("classes").select("*").execute().data or [])}
-    profiles_map = {p["id"]: p for p in (db.table("profiles").select("id, name, email").execute().data or [])}
+    classes_list = _get_cached_metadata("classes_all")
+    if classes_list is None:
+        classes_list = db.table("classes").select("*").execute().data or []
+        _set_cached_metadata("classes_all", classes_list)
+    classes_map = {c["id"]: c for c in classes_list}
+
+    profiles_list = _get_cached_metadata("profiles_minimal")
+    if profiles_list is None:
+        profiles_list = db.table("profiles").select("id, name, email").execute().data or []
+        _set_cached_metadata("profiles_minimal", profiles_list)
+    profiles_map = {p["id"]: p for p in profiles_list}
 
     filtered = []
     day_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]

@@ -63,13 +63,12 @@ class AppState extends ChangeNotifier {
     error = null;
     notifyListeners();
     try {
-      await syncServerTime();
+      unawaited(syncServerTime());
       auth = await api.login(
         email.trim(),
         password,
         selectedRole: selectedRole,
       );
-      enrollmentStatus = await api.enrollmentStatus();
       await loadHome();
       _startRealtime();
       return true;
@@ -91,26 +90,44 @@ class AppState extends ChangeNotifier {
 
   Future<void> loadControllerData() async {
     try {
-      controllerClasses = await api.controllerClasses();
-      controllerStudents = await api.controllerStudents();
+      final results = await Future.wait([
+        api.controllerClasses().catchError((_) => <Classroom>[]),
+        api.controllerStudents().catchError((_) => <ControllerStudent>[]),
+      ]);
+      controllerClasses = results[0] as List<Classroom>;
+      controllerStudents = results[1] as List<ControllerStudent>;
       notifyListeners();
     } catch (_) {}
   }
 
   Future<void> loadHome() async {
-    classes = await api.classes();
-    sessions = await api.sessions();
-    notifications = await api.notifications();
     try {
-      timetableData = await api.timetable();
-    } catch (_) {}
-    if (isController) {
-      await loadControllerData();
-    } else if (isStudent) {
-      studentAttendance = await api.studentAttendance();
-      await checkEnrollment();
+      final results = await Future.wait([
+        api.classes().catchError((_) => <Classroom>[]),
+        api.sessions().catchError((_) => <AttendanceSession>[]),
+        api.notifications().catchError((_) => <AppNotification>[]),
+        api.timetable().catchError((_) => <String, dynamic>{}),
+      ]);
+      classes = results[0] as List<Classroom>;
+      sessions = results[1] as List<AttendanceSession>;
+      notifications = results[2] as List<AppNotification>;
+      timetableData = results[3] as Map<String, dynamic>;
+
+      if (isController) {
+        await loadControllerData();
+      } else if (isStudent) {
+        final studentResults = await Future.wait([
+          api.studentAttendance().catchError((_) => null),
+          api.enrollmentStatus().catchError((_) => null),
+        ]);
+        studentAttendance = studentResults[0] as StudentAttendance?;
+        if (studentResults[1] != null) {
+          enrollmentStatus = studentResults[1] as EnrollmentStatus?;
+        }
+      }
+    } finally {
+      notifyListeners();
     }
-    notifyListeners();
   }
 
   Future<String?> recoverAccount(String email, String rollNumber) async {

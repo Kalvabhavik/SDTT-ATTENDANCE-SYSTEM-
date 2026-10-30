@@ -290,22 +290,34 @@ def _session_payload(row: dict[str, Any], user: dict[str, Any]) -> dict[str, Any
 
 
 def _audit(
-    session_id: str,
-    actor_id: str,
-    action: str,
+    session_id: Optional[str] = None,
+    actor_id: str = "system",
+    action: str = "system.event",
     note: Optional[str] = None,
     metadata: Optional[dict[str, Any]] = None,
 ) -> None:
-    supa().table("audit_log").insert(
-        {
-            "session_id": session_id,
-            "action": action,
-            "actor_id": actor_id,
-            "timestamp": utc_now(),
-            "note": note,
-            "metadata_json": json.dumps(metadata or {}, separators=(",", ":")),
-        }
-    ).execute()
+    payload = {
+        "session_id": session_id,
+        "action": action,
+        "actor_id": actor_id,
+        "timestamp": utc_now(),
+        "note": note,
+        "metadata_json": json.dumps(metadata or {}, separators=(",", ":")),
+    }
+    try:
+        supa().table("audit_log").insert(payload).execute()
+    except Exception as err:
+        err_msg = str(err).lower()
+        if session_id is None and ("null value in column" in err_msg or "not-null constraint" in err_msg or "session_id" in err_msg or "23502" in err_msg):
+            try:
+                res = supa().table("sessions").select("id").limit(1).execute()
+                if res and res.data:
+                    payload["session_id"] = res.data[0]["id"]
+                    supa().table("audit_log").insert(payload).execute()
+                    return
+            except Exception:
+                pass
+        logging.getLogger("attendrix").warning(f"Audit log recording skipped or failed for '{action}': {err}")
 
 
 def event_payload(event_type: str, data: dict[str, Any]) -> dict[str, Any]:

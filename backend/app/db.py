@@ -71,6 +71,10 @@ class InMemoryTableQuery:
         self.filters.append((column, "neq", value))
         return self
 
+    def lt(self, column: str, value: Any) -> InMemoryTableQuery:
+        self.filters.append((column, "lt", value))
+        return self
+
     def in_(self, column: str, values: list[Any]) -> InMemoryTableQuery:
         self.filters.append((column, "in", set(values)))
         return self
@@ -110,6 +114,9 @@ class InMemoryTableQuery:
                     return False
             elif op == "neq":
                 if str(row_val) == str(val):
+                    return False
+            elif op == "lt":
+                if row_val is None or str(row_val) >= str(val):
                     return False
             elif op == "in":
                 if row_val not in val and str(row_val) not in {str(v) for v in val}:
@@ -201,6 +208,9 @@ class MockStorageBucket:
 
     def create_signed_url(self, path: str, expires_in: int = 3600) -> dict[str, str]:
         return {"signedURL": f"https://mock-storage.local/{self.name}/{path}?expires={expires_in}"}
+
+    def download(self, path: str) -> bytes:
+        return self.files[path]
 
     def remove(self, paths: list[str]) -> Any:
         for p in paths:

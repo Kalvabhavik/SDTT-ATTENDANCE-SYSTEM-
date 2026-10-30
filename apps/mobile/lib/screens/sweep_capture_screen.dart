@@ -450,7 +450,10 @@ class _SweepCaptureScreenState extends State<SweepCaptureScreen>
                           const Center(
                             child: Column(
                               children: [
-                                CircularProgressIndicator(color: AppColors.primary),
+                                AppLottieLoader(
+                                  size: 100,
+                                  type: AppLottieType.aiMarketing,
+                                ),
                                 SizedBox(height: 20),
                                 Text(
                                   'Analyzing Sweep Evidence...',

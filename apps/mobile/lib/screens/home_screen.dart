@@ -1941,7 +1941,7 @@ class _StudentHomeState extends State<StudentHome> {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       const Text(
-                        'Today's Schedule',
+                        'Today s Schedule',
                         style: TextStyle(
                           fontSize: 17,
                           fontWeight: FontWeight.w900,
@@ -2436,7 +2436,7 @@ class _StudentHomeState extends State<StudentHome> {
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _Character3DAvatar extends StatelessWidget {
-  const _Character3DAvatar({super.key, this.size = 140});
+  const _Character3DAvatar({this.size = 140});
   final double size;
 
   @override
@@ -3598,234 +3598,7 @@ class _StudentAttendanceClockInState extends State<_StudentAttendanceClockIn> {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// STUDENT RECORDS OVERVIEW (Tab 3 Folder)
-// ─────────────────────────────────────────────────────────────────────────────
 
-class _StudentRecordsOverview extends StatelessWidget {
-  const _StudentRecordsOverview({required this.state});
-  final AppState state;
-
-  @override
-  Widget build(BuildContext context) {
-    final summary = state.studentAttendance?.summary;
-    final entries = state.studentAttendance?.entries ?? [];
-
-    return RefreshIndicator(
-      onRefresh: state.retryHome,
-      color: AppColors.primary,
-      child: ListView(
-        physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
-        padding: const EdgeInsets.fromLTRB(20, 16, 20, 110),
-        children: [
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: const Color(0xFFECEEF1)),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.02),
-                  blurRadius: 10,
-                  offset: const Offset(0, 3),
-                ),
-              ],
-            ),
-            child: Row(
-              children: [
-                CircularAttendanceGauge(
-                  percentage: summary?.percentage ?? 0.0,
-                  size: 80,
-                  strokeWidth: 8,
-                ),
-                const SizedBox(width: 18),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Cumulative Attendance',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w800,
-                          color: AppColors.ink,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        '${summary?.present ?? 0} attended of ${summary?.total ?? 0} total sessions',
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: AppColors.muted,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 20),
-          const Text(
-            'Course History',
-            style: TextStyle(
-              fontSize: 17,
-              fontWeight: FontWeight.w800,
-              color: AppColors.ink,
-            ),
-          ),
-          const SizedBox(height: 12),
-          if (entries.isEmpty)
-            const EmptyState(
-              icon: Icons.folder_open_rounded,
-              title: 'No attendance logs',
-              message: 'Verified class attendance sessions will appear here.',
-            )
-          else
-            ...entries.map(
-              (rec) => Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: AppCard(
-                  padding: const EdgeInsets.all(14),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 40,
-                        height: 40,
-                        decoration: BoxDecoration(
-                          color: rec.isPresent ? AppColors.emeraldBg : AppColors.roseBg,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Icon(
-                          rec.isPresent ? Icons.check_circle_rounded : Icons.cancel_rounded,
-                          color: rec.isPresent ? AppColors.emerald : AppColors.rose,
-                          size: 20,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              rec.className.isNotEmpty ? rec.className : 'Class Session',
-                              style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: AppColors.ink),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              rec.updatedAt != null
-                                  ? DateFormat.yMMMd().add_jm().format(rec.updatedAt!.toLocal())
-                                  : 'Recorded',
-                              style: const TextStyle(fontSize: 11, color: AppColors.muted),
-                            ),
-                          ],
-                        ),
-                      ),
-                      StatusChip(status: rec.status),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-class _StatPill extends StatelessWidget {
-  const _StatPill({
-    required this.label,
-    required this.value,
-    required this.color,
-  });
-
-  final String label;
-  final String value;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 10),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
-      ),
-      child: Column(
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(
-                width: 7,
-                height: 7,
-                decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-              ),
-              const SizedBox(width: 6),
-              Text(
-                value,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w900,
-                  fontSize: 16,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 2),
-          Text(
-            label,
-            style: const TextStyle(
-              color: Colors.white70,
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _FilterChip extends StatelessWidget {
-  const _FilterChip({
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedPressable(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        decoration: BoxDecoration(
-          color: selected ? AppColors.primary : Colors.white,
-          borderRadius: BorderRadius.circular(999),
-          border: Border.all(
-            color: selected ? AppColors.primary : AppColors.border,
-          ),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
-            color: selected ? Colors.white : AppColors.slate,
-          ),
-        ),
-      ),
-    );
-  }
-}
 
 class _DurationPresetDialog extends StatefulWidget {
   const _DurationPresetDialog({required this.classroom});
@@ -3927,38 +3700,6 @@ class _DurationPresetDialogState extends State<_DurationPresetDialog> {
   }
 }
 
-class _MiniFeatureBadge extends StatelessWidget {
-  const _MiniFeatureBadge({required this.icon, required this.label});
-  final IconData icon;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
-      decoration: BoxDecoration(
-        color: AppColors.cardSubtle,
-        borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 12, color: AppColors.primary),
-          const SizedBox(width: 4),
-          Text(
-            label,
-            style: const TextStyle(
-              fontSize: 10.5,
-              fontWeight: FontWeight.w700,
-              color: AppColors.ink,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
 
 class _TeacherClassesOverview extends StatelessWidget {
   const _TeacherClassesOverview({

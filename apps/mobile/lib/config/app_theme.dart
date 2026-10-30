@@ -159,7 +159,7 @@ ThemeData buildAttendrixTheme() {
 
   return base.copyWith(
     textTheme: GoogleFonts.plusJakartaSansTextTheme(base.textTheme),
-    cardTheme: CardTheme(
+    cardTheme: CardThemeData(
       color: AppThemeTokens.surfaceWhite,
       elevation: 0,
       shape: RoundedRectangleBorder(borderRadius: AppThemeTokens.borderCard),

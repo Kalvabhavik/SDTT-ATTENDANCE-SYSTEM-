@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../models/models.dart';
+import 'classroom_panorama_screen.dart';
 import '../state/app_state.dart';
 import '../widgets/app_widgets.dart';
 
@@ -14,15 +15,29 @@ class SessionScreen extends StatefulWidget {
 
 class _SessionScreenState extends State<SessionScreen> {
   Timer? _countdownTimer;
-  int _selectedTab = 0; // 0: Present, 1: Needs Review (Queue), 2: Absent, 3: All
+  int _selectedTab =
+      0; // 0: Present, 1: Needs Review (Queue), 2: Absent, 3: All
 
   @override
   void initState() {
     super.initState();
+    _ensureTeacherSessionLoaded();
     // 1-second ticker for server-synced countdown
     _countdownTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) setState(() {});
     });
+  }
+
+  Future<void> _ensureTeacherSessionLoaded() async {
+    if (!widget.state.isTeacher) {
+      return;
+    }
+    final openSessions =
+        widget.state.sessions.where((item) => item.isOpen).toList();
+    if (openSessions.isNotEmpty &&
+        widget.state.activeSession?.id != openSessions.first.id) {
+      await widget.state.openSession(openSessions.first.id);
+    }
   }
 
   @override
@@ -64,6 +79,13 @@ class _SessionScreenState extends State<SessionScreen> {
     );
   }
 
+  Future<void> _openClassroomPanorama(AttendanceSession session) async {
+    await Navigator.of(context).push(MaterialPageRoute<void>(
+      builder: (_) =>
+          ClassroomPanoramaScreen(state: widget.state, session: session),
+    ));
+  }
+
   void _exportExcel(BuildContext context, AttendanceSession session) {
     final exportUrl = widget.state.api.sessionExcelExportUrl(session.id);
     showDialog(
@@ -74,7 +96,8 @@ class _SessionScreenState extends State<SessionScreen> {
           children: [
             Icon(Icons.table_view_rounded, color: AppColors.emerald, size: 26),
             SizedBox(width: 10),
-            Text('Excel Export (.xlsx)', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
+            Text('Excel Export (.xlsx)',
+                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
           ],
         ),
         content: Column(
@@ -83,7 +106,8 @@ class _SessionScreenState extends State<SessionScreen> {
           children: [
             const Text(
               'A professionally formatted spreadsheet with colored KPI headers, status badges (Present/Absent/Flagged), and audit notes is ready.',
-              style: TextStyle(fontSize: 13, color: AppColors.slate, height: 1.4),
+              style:
+                  TextStyle(fontSize: 13, color: AppColors.slate, height: 1.4),
             ),
             const SizedBox(height: 14),
             Container(
@@ -91,11 +115,15 @@ class _SessionScreenState extends State<SessionScreen> {
               decoration: BoxDecoration(
                 color: AppColors.primary.withValues(alpha: 0.05),
                 borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: AppColors.primary.withValues(alpha: 0.2)),
+                border:
+                    Border.all(color: AppColors.primary.withValues(alpha: 0.2)),
               ),
               child: SelectableText(
                 exportUrl,
-                style: const TextStyle(fontSize: 11, fontFamily: 'monospace', color: AppColors.primary),
+                style: const TextStyle(
+                    fontSize: 11,
+                    fontFamily: 'monospace',
+                    color: AppColors.primary),
               ),
             ),
           ],
@@ -108,7 +136,8 @@ class _SessionScreenState extends State<SessionScreen> {
           FilledButton.icon(
             style: FilledButton.styleFrom(
               backgroundColor: AppColors.emerald,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12)),
             ),
             onPressed: () {
               Navigator.of(ctx).pop();
@@ -144,7 +173,8 @@ class _SessionScreenState extends State<SessionScreen> {
     }
 
     final serverNow = widget.state.serverTimeNow;
-    final isExpired = session.endsAt != null && serverNow.isAfter(session.endsAt!);
+    final isExpired =
+        session.endsAt != null && serverNow.isAfter(session.endsAt!);
     final isSessionClosed = session.isClosed || isExpired;
 
     final presentList = session.records.where((r) => r.isPresent).toList();
@@ -170,7 +200,8 @@ class _SessionScreenState extends State<SessionScreen> {
           IconButton(
             tooltip: 'Export Professional Excel (.xlsx)',
             onPressed: () => _exportExcel(context, session),
-            icon: const Icon(Icons.table_chart_rounded, color: AppColors.emerald),
+            icon:
+                const Icon(Icons.table_chart_rounded, color: AppColors.emerald),
           ),
           IconButton(
             tooltip: 'Refresh',
@@ -192,17 +223,25 @@ class _SessionScreenState extends State<SessionScreen> {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 4),
                       decoration: BoxDecoration(
-                        color: (isSessionClosed ? AppColors.slate : AppColors.emerald).withValues(alpha: 0.12),
+                        color: (isSessionClosed
+                                ? AppColors.slate
+                                : AppColors.emerald)
+                            .withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Row(
                         children: [
                           Icon(
-                            isSessionClosed ? Icons.lock_clock_rounded : Icons.timer_rounded,
+                            isSessionClosed
+                                ? Icons.lock_clock_rounded
+                                : Icons.timer_rounded,
                             size: 15,
-                            color: isSessionClosed ? AppColors.slate : AppColors.emerald,
+                            color: isSessionClosed
+                                ? AppColors.slate
+                                : AppColors.emerald,
                           ),
                           const SizedBox(width: 5),
                           Text(
@@ -210,7 +249,9 @@ class _SessionScreenState extends State<SessionScreen> {
                             style: TextStyle(
                               fontSize: 11,
                               fontWeight: FontWeight.w800,
-                              color: isSessionClosed ? AppColors.slate : AppColors.emerald,
+                              color: isSessionClosed
+                                  ? AppColors.slate
+                                  : AppColors.emerald,
                             ),
                           ),
                         ],
@@ -260,31 +301,65 @@ class _SessionScreenState extends State<SessionScreen> {
                 // Status Breakdown Pills
                 Row(
                   children: [
-                    _MetricChip(label: 'Verified', count: session.verifiedCount, color: AppColors.emerald),
+                    _MetricChip(
+                        label: 'Verified',
+                        count: session.verifiedCount,
+                        color: AppColors.emerald),
                     const SizedBox(width: 8),
-                    _MetricChip(label: 'Needs Review', count: widget.state.reviewItems.length, color: AppColors.amber),
+                    _MetricChip(
+                        label: 'Needs Review',
+                        count: widget.state.reviewItems.length,
+                        color: AppColors.amber),
                     const SizedBox(width: 8),
-                    _MetricChip(label: 'Absent', count: absentList.length, color: AppColors.rose),
+                    _MetricChip(
+                        label: 'Absent',
+                        count: absentList.length,
+                        color: AppColors.rose),
                   ],
                 ),
                 const SizedBox(height: 14),
                 OutlinedButton.icon(
                   onPressed: () => _exportExcel(context, session),
-                  icon: const Icon(Icons.file_download_outlined, size: 18, color: AppColors.emerald),
+                  icon: const Icon(Icons.file_download_outlined,
+                      size: 18, color: AppColors.emerald),
                   label: const Text(
                     'Export Colored Excel Analysis (.xlsx)',
-                    style: TextStyle(color: AppColors.ink, fontWeight: FontWeight.w700, fontSize: 13),
+                    style: TextStyle(
+                        color: AppColors.ink,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13),
                   ),
                   style: OutlinedButton.styleFrom(
                     side: const BorderSide(color: AppColors.emeraldBorder),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12)),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 10),
                   ),
                 ),
               ],
             ),
           ),
           const SizedBox(height: 16),
+
+          if (widget.state.isTeacher && !isSessionClosed) ...[
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: () => _openClassroomPanorama(session),
+                icon: const Icon(Icons.panorama_horizontal_rounded),
+                label: const Text('Capture Classroom Panorama'),
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                  padding:
+                      const EdgeInsets.symmetric(vertical: 14, horizontal: 18),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10)),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+          ],
 
           // ── Review Queue Alert (if flagged attempts exist) ────────────────
           if (widget.state.reviewItems.isNotEmpty) ...[
@@ -293,11 +368,13 @@ class _SessionScreenState extends State<SessionScreen> {
               decoration: BoxDecoration(
                 color: AppColors.amber.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: AppColors.amber.withValues(alpha: 0.3)),
+                border:
+                    Border.all(color: AppColors.amber.withValues(alpha: 0.3)),
               ),
               child: Row(
                 children: [
-                  const Icon(Icons.warning_amber_rounded, color: AppColors.amber, size: 28),
+                  const Icon(Icons.warning_amber_rounded,
+                      color: AppColors.amber, size: 28),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Column(
@@ -305,12 +382,16 @@ class _SessionScreenState extends State<SessionScreen> {
                       children: [
                         Text(
                           '${widget.state.reviewItems.length} Student Check-ins Need Review',
-                          style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14, color: AppColors.ink),
+                          style: const TextStyle(
+                              fontWeight: FontWeight.w800,
+                              fontSize: 14,
+                              color: AppColors.ink),
                         ),
                         const SizedBox(height: 2),
                         const Text(
                           'Front camera sweep flagged for optical verification. Inspect key frames below.',
-                          style: TextStyle(fontSize: 12, color: AppColors.slate),
+                          style:
+                              TextStyle(fontSize: 12, color: AppColors.slate),
                         ),
                       ],
                     ),
@@ -361,13 +442,16 @@ class _SessionScreenState extends State<SessionScreen> {
               const EmptyState(
                 icon: Icons.check_circle_outline_rounded,
                 title: 'Review Queue Clear',
-                message: 'No student attempts currently require manual inspection.',
+                message:
+                    'No student attempts currently require manual inspection.',
               )
             else
               ...widget.state.reviewItems.map((item) => _ReviewItemCard(
                     item: item,
-                    onAccept: () => _handleReviewDecision(item.attemptId, 'accept'),
-                    onReject: () => _handleReviewDecision(item.attemptId, 'reject'),
+                    onAccept: () =>
+                        _handleReviewDecision(item.attemptId, 'accept'),
+                    onReject: () =>
+                        _handleReviewDecision(item.attemptId, 'reject'),
                   )),
           ] else ...[
             // Roster Records List (Present, Absent, or All)
@@ -396,7 +480,8 @@ class _SessionScreenState extends State<SessionScreen> {
 }
 
 class _MetricChip extends StatelessWidget {
-  const _MetricChip({required this.label, required this.count, required this.color});
+  const _MetricChip(
+      {required this.label, required this.count, required this.color});
   final String label;
   final int count;
   final Color color;
@@ -412,11 +497,15 @@ class _MetricChip extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Container(width: 7, height: 7, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+          Container(
+              width: 7,
+              height: 7,
+              decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
           const SizedBox(width: 6),
           Text(
             '$label: $count',
-            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: color),
+            style: TextStyle(
+                fontSize: 12, fontWeight: FontWeight.w700, color: color),
           ),
         ],
       ),
@@ -425,7 +514,8 @@ class _MetricChip extends StatelessWidget {
 }
 
 class _TabButton extends StatelessWidget {
-  const _TabButton({required this.label, required this.active, required this.onTap});
+  const _TabButton(
+      {required this.label, required this.active, required this.onTap});
   final String label;
   final bool active;
   final VoidCallback onTap;
@@ -440,7 +530,8 @@ class _TabButton extends StatelessWidget {
         decoration: BoxDecoration(
           color: active ? AppColors.primary : Colors.white,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: active ? AppColors.primary : AppColors.line),
+          border:
+              Border.all(color: active ? AppColors.primary : AppColors.line),
         ),
         child: Text(
           label,
@@ -478,7 +569,10 @@ class _ReviewItemCard extends StatelessWidget {
             children: [
               Text(
                 item.studentName,
-                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: AppColors.ink),
+                style: const TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 16,
+                    color: AppColors.ink),
               ),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
@@ -488,13 +582,17 @@ class _ReviewItemCard extends StatelessWidget {
                 ),
                 child: Text(
                   item.reasonCode,
-                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: AppColors.amber),
+                  style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.amber),
                 ),
               ),
             ],
           ),
           const SizedBox(height: 4),
-          Text(item.studentEmail, style: const TextStyle(fontSize: 12, color: AppColors.slate)),
+          Text(item.studentEmail,
+              style: const TextStyle(fontSize: 12, color: AppColors.slate)),
           const SizedBox(height: 12),
 
           // Filmstrip Carousel of Key Frames
@@ -517,7 +615,9 @@ class _ReviewItemCard extends StatelessWidget {
                       height: 90,
                       color: AppColors.line,
                       child: Center(
-                        child: Text('Frame $idx', style: const TextStyle(fontSize: 11, color: AppColors.slate)),
+                        child: Text('Frame $idx',
+                            style: const TextStyle(
+                                fontSize: 11, color: AppColors.slate)),
                       ),
                     ),
                   ),
@@ -591,10 +691,15 @@ class _RosterRow extends StatelessWidget {
               children: [
                 Text(
                   record.studentName,
-                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: AppColors.ink),
+                  style: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 14,
+                      color: AppColors.ink),
                 ),
                 if (record.note.isNotEmpty)
-                  Text(record.note, style: const TextStyle(fontSize: 11.5, color: AppColors.slate)),
+                  Text(record.note,
+                      style: const TextStyle(
+                          fontSize: 11.5, color: AppColors.slate)),
               ],
             ),
           ),
@@ -602,7 +707,9 @@ class _RosterRow extends StatelessWidget {
             tooltip: 'Toggle present/absent',
             onPressed: onToggle,
             icon: Icon(
-              record.isPresent ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
+              record.isPresent
+                  ? Icons.check_circle_rounded
+                  : Icons.radio_button_unchecked_rounded,
               color: color,
               size: 22,
             ),

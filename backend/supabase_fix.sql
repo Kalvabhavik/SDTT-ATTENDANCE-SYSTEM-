@@ -150,6 +150,9 @@ create index if not exists idx_audit_actor           on public.audit_log(actor_i
 create index if not exists idx_audit_timestamp       on public.audit_log(timestamp desc);
 create index if not exists idx_timetable_class       on public.timetable(class_id, day_of_week);
 
--- 13. Reload schema cache for PostgREST API
+-- 13. Allow NULL session_id in audit_log to support controller/system administrative events (creating classes, enrolling students, etc.)
+alter table public.audit_log alter column session_id drop not null;
+
+-- 14. Reload schema cache for PostgREST API
 notify pgrst, 'reload schema';
 
