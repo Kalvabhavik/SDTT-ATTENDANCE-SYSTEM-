@@ -24,6 +24,12 @@ class AppColors {
   static const accentIndigoBg = accentBlueBg;
   static const accentIndigoBorder = accentBlueBorder;
 
+  // 4 Quick-Action Squircle Colors (matching reference image)
+  static const actionLeave = Color(0xFFFF6584);    // Coral Pink
+  static const actionCalendar = Color(0xFF38BDF8); // Sky Blue
+  static const actionCourses = Color(0xFF2ED573);  // Mint Green
+  static const actionTask = Color(0xFF9B51E0);     // Lavender Purple
+
   // Status Colors (Clear present, absent, pending, rejected, and verified status indicators)
   static const emerald = Color(0xFF10B981); // Present / Verified (Emerald 500)
   static const emeraldBg = Color(0xFFECFDF5);
@@ -38,6 +44,8 @@ class AppColors {
   static const amberBorder = Color(0xFFFDE68A);
 
   static const sky = Color(0xFF0284C7); // Sky 600 info / network
+  static const skyStart = Color(0xFF38BDF8);
+  static const skyEnd = Color(0xFF0284C7);
   static const skyBg = Color(0xFFF0F9FF);
   static const skyBorder = Color(0xFFBAE6FD);
 
@@ -65,17 +73,17 @@ class AppColors {
   static const tagApprovedBg = Color(0xFFECFDF5);
   static const tagApprovedText = Color(0xFF059669);
 
-  // Gradients (Clean academic navy & indigo)
+  // Gradients (Sky Blue reference palette)
   static const primaryGradient = LinearGradient(
-    colors: [Color(0xFF4F46E5), Color(0xFF3730A3)],
-    begin: Alignment.topLeft,
-    end: Alignment.bottomRight,
+    colors: [Color(0xFF38BDF8), Color(0xFF0284C7)],
+    begin: Alignment.topCenter,
+    end: Alignment.bottomCenter,
   );
 
   static const studentHeroGradient = LinearGradient(
-    colors: [Color(0xFF1E293B), Color(0xFF0F172A)],
-    begin: Alignment.topLeft,
-    end: Alignment.bottomRight,
+    colors: [Color(0xFF38BDF8), Color(0xFF0284C7)],
+    begin: Alignment.topCenter,
+    end: Alignment.bottomCenter,
   );
 
   static const teacherHeroGradient = LinearGradient(

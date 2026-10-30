@@ -1,0 +1,40 @@
+- generic [ref=e3]:
+  - generic [ref=e4]:
+    - generic [ref=e5]:
+      - generic [ref=e6]: AX
+      - generic [ref=e7]:
+        - generic [ref=e8]:
+          - strong [ref=e9]: ATTENDRIX
+          - text: ENTERPRISE
+        - text: Institutional Attendance & Verification
+    - generic [ref=e10]:
+      - paragraph [ref=e11]: Enterprise Biometrics · SDTT Core
+      - heading "Classroom presence, authenticated." [level=1] [ref=e12]
+      - paragraph [ref=e13]: Multi-modal attendance platform integrating active liveness verification (head turn + eye blink), 180° continuous spatial sweep, and zero-knowledge ArcFace biometrics.
+    - generic [ref=e14]:
+      - generic [ref=e15]:
+        - text: Institutional Email
+        - textbox "Institutional Email" [ref=e16]:
+          - /placeholder: e.g. teacher@demo.edu
+          - text: teacher@demo.edu
+      - generic [ref=e17]:
+        - text: Password
+        - textbox "Password" [ref=e18]:
+          - /placeholder: ••••••••
+          - text: teach123
+      - button "Sign in to Attendrix" [ref=e19] [cursor=pointer]
+    - generic [ref=e22]:
+      - generic [ref=e23]: Quick 1-Tap Demo Access
+      - button "Controller" [ref=e24] [cursor=pointer]
+      - button "Lecturer" [ref=e28] [cursor=pointer]
+      - button "Student" [ref=e34] [cursor=pointer]
+    - paragraph [ref=e38]: End-to-end encrypted biometric templates · Seeded campus demo
+  - generic [ref=e43]:
+    - generic [ref=e44]:
+      - paragraph [ref=e48]: “True presence requires physical, environmental, and biometric corroboration.”
+      - text: Attendrix Spatial-Biometric Verification Protocol
+    - generic [ref=e49]:
+      - generic [ref=e50]: "Active Liveness Challenge: Center → Turn Left → Turn Right → Blink"
+      - generic [ref=e53]: 180° Continuous Classroom Sweep (Δyaw ≥ 120°)
+      - generic [ref=e56]: "Anti-Empty-Room Defense: Real Peer Crowd Corroboration"
+      - generic [ref=e59]: ArcFace 512-D Cosine Metric (τ ≥ 0.68) with 1-Attempt Policy

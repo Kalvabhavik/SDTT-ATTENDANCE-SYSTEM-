@@ -1759,17 +1759,16 @@ class _StudentHomeState extends State<StudentHome> {
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
                               border: Border.all(color: Colors.white, width: 2),
-                              color: const Color(0xFF1E293B),
-                            ),
-                            child: Center(
-                              child: Text(
-                                (state.user?.name.isNotEmpty == true ? state.user!.name[0] : 'F').toUpperCase(),
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w900,
-                                  fontSize: 15,
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withValues(alpha: 0.15),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 2),
                                 ),
-                              ),
+                              ],
+                            ),
+                            child: const ClipOval(
+                              child: _Character3DAvatar(size: 40),
                             ),
                           ),
                         ),
@@ -2431,6 +2430,172 @@ class _StudentHomeState extends State<StudentHome> {
 // STUDENT PROFILE VIEW (Image 1 Screen 2: 3D Character Avatar & Verified Student Card)
 // ─────────────────────────────────────────────────────────────────────────────
 
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 3D ILLUSTRATED CHARACTER AVATAR (Image 1 Screen 2 Avatar Model)
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _Character3DAvatar extends StatelessWidget {
+  const _Character3DAvatar({super.key, this.size = 140});
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: size,
+      height: size,
+      child: CustomPaint(
+        painter: _Character3DPainter(),
+      ),
+    );
+  }
+}
+
+class _Character3DPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final w = size.width;
+    final h = size.height;
+    final center = Offset(w / 2, h / 2);
+
+    // 1. Ears (Left & Right round 3D lobes)
+    final earShader = RadialGradient(
+      center: const Alignment(-0.2, -0.2),
+      colors: const [Color(0xFFFDC5B0), Color(0xFFF8A589), Color(0xFFE28B70)],
+    ).createShader(Rect.fromCircle(center: Offset(w * 0.17, h * 0.52), radius: w * 0.12));
+    final earPaint = Paint()..shader = earShader;
+    canvas.drawCircle(Offset(w * 0.17, h * 0.52), w * 0.11, earPaint);
+
+    final rightEarShader = RadialGradient(
+      center: const Alignment(0.2, -0.2),
+      colors: const [Color(0xFFFDC5B0), Color(0xFFF8A589), Color(0xFFE28B70)],
+    ).createShader(Rect.fromCircle(center: Offset(w * 0.83, h * 0.52), radius: w * 0.12));
+    final rightEarPaint = Paint()..shader = rightEarShader;
+    canvas.drawCircle(Offset(w * 0.83, h * 0.52), w * 0.11, rightEarPaint);
+
+    // Inner ear shadows
+    final innerEarPaint = Paint()..color = const Color(0xFFD6775C).withValues(alpha: 0.45);
+    canvas.drawCircle(Offset(w * 0.18, h * 0.52), w * 0.055, innerEarPaint);
+    canvas.drawCircle(Offset(w * 0.82, h * 0.52), w * 0.055, innerEarPaint);
+
+    // 2. Face Base (Smooth 3D Spherical Head)
+    final faceRect = RRect.fromRectAndRadius(
+      Rect.fromCenter(center: Offset(center.dx, center.dy + h * 0.04), width: w * 0.65, height: h * 0.62),
+      Radius.circular(w * 0.28),
+    );
+    final facePaint = Paint()
+      ..shader = RadialGradient(
+        center: const Alignment(-0.25, -0.35),
+        radius: 0.9,
+        colors: const [Color(0xFFFED7C7), Color(0xFFF8A589), Color(0xFFDE8266)],
+      ).createShader(faceRect.outerRect);
+    canvas.drawRRect(faceRect, facePaint);
+
+    // 3. Hair (Voluminous glossy 3D styled hair)
+    final hairPaint = Paint()
+      ..shader = LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: const [Color(0xFF334155), Color(0xFF1E293B), Color(0xFF0F172A)],
+      ).createShader(Rect.fromLTWH(w * 0.14, h * 0.04, w * 0.72, h * 0.44));
+
+    final hairPath = Path()
+      ..moveTo(w * 0.15, h * 0.42)
+      ..cubicTo(w * 0.12, h * 0.15, w * 0.32, h * 0.03, w * 0.50, h * 0.03)
+      ..cubicTo(w * 0.68, h * 0.03, w * 0.88, h * 0.15, w * 0.85, h * 0.42)
+      ..cubicTo(w * 0.80, h * 0.32, w * 0.70, h * 0.26, w * 0.58, h * 0.28)
+      ..cubicTo(w * 0.44, h * 0.30, w * 0.30, h * 0.24, w * 0.15, h * 0.42)
+      ..close();
+    canvas.drawPath(hairPath, hairPaint);
+
+    // Specular Hair Sheen / Highlight (gloss reflection)
+    final hairHighlight = Paint()
+      ..shader = LinearGradient(
+        colors: [Colors.white.withValues(alpha: 0.50), Colors.white.withValues(alpha: 0.0)],
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+      ).createShader(Rect.fromLTWH(w * 0.32, h * 0.07, w * 0.36, h * 0.14));
+
+    final highlightPath = Path()
+      ..moveTo(w * 0.35, h * 0.14)
+      ..cubicTo(w * 0.40, h * 0.08, w * 0.55, h * 0.08, w * 0.65, h * 0.15)
+      ..cubicTo(w * 0.55, h * 0.11, w * 0.42, h * 0.11, w * 0.35, h * 0.14)
+      ..close();
+    canvas.drawPath(highlightPath, hairHighlight);
+
+    // 4. Eyebrows
+    final browPaint = Paint()
+      ..color = const Color(0xFF1E293B)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = w * 0.038
+      ..strokeCap = StrokeCap.round;
+
+    final leftBrow = Path()
+      ..moveTo(w * 0.34, h * 0.42)
+      ..quadraticBezierTo(w * 0.41, h * 0.39, w * 0.47, h * 0.42);
+    final rightBrow = Path()
+      ..moveTo(w * 0.53, h * 0.42)
+      ..quadraticBezierTo(w * 0.59, h * 0.39, w * 0.66, h * 0.42);
+    canvas.drawPath(leftBrow, browPaint);
+    canvas.drawPath(rightBrow, browPaint);
+
+    // 5. Cartoon Eyes with Catchlight
+    final eyePaint = Paint()..color = const Color(0xFF1E293B);
+    final leftEyeRect = Rect.fromCenter(center: Offset(w * 0.41, h * 0.48), width: w * 0.065, height: h * 0.085);
+    final rightEyeRect = Rect.fromCenter(center: Offset(w * 0.59, h * 0.48), width: w * 0.065, height: h * 0.085);
+    canvas.drawOval(leftEyeRect, eyePaint);
+    canvas.drawOval(rightEyeRect, eyePaint);
+
+    // Pure White Catchlight Sparkle
+    final catchlightPaint = Paint()..color = Colors.white;
+    canvas.drawCircle(Offset(w * 0.425, h * 0.465), w * 0.018, catchlightPaint);
+    canvas.drawCircle(Offset(w * 0.605, h * 0.465), w * 0.018, catchlightPaint);
+
+    // 6. Rounded 3D Button Nose
+    final nosePaint = Paint()
+      ..shader = RadialGradient(
+        colors: const [Color(0xFFFCAE95), Color(0xFFE2886E)],
+      ).createShader(Rect.fromCircle(center: Offset(w * 0.50, h * 0.54), radius: w * 0.045));
+    canvas.drawCircle(Offset(w * 0.50, h * 0.54), w * 0.042, nosePaint);
+
+    // 7. Beard & Mustache (hugging the jawline like reference image)
+    final beardPaint = Paint()
+      ..shader = LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: const [Color(0xFF27303F), Color(0xFF1E293B), Color(0xFF0F172A)],
+      ).createShader(Rect.fromLTWH(w * 0.22, h * 0.56, w * 0.56, h * 0.22));
+
+    final beardPath = Path()
+      ..moveTo(w * 0.25, h * 0.56)
+      ..cubicTo(w * 0.24, h * 0.74, w * 0.36, h * 0.77, w * 0.50, h * 0.77)
+      ..cubicTo(w * 0.64, h * 0.77, w * 0.76, h * 0.74, w * 0.75, h * 0.56)
+      ..cubicTo(w * 0.70, h * 0.62, w * 0.62, h * 0.64, w * 0.50, h * 0.64)
+      ..cubicTo(w * 0.38, h * 0.64, w * 0.30, h * 0.62, w * 0.25, h * 0.56)
+      ..close();
+    canvas.drawPath(beardPath, beardPaint);
+
+    // 8. Smiling Mouth with Teeth
+    final mouthBg = Paint()..color = const Color(0xFF881337);
+    final mouthPath = Path()
+      ..moveTo(w * 0.43, h * 0.63)
+      ..quadraticBezierTo(w * 0.50, h * 0.70, w * 0.57, h * 0.63)
+      ..close();
+    canvas.drawPath(mouthPath, mouthBg);
+
+    // Clean white teeth bar
+    final teethPaint = Paint()..color = Colors.white;
+    final teethRect = RRect.fromRectAndRadius(
+      Rect.fromLTWH(w * 0.445, h * 0.63, w * 0.11, h * 0.024),
+      const Radius.circular(2),
+    );
+    canvas.drawRRect(teethRect, teethPaint);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
 class _StudentProfileView extends StatelessWidget {
   const _StudentProfileView({
     required this.state,
@@ -2494,56 +2659,26 @@ class _StudentProfileView extends StatelessWidget {
                     child: Stack(
                       alignment: Alignment.center,
                       children: [
-                        // Soft Outer Glow Ring
+                        // Soft Outer Glow Ring 1
                         Container(
-                          width: 170,
-                          height: 170,
+                          width: 190,
+                          height: 190,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            color: Colors.white.withValues(alpha: 0.15),
+                            color: Colors.white.withValues(alpha: 0.12),
                           ),
                         ),
-                        // Inner Avatar Circle
+                        // Soft Outer Glow Ring 2
                         Container(
-                          width: 145,
-                          height: 145,
+                          width: 165,
+                          height: 165,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            gradient: const LinearGradient(
-                              colors: [Color(0xFF1E293B), Color(0xFF0F172A)],
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                            ),
-                            border: Border.all(color: Colors.white, width: 3),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.2),
-                                blurRadius: 20,
-                                offset: const Offset(0, 8),
-                              ),
-                            ],
-                          ),
-                          child: Center(
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                const Icon(Icons.face_retouching_natural_rounded, color: Color(0xFF38BDF8), size: 68),
-                                const SizedBox(height: 4),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFF10B981).withValues(alpha: 0.25),
-                                    borderRadius: BorderRadius.circular(10),
-                                  ),
-                                  child: const Text(
-                                    '128-d ArcFace',
-                                    style: TextStyle(color: Color(0xFF34D399), fontSize: 9.5, fontWeight: FontWeight.w800),
-                                  ),
-                                ),
-                              ],
-                            ),
+                            color: Colors.white.withValues(alpha: 0.18),
                           ),
                         ),
+                        // 3D Avatar Character Model
+                        const _Character3DAvatar(size: 150),
                       ],
                     ),
                   ),
@@ -2571,15 +2706,24 @@ class _StudentProfileView extends StatelessWidget {
                   ),
                   child: Column(
                     children: [
-                      // Mini Avatar
+                      // Mini Avatar (matching Screen 2 profile card)
                       Container(
-                        width: 44,
-                        height: 44,
+                        width: 48,
+                        height: 48,
                         decoration: BoxDecoration(
-                          color: const Color(0xFF38BDF8).withValues(alpha: 0.15),
                           shape: BoxShape.circle,
+                          border: Border.all(color: const Color(0xFF38BDF8), width: 1.5),
+                          boxShadow: [
+                            BoxShadow(
+                              color: const Color(0xFF0284C7).withValues(alpha: 0.15),
+                              blurRadius: 8,
+                              offset: const Offset(0, 3),
+                            ),
+                          ],
                         ),
-                        child: const Icon(Icons.person_rounded, color: Color(0xFF0284C7), size: 24),
+                        child: const ClipOval(
+                          child: _Character3DAvatar(size: 48),
+                        ),
                       ),
                       const SizedBox(height: 10),
 
